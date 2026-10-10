@@ -86,8 +86,7 @@
             text-decoration: none;
         }
         .nav-link:hover, .nav-link.active { background: var(--received); color: var(--primary); }
-        .sidebar-bottom { display: grid; gap: 10px;         margin-top: auto;
-    }
+        .sidebar-bottom { display: grid; gap: 10px; margin-top: auto; }
     .language-selector {
         width: 100%;
         margin-bottom: 10px;
@@ -104,6 +103,41 @@
             color: var(--text);
         }
         .theme-button, .logout-button { width: 100%; padding: 12px; text-align: left; }
+        .settings-menu { position: relative; margin-left: auto; }
+        .settings-menu > summary {
+            list-style: none;
+            cursor: pointer;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 9px 12px;
+            background: var(--panel);
+            color: var(--text);
+            font: inherit;
+        }
+        .settings-menu > summary::-webkit-details-marker { display: none; }
+        .settings-panel {
+            position: absolute;
+            top: calc(100% + 8px);
+            right: 0;
+            z-index: 30;
+            display: grid;
+            gap: 10px;
+            width: min(260px, calc(100vw - 28px));
+            padding: 14px;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            background: var(--panel);
+            box-shadow: 0 12px 32px #0003;
+        }
+        .settings-panel .language-selector { width: 100%; margin: 0; }
+        .settings-panel a {
+            display: block;
+            padding: 10px 12px;
+            border-radius: 10px;
+            color: var(--text);
+            text-decoration: none;
+        }
+        .settings-panel a:hover { background: var(--received); }
         .messaging {
             display: grid;
             grid-template-columns: minmax(250px, 310px) minmax(0, 1fr);
@@ -356,6 +390,7 @@
             .sidebar { display: none; }
             .messaging { display: block; height: 100%; border: 0; border-radius: 0; }
             .conversations { height: 100%; border-right: 0; }
+            .conversation-heading > div:first-child { flex-wrap: wrap; }
             .chat { display: none; height: 100%; }
             .messaging.chat-open .conversations { display: none; }
             .messaging.chat-open .chat { display: flex; }
@@ -376,8 +411,8 @@
             .chat-person { flex: 1 1 70px; }
         }
     </style>
-  <script type="module" crossorigin src="/assets/messages-B5INLE4O.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/pwa-0k7TgQP9.js">
+  <script type="module" crossorigin src="/assets/messages-aOBXK5tU.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/pwa-yI2eOH6n.js">
 </head>
 <body>
     <main class="app">
@@ -386,25 +421,31 @@
             <nav aria-label="Main navigation">
                 <a class="nav-link" href="/">🏠 Home</a>
                 <a class="nav-link active" href="/messages.html" aria-current="page">💬 Messages</a>
-                <a class="nav-link" href="/#about">ⓘ About Campus Connect</a>
             </nav>
-            <div class="sidebar-bottom">
-                <label for="language-selector" hidden data-i18n="Language">Language</label>
-                <select id="language-selector" class="language-selector" aria-label="Language" data-i18n-aria-label="Language">
-                    <option value="en">English</option>
-                    <option value="fr">Français</option>
-                    <option value="sw">Kiswahili</option>
-                    <option value="es">Español</option>
-                </select>
-                <button id="install-app-button" class="theme-button" type="button" data-install-app data-i18n="Install app">Install app</button>
-                <button id="theme-toggle" class="theme-button" type="button" aria-pressed="false" data-i18n="🌙 Night Mode">🌙 Night Mode</button>
-                <button id="logout-button" class="logout-button" type="button" data-i18n="Log out">Log out</button>
-            </div>
         </aside>
         <section class="messaging" id="messaging">
             <aside class="conversations" id="conversations-panel">
                 <header class="conversation-heading">
-                    <h1 data-i18n="Messages">Messages</h1>
+                    <div style="display:flex;align-items:center;gap:12px;">
+                        <h1 data-i18n="Messages">Messages</h1>
+                        <details class="settings-menu">
+                            <summary data-i18n="⚙ Settings">⚙ Settings</summary>
+                            <div class="settings-panel">
+                                <label for="language-selector" hidden data-i18n="Language">Language</label>
+                                <select id="language-selector" class="language-selector" aria-label="Language" data-i18n-aria-label="Language">
+                                    <option value="en">English</option>
+                                    <option value="fr">Français</option>
+                                    <option value="sw">Kiswahili</option>
+                                    <option value="es">Español</option>
+                                </select>
+                                <button id="install-app-button" class="theme-button" type="button" data-install-app data-i18n="Install app">Install app</button>
+                                <button class="theme-button" type="button" data-share-app data-i18n="Share app">Share app</button>
+                                <a href="/#about" data-i18n="ⓘ About Campus Connect">ⓘ About Campus Connect</a>
+                                <button id="theme-toggle" class="theme-button" type="button" aria-pressed="false" data-i18n="🌙 Night Mode">🌙 Night Mode</button>
+                                <button id="logout-button" class="logout-button" type="button" data-i18n="Log out">Log out</button>
+                            </div>
+                        </details>
+                    </div>
                     <p data-i18n="Search members by name, username, or university.">Search members by name, username, or university.</p>
                     <label for="conversation-search" hidden data-i18n="Search members by name, username, or university.">Search members by name, username, or university.</label>
                     <input id="conversation-search" class="search" type="search" placeholder="Search members and universities..." data-i18n-placeholder="Search members and universities..." autocomplete="off">
@@ -517,7 +558,6 @@
             <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/></svg>
             <span data-i18n="Profile">Profile</span>
         </a>
-    </nav>
-
+    </nav>
 </body>
 </html>

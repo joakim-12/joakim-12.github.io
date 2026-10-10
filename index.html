@@ -75,6 +75,64 @@
       font: inherit;
     }
 
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .settings-menu {
+      position: relative;
+    }
+
+    .settings-menu > summary {
+      list-style: none;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      padding: 10px 14px;
+      background: var(--surface);
+      color: var(--text);
+      font: inherit;
+    }
+
+    .settings-menu > summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .settings-panel {
+      position: absolute;
+      top: calc(100% + 8px);
+      right: 0;
+      z-index: 20;
+      display: grid;
+      gap: 10px;
+      width: min(260px, calc(100vw - 24px));
+      padding: 14px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: var(--surface);
+      box-shadow: 0 12px 32px #0002;
+    }
+
+    .settings-panel a {
+      display: block;
+      padding: 10px;
+      border-radius: 7px;
+      color: var(--text);
+      text-decoration: none;
+    }
+
+    .settings-panel a:hover {
+      background: var(--background);
+    }
+
+    .settings-panel .language-selector {
+      width: 100%;
+      max-width: none;
+    }
+
     button {
       cursor: pointer;
       border: none;
@@ -502,32 +560,35 @@
       #authSection { margin: 18px auto; }
     }
   </style>
-  <script type="module" crossorigin src="/assets/main-OBWhUUT0.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/pwa-0k7TgQP9.js">
+  <script type="module" crossorigin src="/assets/main-CYQpdkJi.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/pwa-yI2eOH6n.js">
 </head>
 
 <body>
   <header>
     <h1>Campus Connect</h1>
-    <div style="display:flex; gap:8px;">
-      <label for="language-selector" hidden>Language</label>
-      <select id="language-selector" class="language-selector" aria-label="Language" data-i18n-aria-label="Language">
-        <option value="en">English</option>
-        <option value="fr">Français</option>
-        <option value="sw">Kiswahili</option>
-        <option value="es">Español</option>
-      </select>
-      <button id="install-app-button" class="secondary" type="button" data-install-app data-i18n="Install app">Install app</button>
+    <div class="header-actions">
       <a href="/messages.html" class="secondary"
          style="display:inline-flex;align-items:center;padding:10px 14px;border-radius:7px;" data-i18n="💬 Messages">
         💬 Messages
       </a>
-      <a href="#about" class="secondary"
-         style="display:inline-flex;align-items:center;padding:10px 14px;border-radius:7px;text-decoration:none;color:inherit;" data-i18n="About">
-        About
-      </a>
-      <button id="themeButton" class="secondary" type="button" data-i18n="🌙 Theme">🌙 Theme</button>
-      <button id="logoutButton" class="hidden" type="button" data-i18n="Log out">Log out</button>
+      <details class="settings-menu">
+        <summary data-i18n="⚙ Settings">⚙ Settings</summary>
+        <div class="settings-panel">
+          <label for="language-selector" hidden data-i18n="Language">Language</label>
+          <select id="language-selector" class="language-selector" aria-label="Language" data-i18n-aria-label="Language">
+            <option value="en">English</option>
+            <option value="fr">Français</option>
+            <option value="sw">Kiswahili</option>
+            <option value="es">Español</option>
+          </select>
+          <button id="install-app-button" class="secondary" type="button" data-install-app data-i18n="Install app">Install app</button>
+          <button class="secondary" type="button" data-share-app data-i18n="Share app">Share app</button>
+          <a href="#about" data-i18n="About">About</a>
+          <button id="themeButton" class="secondary" type="button" data-i18n="🌙 Theme">🌙 Theme</button>
+          <button id="logoutButton" class="hidden" type="button" data-i18n="Log out">Log out</button>
+        </div>
+      </details>
     </div>
   </header>
 
@@ -663,8 +724,8 @@
         <h2><span data-i18n="Notifications">Notifications</span> <span id="notificationCount" class="muted"></span></h2>
         <button id="refreshNotificationsButton" class="secondary" type="button" data-i18n="Refresh notifications">Refresh notifications</button>
         <button id="markNotificationsReadButton" class="secondary" type="button" data-i18n="Mark all as read">Mark all as read</button>
-        <div id="notificationList" class="notification-list" aria-live="polite"></div>
-        <p id="notificationStatus" class="status" role="status"></p>
+        <div id="notificationList" class="notification-list" aria-live="polite"><p class="muted" data-i18n="Loading notifications...">Loading notifications...</p></div>
+        <p id="notificationStatus" class="status" role="status" aria-live="polite"></p>
       </section>
 
       <section id="stories" class="card">
@@ -678,7 +739,7 @@
           <input id="storyMedia" type="file" accept="image/*,video/*">
           <p class="muted">Videos can be up to 10 minutes and 500 MiB. Photos can be up to 50 MiB.</p>
           <button id="publishStoryButton" type="submit" data-i18n="Share status">Share status</button>
-          <p id="storyStatus" class="status" role="status"></p>
+          <p id="storyStatus" class="status" role="status" aria-live="polite" data-i18n="Loading statuses...">Loading statuses...</p>
         </form>
         <div id="storiesList" class="stories-list" aria-label="Student statuses"></div>
       </section>
@@ -771,7 +832,6 @@
       <p id="newPasswordStatus" class="status" role="status"></p>
     </form>
   </dialog>
-
-
+
 </body>
 </html>
