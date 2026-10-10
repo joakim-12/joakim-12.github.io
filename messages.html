@@ -105,6 +105,9 @@
         .theme-button, .logout-button { width: 100%; padding: 12px; text-align: left; }
         .settings-menu { position: relative; margin-left: auto; }
         .settings-menu > summary {
+            display: flex;
+            align-items: center;
+            gap: 6px;
             list-style: none;
             cursor: pointer;
             border: 1px solid var(--border);
@@ -114,6 +117,8 @@
             color: var(--text);
             font: inherit;
         }
+        .settings-menu > summary svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+        .settings-menu > summary span { display: none; }
         .settings-menu > summary::-webkit-details-marker { display: none; }
         .settings-panel {
             position: absolute;
@@ -186,13 +191,29 @@
             background: var(--input);
             color: var(--text);
         }
+        .search-form { display: flex; gap: 7px; }
+        .search-form .search { min-width: 0; flex: 1; }
+        .search-submit {
+            display: grid;
+            width: 42px;
+            height: 42px;
+            flex: 0 0 42px;
+            place-items: center;
+            border: 0;
+            border-radius: 12px;
+            background: var(--primary);
+            color: #fff;
+        }
+        .search-submit:hover { filter: brightness(1.06); }
+        .search-submit svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
         .conversation-list { overflow-y: auto; padding: 8px; }
+        .student-directory-item { margin-bottom: 4px; }
         .conversation {
             display: flex;
             width: 100%;
             align-items: center;
-            gap: 11px;
-            padding: 12px 10px;
+            justify-content: center;
+            padding: 10px;
             border: 0;
             border-radius: 12px;
             background: transparent;
@@ -200,7 +221,18 @@
             text-align: left;
         }
         .conversation:hover, .conversation.selected { background: var(--received); }
+        .student-contact-links { display: flex; gap: 8px; padding: 0 10px 8px 64px; }
+        .student-contact-links a, .call-contact-actions a {
+            padding: 5px 8px;
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            background: var(--panel);
+            color: var(--primary);
+            font-size: 11px;
+            text-decoration: none;
+        }
         .avatar {
+            position: relative;
             display: grid;
             width: 44px;
             height: 44px;
@@ -212,6 +244,8 @@
             font-weight: bold;
         }
         .avatar img { width: 100%; height: 100%; border-radius: inherit; object-fit: cover; }
+        .avatar svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
+        .avatar .unread { position: absolute; top: -5px; right: -8px; }
         .conversation-info { flex: 1; min-width: 0; }
         .conversation-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
         .conversation-name { overflow: hidden; font-size: 14px; font-weight: bold; text-overflow: ellipsis; white-space: nowrap; }
@@ -248,16 +282,24 @@
         .incoming-dialog { width: min(380px, 92vw); border: 1px solid var(--border); border-radius: 16px; background: var(--panel); color: var(--text); }
         .incoming-dialog::backdrop { background: rgb(0 0 0 / 55%); }
         .chat-messages { display: flex; min-height: 0; flex: 1; flex-direction: column; gap: 14px; overflow-y: auto; padding: 20px; }
+        .load-older-messages { align-self: center; padding: 8px 12px; border: 1px solid var(--border); border-radius: 18px; background: var(--panel); color: var(--primary); }
+        .load-older-messages:disabled { opacity: .6; }
         .empty-state { margin: auto; padding: 24px; color: var(--muted); line-height: 1.6; text-align: center; }
-        .message { display: flex; max-width: min(78%, 460px); flex-direction: column; gap: 5px; }
+        .message { display: flex; max-width: min(88%, 560px); flex-direction: column; gap: 5px; }
         .message.sent { align-self: flex-end; align-items: flex-end; }
         .message.received { align-self: flex-start; align-items: flex-start; }
+        .message.received { display: grid; grid-template-columns: 28px minmax(0, 1fr); grid-template-areas: "avatar bubble" ". time"; align-items: end; column-gap: 8px; }
+        .message-avatar { grid-area: avatar; width: 28px; height: 28px; flex-basis: 28px; }
+        .message-avatar svg { width: 17px; height: 17px; }
+        .message.received .bubble { grid-area: bubble; }
+        .message.received .message-time { grid-area: time; }
         .bubble { overflow-wrap: anywhere; padding: 11px 14px; border-radius: 17px; background: var(--received); line-height: 1.5; white-space: pre-wrap; }
         .message.sent .bubble { border-bottom-right-radius: 5px; background: var(--primary); color: #fff; }
         .message.received .bubble { border-bottom-left-radius: 5px; }
         .message-time { padding: 0 4px; color: var(--muted); font-size: 10px; }
         .message-media { display: block; width: min(100%, 420px); max-height: 360px; border-radius: 12px; object-fit: contain; }
         .message-audio { display: block; width: min(100%, 360px); }
+        .message-file { display: inline-block; color: var(--primary); overflow-wrap: anywhere; }
         .message-attachment { display: inline-flex; align-items: center; justify-content: center; padding: 0 8px; border: 1px solid var(--border); border-radius: 50%; background: var(--panel); color: var(--primary); font-size: 22px; cursor: pointer; }
         .message-attachment input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
         .chat-compose { padding: 13px 16px; border-top: 1px solid var(--border); }
@@ -279,7 +321,7 @@
             width: min(560px, calc(100% - 24px));
             min-height: 66px;
             padding: 6px;
-            bottom: calc(12px + env(safe-area-inset-bottom));
+            bottom: calc(4px + env(safe-area-inset-bottom));
             transform: translateX(-50%);
             border: 1px solid var(--border);
             border-radius: 999px;
@@ -351,6 +393,7 @@
         .chat-person p { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .call-actions { flex: 0 0 auto; }
         .call-button { flex: 0 0 auto; }
+        .call-button svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
         .chat-messages {
             background-color: var(--page);
             background-image: radial-gradient(rgb(89 130 160 / 8%) .75px, transparent .75px);
@@ -362,7 +405,7 @@
         .bubble { border-radius: 16px; box-shadow: 0 1px 1px rgb(20 40 60 / 7%); }
         .message.sent .bubble { border-bottom-right-radius: 5px; background: #d9fdd3; color: #182b20; }
         .message.received .bubble { border-bottom-left-radius: 5px; background: var(--panel); }
-        body.dark-mode .message.sent .bubble { background: #2b5278; color: #f2f7fb; }
+        body.dark-mode .message.sent .bubble { background: #075e54; color: #f2f7fb; }
         .message-time { color: var(--muted); }
         .chat-compose { background: var(--panel); }
         .compose-form textarea { border-radius: 22px; padding: 13px 17px; }
@@ -370,7 +413,7 @@
         .call-button, .icon-button { border-radius: 50%; color: var(--primary); }
         .call-contact { border-color: var(--border); border-radius: 13px; background: var(--panel); }
         .call-contact-actions button { border-radius: 20px; color: var(--primary); }
-        .bottom-nav { border-color: var(--border); box-shadow: 0 8px 28px rgb(28 48 66 / 14%); }
+        .bottom-nav { bottom: calc(4px + env(safe-area-inset-bottom)); border-color: var(--border); box-shadow: 0 8px 28px rgb(28 48 66 / 14%); }
         .bottom-nav-link { transition: background-color .16s ease, color .16s ease; }
         .bottom-nav-link.active { background: color-mix(in srgb, var(--primary) 9%, var(--panel)); }
 
@@ -411,8 +454,8 @@
             .chat-person { flex: 1 1 70px; }
         }
     </style>
-  <script type="module" crossorigin src="/assets/messages-Dn4qY1ke.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/pwa-DGVhYCSG.js">
+  <script type="module" crossorigin src="/assets/messages-CMv22rl7.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/pwa-BmR2Wy1d.js">
 </head>
 <body>
     <main class="app">
@@ -428,27 +471,15 @@
                 <header class="conversation-heading">
                     <div style="display:flex;align-items:center;gap:12px;">
                         <h1 data-i18n="Messages">Messages</h1>
-                        <details class="settings-menu">
-                            <summary data-i18n="⚙ Settings">⚙ Settings</summary>
-                            <div class="settings-panel">
-                                <label for="language-selector" hidden data-i18n="Language">Language</label>
-                                <select id="language-selector" class="language-selector" aria-label="Language" data-i18n-aria-label="Language">
-                                    <option value="en">English</option>
-                                    <option value="fr">Français</option>
-                                    <option value="sw">Kiswahili</option>
-                                    <option value="es">Español</option>
-                                </select>
-                                <button id="install-app-button" class="theme-button" type="button" data-install-app data-i18n="Install app">Install app</button>
-                                <button class="theme-button" type="button" data-share-app data-i18n="Share app">Share app</button>
-                                <a href="/#about" data-i18n="ⓘ About Campus Connect">ⓘ About Campus Connect</a>
-                                <button id="theme-toggle" class="theme-button" type="button" aria-pressed="false" data-i18n="🌙 Night Mode">🌙 Night Mode</button>
-                                <button id="logout-button" class="logout-button" type="button" data-i18n="Log out">Log out</button>
-                            </div>
-                        </details>
                     </div>
                     <p data-i18n="Search members by name, username, or university.">Search members by name, username, or university.</p>
-                    <label for="conversation-search" hidden data-i18n="Search members by name, username, or university.">Search members by name, username, or university.</label>
-                    <input id="conversation-search" class="search" type="search" placeholder="Search members and universities..." data-i18n-placeholder="Search members and universities..." autocomplete="off">
+                    <form id="conversation-search-form" class="search-form" role="search">
+                        <label for="conversation-search" hidden data-i18n="Search members by name, username, or university.">Search members by name, username, or university.</label>
+                        <input id="conversation-search" class="search" type="search" placeholder="Search members and universities..." data-i18n-placeholder="Search members and universities..." autocomplete="off">
+                        <button class="search-submit" type="submit" aria-label="Search members by name, username, or university." data-i18n-aria-label="Search members by name, username, or university.">
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 5 5"/></svg>
+                        </button>
+                    </form>
                     <div class="list-switcher" aria-label="Conversation type">
                         <button type="button" id="showChatsButton" aria-pressed="true" data-i18n="Private chats">Private chats</button>
                         <button type="button" id="showCommunitiesButton" aria-pressed="false" data-i18n="Groups & channels">Groups &amp; channels</button>
@@ -482,10 +513,27 @@
                         <p id="chat-status" data-i18n="Messages are private to you and the recipient.">Messages are private to you and the recipient.</p>
                     </div>
                     <div class="call-actions" id="call-actions" aria-label="Call actions">
-                        <button id="voice-call-button" class="call-button" type="button" aria-label="Start voice call" data-i18n-aria-label="Start voice call" title="Voice call" data-i18n-title="Voice call" disabled>☎</button>
-                        <button id="video-call-button" class="call-button" type="button" aria-label="Start video call" data-i18n-aria-label="Video call" title="Video call" data-i18n-title="Video call" disabled>▣</button>
+                        <button id="voice-call-button" class="call-button" type="button" aria-label="Start voice call" data-i18n-aria-label="Start voice call" title="Voice call" data-i18n-title="Voice call" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.2 3.5 10 7.2 8.4 9.5a15 15 0 0 0 6.1 6.1l2.3-1.6 3.7 2.8-.8 3.3a2 2 0 0 1-2.1 1.5A17.5 17.5 0 0 1 2.4 6.1a2 2 0 0 1 1.5-2.1l3.3-.5Z"/></svg></button>
+                        <button id="video-call-button" class="call-button" type="button" aria-label="Start video call" data-i18n-aria-label="Video call" title="Video call" data-i18n-title="Video call" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="m16 10 5-3v10l-5-3"/></svg></button>
                     </div>
-                    <button id="theme-toggle-mobile" class="icon-button" type="button" aria-label="Switch theme" data-i18n-aria-label="Switch theme" aria-pressed="false">🌙</button>
+                    <details class="settings-menu">
+                        <summary aria-label="Settings" data-i18n-aria-label="Settings" title="Settings" data-i18n-title="Settings"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="m19.4 15 .1.1 1.4 1.1-1.4 2.4-1.7-.6a7.5 7.5 0 0 1-1.8 1l-.3 1.8h-2.8l-.3-1.8a7.5 7.5 0 0 1-1.8-1l-1.7.6-1.4-2.4 1.4-1.1a7.4 7.4 0 0 1 0-2.1l-1.4-1.1 1.4-2.4 1.7.6a7.5 7.5 0 0 1 1.8-1l.3-1.8h2.8l.3 1.8a7.5 7.5 0 0 1 1.8 1l1.7-.6 1.4 2.4-1.4 1.1a7.4 7.4 0 0 1 0 2.1Z"/></svg><span data-i18n="Settings">Settings</span></summary>
+                        <div class="settings-panel">
+                            <label for="language-selector" hidden data-i18n="Language">Language</label>
+                            <select id="language-selector" class="language-selector" aria-label="Language" data-i18n-aria-label="Language">
+                                <option value="en">English</option>
+                                <option value="fr">Français</option>
+                                <option value="sw">Kiswahili</option>
+                                <option value="es">Español</option>
+                            </select>
+                            <button id="theme-toggle" class="theme-button" type="button" aria-pressed="false" data-i18n="🌙 Night Mode">🌙 Night Mode</button>
+                            <a href="/#profile" data-i18n="Privacy & contact settings">Privacy &amp; contact settings</a>
+                            <button id="install-app-button" class="theme-button" type="button" data-install-app data-i18n="Install app">Install app</button>
+                            <button class="theme-button" type="button" data-share-app data-i18n="Share app">Share app</button>
+                            <a href="/#about" data-i18n="ⓘ About Campus Connect">ⓘ About Campus Connect</a>
+                            <button id="logout-button" class="logout-button" type="button" data-i18n="Log out">Log out</button>
+                        </div>
+                    </details>
                 </header>
                 <div class="chat-messages" id="chat-messages" aria-live="polite" aria-label="Messages">
                     <div class="empty-state" data-i18n="Select a student to view or start a conversation.">Select a student to view or start a conversation.</div>
@@ -493,7 +541,7 @@
                 <div class="chat-compose">
                     <form class="compose-form" id="message-form">
                         <label class="message-attachment" for="message-media" title="Attach media or audio" data-i18n-title="Attach media or audio" aria-label="Attach media or audio" data-i18n-aria-label="Attach media or audio">＋
-                            <input id="message-media" type="file" accept="image/*,video/*,audio/*" disabled>
+                            <input id="message-media" type="file" accept="image/*,video/*,audio/*,.pdf,.txt,.csv,.rtf,.doc,.docx,.xls,.xlsx,.ppt,.pptx" disabled>
                         </label>
                         <label for="message-input" hidden data-i18n="Write a message">Write a message</label>
                         <textarea id="message-input" placeholder="Write a message..." data-i18n-placeholder="Write a message..." rows="1" maxlength="5000" disabled></textarea>
@@ -512,8 +560,13 @@
             <section id="calls-panel" class="calls-panel" aria-label="Start a call">
                 <h1 data-i18n="Calls">Calls</h1>
                 <p data-i18n="Choose a member to start a voice or video call.">Choose a member to start a voice or video call.</p>
-                <label for="calls-search" hidden data-i18n="Search members by name, username, or university.">Search members by name, username, or university.</label>
-                <input id="calls-search" class="search" type="search" placeholder="Search members and universities..." data-i18n-placeholder="Search members and universities..." autocomplete="off">
+                <form id="calls-search-form" class="search-form" role="search">
+                    <label for="calls-search" hidden data-i18n="Search members by name, username, or university.">Search members by name, username, or university.</label>
+                    <input id="calls-search" class="search" type="search" placeholder="Search members and universities..." data-i18n-placeholder="Search members and universities..." autocomplete="off">
+                    <button class="search-submit" type="submit" aria-label="Search members by name, username, or university." data-i18n-aria-label="Search members by name, username, or university.">
+                        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 5 5"/></svg>
+                    </button>
+                </form>
                 <div id="call-directory" class="call-directory" aria-live="polite"></div>
                 <p class="notice" id="calls-notice" role="status"></p>
             </section>

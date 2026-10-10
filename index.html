@@ -558,6 +558,8 @@
     .bottom-nav { backdrop-filter: blur(14px); background: color-mix(in srgb, var(--surface) 94%, transparent); }
     .bottom-nav a { transition: background-color .16s ease, color .16s ease, transform .16s ease; }
     .bottom-nav a.active { background: color-mix(in srgb, var(--blue) 12%, var(--surface)); }
+    #profileForm .contact-sharing-option { display: flex; align-items: center; gap: 8px; }
+    #profileForm .contact-sharing-option input { width: auto; margin: 0; }
 
     @media (max-width: 480px) {
       body { padding-bottom: calc(100px + env(safe-area-inset-bottom, 0px)); }
@@ -582,8 +584,8 @@
       #authSection { margin: 18px auto; }
     }
   </style>
-  <script type="module" crossorigin src="/assets/main-CGYZYOl0.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/pwa-DGVhYCSG.js">
+  <script type="module" crossorigin src="/assets/main-XOQMPj8M.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/pwa-BmR2Wy1d.js">
 </head>
 
 <body>
@@ -737,6 +739,14 @@
           <textarea id="profileBio" maxlength="500" placeholder="A little about you..." data-i18n-placeholder="A little about you..."></textarea>
           <label for="profileCourse" data-i18n="University, school, course, or organization">University, school, course, or organization</label>
           <input id="profileCourse" type="text" maxlength="120">
+          <label for="profileContactEmail" data-i18n="Contact email (optional)">Contact email (optional)</label>
+          <input id="profileContactEmail" type="email" maxlength="254" autocomplete="email">
+          <label class="contact-sharing-option"><input id="shareProfileEmail" type="checkbox"> <span data-i18n="Show my contact email to signed-in students">Show my contact email to signed-in students</span></label>
+          <label for="profileContactPhone" data-i18n="Contact phone (optional)">Contact phone (optional)</label>
+          <input id="profileContactPhone" type="tel" maxlength="32" autocomplete="tel">
+          <label class="contact-sharing-option"><input id="shareProfilePhone" type="checkbox"> <span data-i18n="Show my contact phone to signed-in students">Show my contact phone to signed-in students</span></label>
+          <label class="contact-sharing-option"><input id="discoverProfile" type="checkbox"> <span data-i18n="Show my profile in student search">Show my profile in student search</span></label>
+          <small data-i18n="Your profile is hidden from student search unless you enable this option. Your profile picture remains visible in chats.">Your profile is hidden from student search unless you enable this option. Your profile picture remains visible in chats.</small>
           <button id="saveProfileButton" type="submit" data-i18n="Save profile">Save profile</button>
         </form>
         <p id="profileStatus" class="status" role="status"></p>
