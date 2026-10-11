@@ -11,7 +11,7 @@
     <link rel="icon" type="image/png" href="/icons/icon-192.png">
     <link rel="apple-touch-icon" href="/icons/icon-192.png">
     <link rel="manifest" href="/manifest.json">
-    <title>Messages | Campus Connect</title>
+    <title>Chats | Campus Connect</title>
     <style>
         :root {
             color-scheme: light;
@@ -167,8 +167,9 @@
         .conversation-heading h1 { margin: 0 0 7px; font-size: 24px; }
         .conversation-heading p, .chat-person p { color: var(--muted); font-size: 13px; line-height: 1.5; }
         .conversation-heading p { margin: 0 0 14px; }
-        .list-switcher { display: flex; gap: 6px; margin-top: 12px; }
-        .list-switcher button { flex: 1; padding: 9px 8px; border: 1px solid var(--border); border-radius: 10px; background: var(--input); color: var(--text); }
+        .list-switcher { display: flex; gap: 7px; margin-top: 12px; overflow-x: auto; scrollbar-width: none; }
+        .list-switcher::-webkit-scrollbar { display: none; }
+        .list-switcher button { flex: 0 0 auto; padding: 8px 13px; border: 1px solid var(--border); border-radius: 18px; background: var(--input); color: var(--text); white-space: nowrap; }
         .list-switcher button[aria-pressed="true"] { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 12%, var(--panel)); color: var(--primary); }
         .communities-panel { overflow-y: auto; min-height: 0; flex: 1; padding: 12px; }
         .community-create { display: grid; gap: 8px; padding: 12px; margin-bottom: 12px; border: 1px solid var(--border); border-radius: 13px; background: var(--input); }
@@ -207,12 +208,13 @@
         .search-submit:hover { filter: brightness(1.06); }
         .search-submit svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
         .conversation-list { overflow-y: auto; padding: 8px; }
-        .student-directory-item { margin-bottom: 4px; }
+        .student-directory-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; margin-bottom: 4px; }
         .conversation {
             display: flex;
             width: 100%;
             align-items: center;
-            justify-content: center;
+            justify-content: flex-start;
+            min-width: 0;
             padding: 10px;
             border: 0;
             border-radius: 12px;
@@ -221,7 +223,9 @@
             text-align: left;
         }
         .conversation:hover, .conversation.selected { background: var(--received); }
-        .student-contact-links { display: flex; gap: 8px; padding: 0 10px 8px 64px; }
+        .favorite-chat-button { display: grid; width: 40px; height: 40px; place-items: center; border: 0; border-radius: 50%; background: transparent; color: var(--muted); font-size: 22px; cursor: pointer; }
+        .favorite-chat-button:hover, .favorite-chat-button[aria-pressed="true"] { color: #e6a700; }
+        .student-contact-links { display: flex; grid-column: 1 / -1; gap: 8px; padding: 0 10px 8px 64px; }
         .student-contact-links a, .call-contact-actions a {
             padding: 5px 8px;
             border: 1px solid var(--border);
@@ -461,8 +465,8 @@
             .chat-person { flex: 1 1 70px; }
         }
     </style>
-  <script type="module" crossorigin src="/assets/messages-DUHv2KJc.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/pwa-BmR2Wy1d.js">
+  <script type="module" crossorigin src="/assets/messages-912oB_7n.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/pwa-DT0aIoC4.js">
 </head>
 <body>
     <main class="app">
@@ -470,14 +474,14 @@
             <div class="brand">✦ Campus Connect</div>
             <nav aria-label="Main navigation">
                 <a class="nav-link" href="/">🏠 Home</a>
-                <a class="nav-link active" href="/messages.html" aria-current="page">💬 Messages</a>
+                <a class="nav-link active" href="/messages.html" aria-current="page" data-i18n="💬 Chats">💬 Chats</a>
             </nav>
         </aside>
         <section class="messaging" id="messaging">
             <aside class="conversations" id="conversations-panel">
                 <header class="conversation-heading">
                     <div style="display:flex;align-items:center;gap:12px;">
-                        <h1 data-i18n="Messages">Messages</h1>
+                        <h1 data-i18n="Chats">Chats</h1>
                     </div>
                     <p data-i18n="Search members by name, username, or university.">Search members by name, username, or university.</p>
                     <form id="conversation-search-form" class="search-form" role="search">
@@ -487,9 +491,11 @@
                             <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 5 5"/></svg>
                         </button>
                     </form>
-                    <div class="list-switcher" aria-label="Conversation type">
-                        <button type="button" id="showChatsButton" aria-pressed="true" data-i18n="Private chats">Private chats</button>
-                        <button type="button" id="showCommunitiesButton" aria-pressed="false" data-i18n="Groups & channels">Groups &amp; channels</button>
+                    <div class="list-switcher" id="chat-filters" role="group" aria-label="Filter chats" data-i18n-aria-label="Filter chats">
+                        <button type="button" data-chat-filter="all" aria-pressed="true" data-i18n="All">All</button>
+                        <button type="button" data-chat-filter="unread" aria-pressed="false" data-i18n="Unread">Unread</button>
+                        <button type="button" data-chat-filter="favorites" aria-pressed="false" data-i18n="Favorites">Favorites</button>
+                        <button type="button" data-chat-filter="groups" aria-pressed="false" data-i18n="Groups">Groups</button>
                     </div>
                 </header>
                 <div class="conversation-list" id="conversation-list" aria-label="Students and conversations"></div>
