@@ -1,7 +1,7 @@
 {
   "id": "/",
-  "name": "Campus Connect - University Social Network",
-  "short_name": "Campus Connect",
+  "name": "campus connect - University Social Network",
+  "short_name": "campus connect",
   "description": "Campus Connect helps university students connect with classmates, share posts, discover students, exchange messages, and stay connected on campus.",
   "lang": "en",
   "start_url": "/",
