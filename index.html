@@ -475,6 +475,8 @@
       backdrop-filter: blur(18px);
     }
 
+    .bottom-nav[hidden] { display: none; }
+
     .bottom-nav a {
       display: flex;
       min-width: 0;
@@ -584,7 +586,7 @@
       #authSection { margin: 18px auto; }
     }
   </style>
-  <script type="module" crossorigin src="/assets/main-C9l9cVmJ.js"></script>
+  <script type="module" crossorigin src="/assets/main-Dzl0sFnl.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/pwa-BmR2Wy1d.js">
 </head>
 
@@ -815,7 +817,7 @@
 
   </main>
 
-  <nav class="bottom-nav" aria-label="Main navigation">
+  <nav class="bottom-nav" aria-label="Main navigation" hidden>
     <a href="/messages.html" data-destination="chats">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11.5a7.5 7.5 0 0 1-7.5 7.5H5l1.8-3.2A7.5 7.5 0 1 1 20 11.5Z"/><path d="M8 11.5h8M8 14.5h5"/></svg>
       <span>Chats</span>

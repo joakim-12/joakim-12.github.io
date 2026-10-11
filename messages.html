@@ -329,6 +329,7 @@
             box-shadow: 0 8px 28px rgb(20 40 60 / 18%);
             backdrop-filter: blur(18px);
         }
+        .bottom-nav[hidden] { display: none; }
         .bottom-nav-link {
             display: flex;
             min-width: 0;
@@ -454,7 +455,7 @@
             .chat-person { flex: 1 1 70px; }
         }
     </style>
-  <script type="module" crossorigin src="/assets/messages-BsEAHZ09.js"></script>
+  <script type="module" crossorigin src="/assets/messages-DUHv2KJc.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/pwa-BmR2Wy1d.js">
 </head>
 <body>
@@ -594,7 +595,7 @@
             <button id="end-call-button" class="end-call" type="button" data-i18n="End call">End call</button>
         </div>
     </dialog>
-    <nav class="bottom-nav" aria-label="Main navigation">
+    <nav class="bottom-nav" aria-label="Main navigation" hidden>
         <a class="bottom-nav-link active" href="/messages.html" data-destination="chats" aria-current="page">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11.5a7.5 7.5 0 0 1-7.5 7.5H5l1.8-3.2A7.5 7.5 0 1 1 20 11.5Z"/><path d="M8 11.5h8M8 14.5h5"/></svg>
             <span data-i18n="Chats">Chats</span>
