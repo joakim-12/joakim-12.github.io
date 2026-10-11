@@ -305,7 +305,13 @@
         .chat-compose { padding: 13px 16px; border-top: 1px solid var(--border); }
         .compose-form { display: flex; align-items: flex-end; gap: 9px; }
         .compose-form textarea { min-width: 0; min-height: 46px; max-height: 130px; flex: 1; resize: none; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--input); color: var(--text); }
+        .voice-button { display: inline-flex; width: 44px; height: 44px; flex: 0 0 44px; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 50%; background: var(--primary); color: #fff; cursor: pointer; }
+        .voice-button[hidden] { display: none; }
+        .voice-button:disabled { cursor: not-allowed; opacity: .5; }
+        .voice-button svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+        .voice-button.stop-recording { background: #d93025; }
         .voice-controls { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+        .voice-controls button[hidden] { display: none; }
         .voice-controls button { padding: 8px 12px; border: 1px solid var(--border); border-radius: 18px; background: var(--panel); color: var(--primary); }
         .voice-recording-status { min-height: 18px; margin: 6px 2px 0; color: var(--muted); font-size: 12px; }
         .send-button { padding: 13px 16px; border: 0; border-radius: 12px; background: var(--primary); color: white; font-weight: bold; }
@@ -547,11 +553,15 @@
                         </label>
                         <label for="message-input" hidden data-i18n="Write a message">Write a message</label>
                         <textarea id="message-input" placeholder="Write a message..." data-i18n-placeholder="Write a message..." rows="1" maxlength="5000" disabled></textarea>
+                        <button id="start-voice-recording" class="voice-button" type="button" aria-label="Record voice message" data-i18n-aria-label="Record voice message" title="Record voice message" data-i18n-title="Record voice message" disabled>
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="2.5" width="6" height="12" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3.5M9 21.5h6"/></svg>
+                        </button>
+                        <button id="stop-voice-recording" class="voice-button stop-recording" type="button" aria-label="Stop recording" data-i18n-aria-label="Stop recording" title="Stop recording" hidden>
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+                        </button>
                         <button class="send-button" type="submit" id="send-button" data-i18n="Send ➤" disabled>Send ➤</button>
                     </form>
                     <div class="voice-controls" aria-label="Voice message">
-                        <button id="start-voice-recording" type="button" data-i18n="Record voice message" disabled>🎙 Record voice message</button>
-                        <button id="stop-voice-recording" type="button" data-i18n="Stop recording" hidden>Stop recording</button>
                         <button id="send-voice-message" type="button" data-i18n="Send voice message" hidden>Send voice message</button>
                         <button id="discard-voice-message" type="button" data-i18n="Discard recording" hidden>Discard</button>
                     </div>
