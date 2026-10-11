@@ -586,8 +586,8 @@
       #authSection { margin: 18px auto; }
     }
   </style>
-  <script type="module" crossorigin src="/assets/main-CK3iRidR.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/pwa-DT0aIoC4.js">
+  <script type="module" crossorigin src="/assets/main-CiA58Giw.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/pwa-CuDY2gbj.js">
 </head>
 
 <body>
@@ -638,13 +638,16 @@
 
         <label for="loginMethod" data-i18n="Sign-in method">Sign-in method</label>
         <select id="loginMethod">
-          <option value="email" data-i18n="Email and password">Email and password</option>
+          <option value="email-password" data-i18n="Email and password">Email and password</option>
+          <option value="email-link" data-i18n="Email sign-in link">Email sign-in link</option>
           <option value="phone" data-i18n="Phone number and SMS code">Phone number and SMS code</option>
         </select>
 
         <div id="emailLoginFields">
           <label for="loginEmail" data-i18n="Email">Email</label>
           <input id="loginEmail" type="email" autocomplete="email" required>
+        </div>
+        <div id="passwordLoginFields">
           <label for="loginPassword" data-i18n="Password">Password</label>
           <input id="loginPassword" type="password" autocomplete="current-password" required>
         </div>
@@ -657,6 +660,9 @@
 
         <button id="loginSubmitButton" type="submit" data-i18n="Log in">Log in</button>
         <p id="loginStatus" class="status" role="status"></p>
+        <p class="auth-help hidden" id="resendEmailLogin">
+          <button id="resendEmailLoginLink" type="button" data-i18n="Resend sign-in link">Resend sign-in link</button>
+        </p>
         <p class="auth-help">
           <button id="forgotPasswordButton" type="button" data-i18n="Forgot your password?">Forgot your password?</button>
         </p>
