@@ -81,6 +81,11 @@
       gap: 8px;
       flex-wrap: wrap;
     }
+    .phone-input-row {
+      display: grid;
+      grid-template-columns: minmax(94px, 0.7fr) minmax(0, 2fr);
+      gap: 8px;
+    }
 
     .settings-menu {
       position: relative;
@@ -586,8 +591,8 @@
       #authSection { margin: 18px auto; }
     }
   </style>
-  <script type="module" crossorigin src="/assets/main-CCI3F_1m.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/pwa-CV-TuRh3.js">
+  <script type="module" crossorigin src="/assets/main-CyTdiZkd.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/pwa-BrP6rF_3.js">
 </head>
 
 <body>
@@ -656,10 +661,14 @@
           <input id="loginPassword" type="password" autocomplete="current-password" required>
         </div>
         <div id="phoneLoginFields" class="hidden">
-          <label for="loginPhone" data-i18n="Phone number">Phone number</label>
-          <input id="loginPhone" type="tel" autocomplete="tel" inputmode="tel"
-                 placeholder="+12025550123" pattern="^\+[1-9]\d{7,14}$">
-          <p class="muted" data-i18n="Use international format, including the + country code.">Use international format, including the + country code.</p>
+          <label for="loginPhoneCountryCode" data-i18n="Country calling code">Country calling code</label>
+          <div class="phone-input-row">
+            <input id="loginPhoneCountryCode" type="tel" autocomplete="tel-country-code" inputmode="tel"
+                   value="+254" maxlength="4" pattern="\+[1-9]\d{0,2}" aria-label="Country calling code" data-i18n-aria-label="Country calling code">
+            <input id="loginPhoneNumber" type="tel" autocomplete="tel-national" inputmode="numeric"
+                   placeholder="712345678" maxlength="14" pattern="[0-9]{4,14}" aria-label="Phone number" data-i18n-aria-label="Phone number">
+          </div>
+          <p class="muted" data-i18n="Enter your phone number without its country code.">Enter your phone number without its country code.</p>
         </div>
 
         <button id="loginSubmitButton" type="submit" data-i18n="Log in">Log in</button>
@@ -708,10 +717,14 @@
           <p class="muted" data-i18n="Any valid email address from any country is welcome; no school email is required.">Any valid email address from any country is welcome; no school email is required.</p>
         </div>
         <div id="phoneRegistrationFields" class="hidden">
-          <label for="registerPhone" data-i18n="Phone number">Phone number</label>
-          <input id="registerPhone" type="tel" autocomplete="tel" inputmode="tel"
-                 placeholder="+12025550123" pattern="^\+[1-9]\d{7,14}$">
-          <p class="muted" data-i18n="Use international format, including the + country code.">Use international format, including the + country code.</p>
+          <label for="registerPhoneCountryCode" data-i18n="Country calling code">Country calling code</label>
+          <div class="phone-input-row">
+            <input id="registerPhoneCountryCode" type="tel" autocomplete="tel-country-code" inputmode="tel"
+                   value="+254" maxlength="4" pattern="\+[1-9]\d{0,2}" aria-label="Country calling code" data-i18n-aria-label="Country calling code">
+            <input id="registerPhoneNumber" type="tel" autocomplete="tel-national" inputmode="numeric"
+                   placeholder="712345678" maxlength="14" pattern="[0-9]{4,14}" aria-label="Phone number" data-i18n-aria-label="Phone number">
+          </div>
+          <p class="muted" data-i18n="Enter your phone number without its country code.">Enter your phone number without its country code.</p>
         </div>
 
         <label for="registerCourse" data-i18n="University, school, course, or organization (optional)">University, school, course, or organization (optional)</label>
