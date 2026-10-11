@@ -61,6 +61,17 @@
       font-size: 23px;
       white-space: nowrap;
     }
+    .brand-stack { display: grid; justify-items: start; gap: 4px; }
+    .mode-toggle {
+      padding: 4px 8px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: var(--background);
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+    .mode-note { margin: 0; max-width: 360px; font-size: 11px; }
 
     button, input, textarea {
       font: inherit;
@@ -113,6 +124,9 @@
       right: 0;
       z-index: 20;
       display: grid;
+      max-height: min(75dvh, 600px);
+      overflow-y: auto;
+      overscroll-behavior: contain;
       gap: 10px;
       width: min(260px, calc(100vw - 24px));
       padding: 14px;
@@ -137,6 +151,11 @@
     .settings-panel .language-selector {
       width: 100%;
       max-width: none;
+    }
+    html.settings-scroll-lock,
+    body.settings-scroll-lock {
+      overflow: hidden;
+      overscroll-behavior: none;
     }
 
     button {
@@ -613,13 +632,17 @@
       #authSection { margin: 18px auto; }
     }
   </style>
-  <script type="module" crossorigin src="/assets/main-goAo8_tA.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/pwa-BkgjKHQN.js">
+  <script type="module" crossorigin src="/assets/main-8y_v3HOK.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/app-lock-DV5ApokC.js">
 </head>
 
 <body>
   <header>
-    <h1>campus connect</h1>
+    <div class="brand-stack">
+      <h1>campus connect</h1>
+      <button id="access-mode-toggle" class="mode-toggle" type="button" aria-pressed="false"></button>
+      <p id="mode-note" class="mode-note muted" aria-live="polite"></p>
+    </div>
     <div class="header-actions">
       <a href="/messages.html" class="secondary"
          style="display:inline-flex;align-items:center;padding:10px 14px;border-radius:7px;" data-i18n="💬 Chats">
@@ -644,6 +667,8 @@
           <a href="https://www.google.com/" target="_blank" rel="noopener noreferrer" data-i18n="Google">Google</a>
           <a href="https://www.meta.ai/" target="_blank" rel="noopener noreferrer" data-i18n="Meta AI">Meta AI</a>
           <button id="themeButton" class="secondary" type="button" data-i18n="🌙 Theme">🌙 Theme</button>
+          <button id="biometric-lock-toggle" class="secondary" type="button" hidden>Turn on biometric app lock</button>
+          <small>Biometric lock is a device convenience and cannot prevent viruses or protect a compromised device.</small>
           <button id="logoutButton" class="hidden" type="button" data-i18n="Log out">Log out</button>
         </div>
       </details>
@@ -783,6 +808,14 @@
           <input id="profileAvatarFile" type="file" accept="image/*">
           <label for="profileName" data-i18n="Display name">Display name</label>
           <input id="profileName" type="text" maxlength="100" required>
+          <label for="profileGender" data-i18n="Gender (optional)">Gender (optional)</label>
+          <select id="profileGender">
+            <option value="" data-i18n="Prefer not to say">Prefer not to say</option>
+            <option value="male" data-i18n="Male">Male</option>
+            <option value="female" data-i18n="Female">Female</option>
+            <option value="other" data-i18n="Other genders">Other genders</option>
+          </select>
+          <small data-i18n="Your gender is shown to signed-in members only when your profile is discoverable.">Your gender is shown to signed-in members only when your profile is discoverable.</small>
           <label for="profileBio" data-i18n="About you">About you</label>
           <textarea id="profileBio" maxlength="500" placeholder="A little about you..." data-i18n-placeholder="A little about you..."></textarea>
           <label for="profileCourse" data-i18n="University, school, course, or organization">University, school, course, or organization</label>
@@ -795,6 +828,7 @@
           <label class="contact-sharing-option"><input id="shareProfilePhone" type="checkbox"> <span data-i18n="Show my contact phone to signed-in students">Show my contact phone to signed-in students</span></label>
           <label class="contact-sharing-option"><input id="discoverProfile" type="checkbox"> <span data-i18n="Show my profile in student search">Show my profile in student search</span></label>
           <small data-i18n="Your profile is hidden from student search unless you enable this option. Your profile picture remains visible in chats.">Your profile is hidden from student search unless you enable this option. Your profile picture remains visible in chats.</small>
+          <small>Profile edits can be saved offline on this device and sync automatically when you reconnect.</small>
           <button id="saveProfileButton" type="submit" data-i18n="Save profile">Save profile</button>
         </form>
         <p id="profileStatus" class="status" role="status"></p>

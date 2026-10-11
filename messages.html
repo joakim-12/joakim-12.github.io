@@ -77,6 +77,18 @@
 
         .sidebar { display: flex; flex-direction: column; padding: 24px 16px; }
         .brand { margin: 0 0 28px 8px; color: var(--primary); font-size: 21px; font-weight: 800; white-space: nowrap; }
+        .brand-stack { display: grid; justify-items: start; gap: 4px; }
+        .mode-toggle {
+            margin: -20px 0 28px 8px;
+            padding: 4px 8px;
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            background: var(--input);
+            color: var(--muted);
+            font-size: 12px;
+            white-space: nowrap;
+        }
+        .settings-mode-toggle { display: none; }
         .nav-link {
             display: block;
             margin-bottom: 6px;
@@ -126,6 +138,9 @@
             right: 0;
             z-index: 30;
             display: grid;
+            max-height: min(75dvh, 600px);
+            overflow-y: auto;
+            overscroll-behavior: contain;
             gap: 10px;
             width: min(260px, calc(100vw - 28px));
             padding: 14px;
@@ -143,6 +158,8 @@
             text-decoration: none;
         }
         .settings-panel a:hover { background: var(--received); }
+        html.settings-scroll-lock,
+        body.settings-scroll-lock { overflow: hidden; overscroll-behavior: none; }
         .messaging {
             display: grid;
             grid-template-columns: minmax(250px, 310px) minmax(0, 1fr);
@@ -207,6 +224,7 @@
         }
         .search-submit:hover { filter: brightness(1.06); }
         .search-submit svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
+        .gender-filter { width: 100%; margin-top: 8px; padding: 9px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--input); color: var(--text); }
         .conversation-list { overflow-y: auto; padding: 8px; }
         .student-directory-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; margin-bottom: 4px; }
         .conversation {
@@ -226,6 +244,10 @@
         .favorite-chat-button { display: grid; width: 40px; height: 40px; place-items: center; border: 0; border-radius: 50%; background: transparent; color: var(--muted); font-size: 22px; cursor: pointer; }
         .favorite-chat-button:hover, .favorite-chat-button[aria-pressed="true"] { color: #e6a700; }
         .student-contact-links { display: flex; grid-column: 1 / -1; gap: 8px; padding: 0 10px 8px 64px; }
+        .student-controls { display: flex; flex-wrap: wrap; grid-column: 1 / -1; gap: 6px; padding: 0 10px 6px 64px; }
+        .student-controls button, .blocked-member button { padding: 5px 9px; border: 1px solid var(--border); border-radius: 999px; background: var(--panel); color: var(--primary); font-size: 12px; }
+        .member-presence { display: block; padding: 0 10px 6px 64px; color: var(--muted); font-size: 12px; }
+        .blocked-member { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 0; }
         .student-contact-links a, .call-contact-actions a {
             padding: 5px 8px;
             border: 1px solid var(--border);
@@ -442,6 +464,7 @@
                 padding: 0;
             }
             .sidebar { display: none; }
+            .settings-mode-toggle { display: block; }
             .messaging { display: block; height: 100%; border: 0; border-radius: 0; }
             .conversations { height: 100%; border-right: 0; }
             .conversation-heading > div:first-child { flex-wrap: wrap; }
@@ -465,13 +488,17 @@
             .chat-person { flex: 1 1 70px; }
         }
     </style>
-  <script type="module" crossorigin src="/assets/messages-j8Fh8jI_.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/pwa-BkgjKHQN.js">
+  <script type="module" crossorigin src="/assets/messages-CXanoYg7.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/app-lock-DV5ApokC.js">
 </head>
 <body>
     <main class="app">
         <aside class="sidebar">
-            <div class="brand">✦ campus connect</div>
+            <div class="brand-stack">
+                <div class="brand">✦ campus connect</div>
+                <button id="access-mode-toggle" class="mode-toggle" type="button" aria-pressed="false"></button>
+            </div>
+            <button id="block-chat-member" class="icon-button" type="button" data-i18n="Block" hidden>Block</button>
             <nav aria-label="Main navigation">
                 <a class="nav-link" href="/">🏠 Home</a>
                 <a class="nav-link active" href="/messages.html" aria-current="page" data-i18n="💬 Chats">💬 Chats</a>
@@ -483,7 +510,7 @@
                     <div style="display:flex;align-items:center;gap:12px;">
                         <h1 data-i18n="Chats">Chats</h1>
                     </div>
-                    <p data-i18n="Search members by name, username, or university.">Search members by name, username, or university.</p>
+                    <p data-i18n="Search discoverable members by name, username, course, or shared contact details.">Search discoverable members by name, username, course, or shared contact details.</p>
                     <form id="conversation-search-form" class="search-form" role="search">
                         <label for="conversation-search" hidden data-i18n="Search members by name, username, or university.">Search members by name, username, or university.</label>
                         <input id="conversation-search" class="search" type="search" placeholder="Search members and universities..." data-i18n-placeholder="Search members and universities..." autocomplete="off">
@@ -491,6 +518,13 @@
                             <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 5 5"/></svg>
                         </button>
                     </form>
+                    <label for="gender-search" hidden data-i18n="Filter by gender">Filter by gender</label>
+                    <select id="gender-search" class="gender-filter" aria-label="Filter by gender" data-i18n-aria-label="Filter by gender">
+                        <option value="" data-i18n="All genders">All genders</option>
+                        <option value="male" data-i18n="Male">Male</option>
+                        <option value="female" data-i18n="Female">Female</option>
+                        <option value="other" data-i18n="Other genders">Other genders</option>
+                    </select>
                     <div class="list-switcher" id="chat-filters" role="group" aria-label="Filter chats" data-i18n-aria-label="Filter chats">
                         <button type="button" data-chat-filter="all" aria-pressed="true" data-i18n="All">All</button>
                         <button type="button" data-chat-filter="unread" aria-pressed="false" data-i18n="Unread">Unread</button>
@@ -539,10 +573,17 @@
                                 <option value="sw">Kiswahili</option>
                                 <option value="es">Español</option>
                             </select>
+                            <button id="mobile-access-mode-toggle" class="mode-toggle settings-mode-toggle" type="button" aria-pressed="false"></button>
                             <button id="theme-toggle" class="theme-button" type="button" aria-pressed="false" data-i18n="🌙 Night Mode">🌙 Night Mode</button>
+                            <button id="biometric-lock-toggle" class="theme-button" type="button" hidden>Turn on biometric app lock</button>
+                            <small>Biometric lock is a device convenience and cannot prevent viruses or protect a compromised device.</small>
                             <a href="/#profile" data-i18n="Privacy & contact settings">Privacy &amp; contact settings</a>
                             <button id="install-app-button" class="theme-button" type="button" data-install-app data-i18n="Install app">Install app</button>
                             <button class="theme-button" type="button" data-share-app data-i18n="Share app">Share app</button>
+                            <details id="blocked-members-panel">
+                                <summary data-i18n="Blocked members">Blocked members</summary>
+                                <div id="blocked-members-list"></div>
+                            </details>
                             <a href="/#about" data-i18n="ⓘ About Campus Connect">ⓘ About Campus Connect</a>
                             <a href="/#stories" data-i18n="Updates">Updates</a>
                             <strong data-i18n="Quick access">Quick access</strong>
@@ -589,6 +630,13 @@
                         <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 5 5"/></svg>
                     </button>
                 </form>
+                <label for="calls-gender-search" hidden data-i18n="Filter by gender">Filter by gender</label>
+                <select id="calls-gender-search" class="gender-filter" aria-label="Filter by gender" data-i18n-aria-label="Filter by gender">
+                    <option value="" data-i18n="All genders">All genders</option>
+                    <option value="male" data-i18n="Male">Male</option>
+                    <option value="female" data-i18n="Female">Female</option>
+                    <option value="other" data-i18n="Other genders">Other genders</option>
+                </select>
                 <div id="call-directory" class="call-directory" aria-live="polite"></div>
                 <p class="notice" id="calls-notice" role="status"></p>
             </section>
