@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
@@ -37,7 +38,9 @@
             --input: #222938;
         }
 
-        * { box-sizing: border-box; }
+        * {
+            box-sizing: border-box;
+        }
 
         body {
             margin: 0;
@@ -47,11 +50,31 @@
             font-family: Arial, Helvetica, sans-serif;
         }
 
-        button, input, textarea { font: inherit; }
-        button, a { -webkit-tap-highlight-color: transparent; }
-        button { cursor: pointer; }
-        button:disabled, textarea:disabled { cursor: not-allowed; opacity: .55; }
-        button:focus-visible, input:focus-visible, textarea:focus-visible, a:focus-visible {
+        button,
+        input,
+        textarea {
+            font: inherit;
+        }
+
+        button,
+        a {
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        button {
+            cursor: pointer;
+        }
+
+        button:disabled,
+        textarea:disabled {
+            cursor: not-allowed;
+            opacity: .55;
+        }
+
+        button:focus-visible,
+        input:focus-visible,
+        textarea:focus-visible,
+        a:focus-visible {
             outline: 2px solid var(--primary);
             outline-offset: 3px;
         }
@@ -68,16 +91,34 @@
             padding: 18px;
         }
 
-        .sidebar, .messaging {
+        .sidebar,
+        .messaging {
             min-height: 0;
             background: var(--panel);
             border: 1px solid var(--border);
             border-radius: 18px;
         }
 
-        .sidebar { display: flex; flex-direction: column; padding: 24px 16px; }
-        .brand { margin: 0 0 28px 8px; color: var(--primary); font-size: 21px; font-weight: 800; white-space: nowrap; }
-        .brand-stack { display: grid; justify-items: start; gap: 4px; }
+        .sidebar {
+            display: flex;
+            flex-direction: column;
+            padding: 24px 16px;
+        }
+
+        .brand {
+            margin: 0 0 28px 8px;
+            color: var(--primary);
+            font-size: 21px;
+            font-weight: 800;
+            white-space: nowrap;
+        }
+
+        .brand-stack {
+            display: grid;
+            justify-items: start;
+            gap: 4px;
+        }
+
         .mode-toggle {
             margin: -20px 0 28px 8px;
             padding: 4px 8px;
@@ -88,7 +129,11 @@
             font-size: 12px;
             white-space: nowrap;
         }
-        .settings-mode-toggle { display: none; }
+
+        .settings-mode-toggle {
+            display: none;
+        }
+
         .nav-link {
             display: block;
             margin-bottom: 6px;
@@ -97,26 +142,52 @@
             color: var(--muted);
             text-decoration: none;
         }
-        .nav-link:hover, .nav-link.active { background: var(--received); color: var(--primary); }
-        .sidebar-bottom { display: grid; gap: 10px; margin-top: auto; }
-    .language-selector {
-        width: 100%;
-        margin-bottom: 10px;
-        padding: 10px;
-        border: 1px solid var(--border);
-        border-radius: 10px;
+
+        .nav-link:hover,
+        .nav-link.active {
+            background: var(--received);
+            color: var(--primary);
+        }
+
+        .sidebar-bottom {
+            display: grid;
+            gap: 10px;
+            margin-top: auto;
+        }
+
+        .language-selector {
+            width: 100%;
+            margin-bottom: 10px;
+            padding: 10px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
             background: var(--panel);
-        color: var(--text);
-        font: inherit; }
-        .theme-button, .logout-button, .icon-button {
+            color: var(--text);
+            font: inherit;
+        }
+
+        .theme-button,
+        .logout-button,
+        .icon-button {
             border: 1px solid var(--border);
             border-radius: 10px;
             background: var(--panel);
             color: var(--text);
         }
-        .theme-button, .logout-button { width: 100%; padding: 12px; text-align: left; }
-        .settings-menu { position: relative; margin-left: auto; }
-        .settings-menu > summary {
+
+        .theme-button,
+        .logout-button {
+            width: 100%;
+            padding: 12px;
+            text-align: left;
+        }
+
+        .settings-menu {
+            position: relative;
+            margin-left: auto;
+        }
+
+        .settings-menu>summary {
             display: flex;
             align-items: center;
             gap: 6px;
@@ -129,9 +200,25 @@
             color: var(--text);
             font: inherit;
         }
-        .settings-menu > summary svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
-        .settings-menu > summary span { display: none; }
-        .settings-menu > summary::-webkit-details-marker { display: none; }
+
+        .settings-menu>summary svg {
+            width: 18px;
+            height: 18px;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 1.8;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .settings-menu>summary span {
+            display: none;
+        }
+
+        .settings-menu>summary::-webkit-details-marker {
+            display: none;
+        }
+
         .settings-panel {
             position: absolute;
             top: calc(100% + 8px);
@@ -149,7 +236,12 @@
             background: var(--panel);
             box-shadow: 0 12px 32px #0003;
         }
-        .settings-panel .language-selector { width: 100%; margin: 0; }
+
+        .settings-panel .language-selector {
+            width: 100%;
+            margin: 0;
+        }
+
         .settings-panel a {
             display: block;
             padding: 10px 12px;
@@ -157,50 +249,252 @@
             color: var(--text);
             text-decoration: none;
         }
-        .settings-panel a:hover { background: var(--received); }
+
+        .settings-panel a:hover {
+            background: var(--received);
+        }
+
         html.settings-scroll-lock,
-        body.settings-scroll-lock { overflow: hidden; overscroll-behavior: none; }
+        body.settings-scroll-lock {
+            overflow: hidden;
+            overscroll-behavior: none;
+        }
+
         .messaging {
             display: grid;
             grid-template-columns: minmax(250px, 310px) minmax(0, 1fr);
             overflow: hidden;
         }
-        .messaging.show-calls { display: block; overflow-y: auto; }
-        .messaging.show-calls .conversations, .messaging.show-calls .chat { display: none; }
-        .calls-panel { display: none; }
-        .messaging.show-calls .calls-panel { display: block; padding: 24px; }
-        .calls-panel h1 { margin: 0 0 7px; font-size: 24px; }
-        .calls-panel > p { margin: 0 0 14px; color: var(--muted); font-size: 13px; line-height: 1.5; }
-        .call-directory { display: grid; gap: 8px; max-width: 760px; }
-        .call-contact { display: flex; align-items: center; gap: 12px; padding: 12px; border: 1px solid var(--border); border-radius: 12px; }
-        .call-contact-info { flex: 1; min-width: 0; }
-        .call-contact-name { overflow: hidden; font-weight: bold; text-overflow: ellipsis; white-space: nowrap; }
-        .call-contact-username { margin-top: 4px; color: var(--muted); font-size: 12px; }
-        .call-contact-actions { display: flex; gap: 6px; }
-        .call-contact-actions button { padding: 9px 11px; border: 1px solid var(--border); border-radius: 10px; background: var(--panel); color: var(--text); }
-        .call-contact-actions button:disabled { cursor: not-allowed; opacity: .5; }
-        .conversations { display: flex; min-height: 0; flex-direction: column; border-right: 1px solid var(--border); }
-        .conversation-heading { padding: 22px 18px 12px; }
-        .conversation-heading h1 { margin: 0 0 7px; font-size: 24px; }
-        .conversation-heading p, .chat-person p { color: var(--muted); font-size: 13px; line-height: 1.5; }
-        .conversation-heading p { margin: 0 0 14px; }
-        .list-switcher { display: flex; gap: 7px; margin-top: 12px; overflow-x: auto; scrollbar-width: none; }
-        .list-switcher::-webkit-scrollbar { display: none; }
-        .list-switcher button { flex: 0 0 auto; padding: 8px 13px; border: 1px solid var(--border); border-radius: 18px; background: var(--input); color: var(--text); white-space: nowrap; }
-        .list-switcher button[aria-pressed="true"] { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 12%, var(--panel)); color: var(--primary); }
-        .communities-panel { overflow-y: auto; min-height: 0; flex: 1; padding: 12px; }
-        .community-create { display: grid; gap: 8px; padding: 12px; margin-bottom: 12px; border: 1px solid var(--border); border-radius: 13px; background: var(--input); }
-        .community-create input, .community-create textarea, .community-create select { width: 100%; min-width: 0; padding: 10px; border: 1px solid var(--border); border-radius: 9px; background: var(--panel); color: var(--text); }
-        .community-create textarea { min-height: 70px; resize: vertical; }
-        .community-create button, .community-card button { padding: 9px 12px; border: 0; border-radius: 9px; background: var(--primary); color: #fff; }
-        .community-card { display: grid; gap: 8px; padding: 12px; margin-bottom: 8px; border: 1px solid var(--border); border-radius: 13px; background: var(--panel); }
-        .community-card h3 { margin: 0; font-size: 14px; }
-        .community-card p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.45; overflow-wrap: anywhere; }
-        .community-meta { color: var(--muted); font-size: 11px; text-transform: capitalize; }
-        .community-actions { display: flex; align-items: center; gap: 8px; }
-        .community-card button { justify-self: start; }
-        .community-card .community-leave { border: 1px solid var(--border); background: var(--panel); color: var(--muted); }
-        .hidden { display: none !important; }
+
+        .messaging.show-calls {
+            display: block;
+            overflow-y: auto;
+        }
+
+        .messaging.show-calls .conversations,
+        .messaging.show-calls .chat {
+            display: none;
+        }
+
+        .calls-panel {
+            display: none;
+        }
+
+        .messaging.show-calls .calls-panel {
+            display: block;
+            padding: 24px;
+        }
+
+        .calls-panel h1 {
+            margin: 0 0 7px;
+            font-size: 24px;
+        }
+
+        .calls-panel>p {
+            margin: 0 0 14px;
+            color: var(--muted);
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        .call-directory {
+            display: grid;
+            gap: 8px;
+            max-width: 760px;
+        }
+
+        .call-contact {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 12px;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+        }
+
+        .call-contact-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .call-contact-name {
+            overflow: hidden;
+            font-weight: bold;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .call-contact-username {
+            margin-top: 4px;
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        .call-contact-actions {
+            display: flex;
+            gap: 6px;
+        }
+
+        .call-contact-actions button {
+            padding: 9px 11px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            background: var(--panel);
+            color: var(--text);
+        }
+
+        .call-contact-actions button:disabled {
+            cursor: not-allowed;
+            opacity: .5;
+        }
+
+        .conversations {
+            display: flex;
+            min-height: 0;
+            flex-direction: column;
+            border-right: 1px solid var(--border);
+        }
+
+        .conversation-heading {
+            padding: 22px 18px 12px;
+        }
+
+        .conversation-heading h1 {
+            margin: 0 0 7px;
+            font-size: 24px;
+        }
+
+        .conversation-heading p,
+        .chat-person p {
+            color: var(--muted);
+            font-size: 13px;
+            line-height: 1.5;
+        }
+
+        .conversation-heading p {
+            margin: 0 0 14px;
+        }
+
+        .list-switcher {
+            display: flex;
+            gap: 7px;
+            margin-top: 12px;
+            overflow-x: auto;
+            scrollbar-width: none;
+        }
+
+        .list-switcher::-webkit-scrollbar {
+            display: none;
+        }
+
+        .list-switcher button {
+            flex: 0 0 auto;
+            padding: 8px 13px;
+            border: 1px solid var(--border);
+            border-radius: 18px;
+            background: var(--input);
+            color: var(--text);
+            white-space: nowrap;
+        }
+
+        .list-switcher button[aria-pressed="true"] {
+            border-color: var(--primary);
+            background: color-mix(in srgb, var(--primary) 12%, var(--panel));
+            color: var(--primary);
+        }
+
+        .communities-panel {
+            overflow-y: auto;
+            min-height: 0;
+            flex: 1;
+            padding: 12px;
+        }
+
+        .community-create {
+            display: grid;
+            gap: 8px;
+            padding: 12px;
+            margin-bottom: 12px;
+            border: 1px solid var(--border);
+            border-radius: 13px;
+            background: var(--input);
+        }
+
+        .community-create input,
+        .community-create textarea,
+        .community-create select {
+            width: 100%;
+            min-width: 0;
+            padding: 10px;
+            border: 1px solid var(--border);
+            border-radius: 9px;
+            background: var(--panel);
+            color: var(--text);
+        }
+
+        .community-create textarea {
+            min-height: 70px;
+            resize: vertical;
+        }
+
+        .community-create button,
+        .community-card button {
+            padding: 9px 12px;
+            border: 0;
+            border-radius: 9px;
+            background: var(--primary);
+            color: #fff;
+        }
+
+        .community-card {
+            display: grid;
+            gap: 8px;
+            padding: 12px;
+            margin-bottom: 8px;
+            border: 1px solid var(--border);
+            border-radius: 13px;
+            background: var(--panel);
+        }
+
+        .community-card h3 {
+            margin: 0;
+            font-size: 14px;
+        }
+
+        .community-card p {
+            margin: 0;
+            color: var(--muted);
+            font-size: 12px;
+            line-height: 1.45;
+            overflow-wrap: anywhere;
+        }
+
+        .community-meta {
+            color: var(--muted);
+            font-size: 11px;
+            text-transform: capitalize;
+        }
+
+        .community-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .community-card button {
+            justify-self: start;
+        }
+
+        .community-card .community-leave {
+            border: 1px solid var(--border);
+            background: var(--panel);
+            color: var(--muted);
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
         .search {
             width: 100%;
             padding: 12px;
@@ -209,8 +503,17 @@
             background: var(--input);
             color: var(--text);
         }
-        .search-form { display: flex; gap: 7px; }
-        .search-form .search { min-width: 0; flex: 1; }
+
+        .search-form {
+            display: flex;
+            gap: 7px;
+        }
+
+        .search-form .search {
+            min-width: 0;
+            flex: 1;
+        }
+
         .search-submit {
             display: grid;
             width: 42px;
@@ -222,11 +525,42 @@
             background: var(--primary);
             color: #fff;
         }
-        .search-submit:hover { filter: brightness(1.06); }
-        .search-submit svg { width: 19px; height: 19px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; }
-        .gender-filter { width: 100%; margin-top: 8px; padding: 9px 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--input); color: var(--text); }
-        .conversation-list { overflow-y: auto; padding: 8px; }
-        .student-directory-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; margin-bottom: 4px; }
+
+        .search-submit:hover {
+            filter: brightness(1.06);
+        }
+
+        .search-submit svg {
+            width: 19px;
+            height: 19px;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 2;
+            stroke-linecap: round;
+        }
+
+        .gender-filter {
+            width: 100%;
+            margin-top: 8px;
+            padding: 9px 12px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            background: var(--input);
+            color: var(--text);
+        }
+
+        .conversation-list {
+            overflow-y: auto;
+            padding: 8px;
+        }
+
+        .student-directory-item {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            align-items: center;
+            margin-bottom: 4px;
+        }
+
         .conversation {
             display: flex;
             width: 100%;
@@ -240,15 +574,82 @@
             color: var(--text);
             text-align: left;
         }
-        .conversation:hover, .conversation.selected { background: var(--received); }
-        .favorite-chat-button { display: grid; width: 40px; height: 40px; place-items: center; border: 0; border-radius: 50%; background: transparent; color: var(--muted); font-size: 22px; cursor: pointer; }
-        .favorite-chat-button:hover, .favorite-chat-button[aria-pressed="true"] { color: #e6a700; }
-        .student-contact-links { display: flex; grid-column: 1 / -1; gap: 8px; padding: 0 10px 8px 64px; }
-        .student-controls { display: flex; flex-wrap: wrap; grid-column: 1 / -1; gap: 6px; padding: 0 10px 6px 64px; }
-        .student-controls button, .blocked-member button { padding: 5px 9px; border: 1px solid var(--border); border-radius: 999px; background: var(--panel); color: var(--primary); font-size: 12px; }
-        .member-presence { display: block; padding: 0 10px 6px 64px; color: var(--muted); font-size: 12px; }
-        .blocked-member { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 0; }
-        .student-contact-links a, .call-contact-actions a {
+
+        .conversation:hover,
+        .conversation.selected {
+            background: var(--received);
+        }
+
+        .conversation-name {
+            min-width: 0;
+            overflow: hidden;
+            margin-left: 10px;
+            font-size: 13px;
+            font-weight: 700;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .favorite-chat-button {
+            display: grid;
+            width: 40px;
+            height: 40px;
+            place-items: center;
+            border: 0;
+            border-radius: 50%;
+            background: transparent;
+            color: var(--muted);
+            font-size: 22px;
+            cursor: pointer;
+        }
+
+        .favorite-chat-button:hover,
+        .favorite-chat-button[aria-pressed="true"] {
+            color: #e6a700;
+        }
+
+        .student-contact-links {
+            display: flex;
+            grid-column: 1 / -1;
+            gap: 8px;
+            padding: 0 10px 8px 64px;
+        }
+
+        .student-controls {
+            display: flex;
+            flex-wrap: wrap;
+            grid-column: 1 / -1;
+            gap: 6px;
+            padding: 0 10px 6px 64px;
+        }
+
+        .student-controls button,
+        .blocked-member button {
+            padding: 5px 9px;
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            background: var(--panel);
+            color: var(--primary);
+            font-size: 12px;
+        }
+
+        .member-presence {
+            display: block;
+            padding: 0 10px 6px 64px;
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        .blocked-member {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            padding: 6px 0;
+        }
+
+        .student-contact-links a,
+        .call-contact-actions a {
             padding: 5px 8px;
             border: 1px solid var(--border);
             border-radius: 14px;
@@ -257,6 +658,7 @@
             font-size: 11px;
             text-decoration: none;
         }
+
         .avatar {
             position: relative;
             display: grid;
@@ -269,21 +671,108 @@
             color: #fff;
             font-weight: bold;
         }
-        .avatar img { width: 100%; height: 100%; border-radius: inherit; object-fit: cover; }
-        .avatar svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; }
-        .avatar .unread { position: absolute; top: -5px; right: -8px; }
-        .conversation-info { flex: 1; min-width: 0; }
-        .conversation-top { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
-        .conversation-name { overflow: hidden; font-size: 14px; font-weight: bold; text-overflow: ellipsis; white-space: nowrap; }
-        .conversation-preview { display: block; overflow: hidden; margin-top: 6px; color: var(--muted); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
-        .unread { flex: 0 0 auto; padding: 3px 7px; border-radius: 20px; background: var(--primary); color: #fff; font-size: 10px; }
-        .chat { display: flex; min-width: 0; min-height: 0; flex-direction: column; }
-        .chat-header { display: flex; min-height: 78px; align-items: center; gap: 12px; padding: 14px 20px; border-bottom: 1px solid var(--border); }
-        .chat-person { flex: 1; min-width: 0; }
-        .chat-person h2 { margin: 0 0 4px; font-size: 16px; }
-        .chat-person p { margin: 0; font-size: 12px; }
-        .icon-button { padding: 9px 11px; }
-        .call-actions { display: flex; gap: 6px; }
+
+        .avatar img {
+            width: 100%;
+            height: 100%;
+            border-radius: inherit;
+            object-fit: cover;
+        }
+
+        .avatar svg {
+            width: 22px;
+            height: 22px;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 1.8;
+            stroke-linecap: round;
+        }
+
+        .avatar .unread {
+            position: absolute;
+            top: -5px;
+            right: -8px;
+        }
+
+        .conversation-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .conversation-top {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 6px;
+        }
+
+        .conversation-name {
+            overflow: hidden;
+            font-size: 14px;
+            font-weight: bold;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .conversation-preview {
+            display: block;
+            overflow: hidden;
+            margin-top: 6px;
+            color: var(--muted);
+            font-size: 12px;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .unread {
+            flex: 0 0 auto;
+            padding: 3px 7px;
+            border-radius: 20px;
+            background: var(--primary);
+            color: #fff;
+            font-size: 10px;
+        }
+
+        .chat {
+            display: flex;
+            min-width: 0;
+            min-height: 0;
+            flex-direction: column;
+        }
+
+        .chat-header {
+            display: flex;
+            min-height: 78px;
+            align-items: center;
+            gap: 12px;
+            padding: 14px 20px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .chat-person {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .chat-person h2 {
+            margin: 0 0 4px;
+            font-size: 16px;
+        }
+
+        .chat-person p {
+            margin: 0;
+            font-size: 12px;
+        }
+
+        .icon-button {
+            padding: 9px 11px;
+        }
+
+        .call-actions {
+            display: flex;
+            gap: 6px;
+        }
+
         .call-button {
             padding: 9px 11px;
             border: 1px solid var(--border);
@@ -291,6 +780,7 @@
             background: var(--panel);
             color: var(--text);
         }
+
         .call-dialog {
             width: min(720px, 94vw);
             border: 1px solid var(--border);
@@ -298,52 +788,344 @@
             background: var(--panel);
             color: var(--text);
         }
-        .call-dialog::backdrop { background: rgb(0 0 0 / 65%); }
-        .call-videos { position: relative; min-height: 220px; background: #111; border-radius: 12px; overflow: hidden; }
-        .remote-video { display: block; width: 100%; max-height: 62vh; min-height: 220px; object-fit: contain; }
-        .local-video { position: absolute; right: 12px; bottom: 12px; width: min(30%, 180px); max-height: 180px; border: 2px solid #fff; border-radius: 10px; object-fit: cover; }
-        .call-controls, .incoming-actions { display: flex; justify-content: center; gap: 10px; margin-top: 14px; }
-        .call-controls button, .incoming-actions button { padding: 11px 16px; border: 0; border-radius: 10px; background: var(--primary); color: #fff; }
-        .call-controls .end-call, .incoming-actions .decline-call { background: #d93025; }
-        .incoming-dialog { width: min(380px, 92vw); border: 1px solid var(--border); border-radius: 16px; background: var(--panel); color: var(--text); }
-        .incoming-dialog::backdrop { background: rgb(0 0 0 / 55%); }
-        .chat-messages { display: flex; min-height: 0; flex: 1; flex-direction: column; gap: 14px; overflow-y: auto; padding: 20px; }
-        .load-older-messages { align-self: center; padding: 8px 12px; border: 1px solid var(--border); border-radius: 18px; background: var(--panel); color: var(--primary); }
-        .load-older-messages:disabled { opacity: .6; }
-        .empty-state { margin: auto; padding: 24px; color: var(--muted); line-height: 1.6; text-align: center; }
-        .message { display: flex; max-width: min(88%, 560px); flex-direction: column; gap: 5px; }
-        .message.sent { align-self: flex-end; align-items: flex-end; }
-        .message.received { align-self: flex-start; align-items: flex-start; }
-        .message.received { display: grid; grid-template-columns: 28px minmax(0, 1fr); grid-template-areas: "avatar bubble" ". time"; align-items: end; column-gap: 8px; }
-        .message-avatar { grid-area: avatar; width: 28px; height: 28px; flex-basis: 28px; }
-        .message-avatar svg { width: 17px; height: 17px; }
-        .message.received .bubble { grid-area: bubble; }
-        .message.received .message-time { grid-area: time; }
-        .bubble { overflow-wrap: anywhere; padding: 11px 14px; border-radius: 17px; background: var(--received); line-height: 1.5; white-space: pre-wrap; }
-        .message.sent .bubble { border-bottom-right-radius: 5px; background: var(--primary); color: #fff; }
-        .message.received .bubble { border-bottom-left-radius: 5px; }
-        .message-time { padding: 0 4px; color: var(--muted); font-size: 10px; }
-        .message-media { display: block; width: min(100%, 420px); max-height: 360px; border-radius: 12px; object-fit: contain; }
-        .message-audio { display: block; width: min(100%, 360px); }
-        .message-file { display: inline-block; color: var(--primary); overflow-wrap: anywhere; }
-        .message-attachment { display: inline-flex; align-items: center; justify-content: center; padding: 0 8px; border: 1px solid var(--border); border-radius: 50%; background: var(--panel); color: var(--primary); font-size: 22px; cursor: pointer; }
-        .message-attachment input { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-        .chat-compose { padding: 13px 16px; border-top: 1px solid var(--border); }
-        .compose-form { display: flex; align-items: flex-end; gap: 9px; }
-        .compose-form textarea { min-width: 0; min-height: 46px; max-height: 130px; flex: 1; resize: none; padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--input); color: var(--text); }
-        .voice-button { display: inline-flex; width: 44px; height: 44px; flex: 0 0 44px; align-items: center; justify-content: center; padding: 0; border: 0; border-radius: 50%; background: var(--primary); color: #fff; cursor: pointer; }
-        .voice-button[hidden] { display: none; }
-        .voice-button:disabled { cursor: not-allowed; opacity: .5; }
-        .voice-button svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-        .voice-button.stop-recording { background: #d93025; }
-        .voice-controls { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
-        .voice-controls button[hidden] { display: none; }
-        .voice-controls button { padding: 8px 12px; border: 1px solid var(--border); border-radius: 18px; background: var(--panel); color: var(--primary); }
-        .voice-recording-status { min-height: 18px; margin: 6px 2px 0; color: var(--muted); font-size: 12px; }
-        .send-button { padding: 13px 16px; border: 0; border-radius: 12px; background: var(--primary); color: white; font-weight: bold; }
-        .notice { min-height: 18px; margin: 8px 2px 0; color: var(--muted); font-size: 12px; }
-        .notice.error { color: #c62828; }
-        .back-button { display: none; }
+
+        .call-dialog::backdrop {
+            background: rgb(0 0 0 / 65%);
+        }
+
+        .member-profile-dialog {
+            position: relative;
+            width: min(420px, calc(100vw - 28px));
+            border: 1px solid var(--border);
+            border-radius: 18px;
+            padding: 26px;
+            background: var(--panel);
+            color: var(--text);
+            text-align: center;
+        }
+
+        .member-profile-dialog::backdrop { background: rgb(0 0 0 / 58%); }
+        .member-profile-close { position: absolute; top: 12px; right: 12px; }
+        .member-profile-avatar { width: 84px; height: 84px; margin: 12px auto; }
+        .member-profile-dialog h2 { margin: 8px 0 4px; }
+        .member-profile-dialog p { overflow-wrap: anywhere; }
+        .member-profile-muted { margin-top: 0; color: var(--muted); }
+
+        .call-videos {
+            position: relative;
+            min-height: 220px;
+            background: #111;
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        .remote-video {
+            display: block;
+            width: 100%;
+            max-height: 62vh;
+            min-height: 220px;
+            object-fit: contain;
+        }
+
+        .local-video {
+            position: absolute;
+            right: 12px;
+            bottom: 12px;
+            width: min(30%, 180px);
+            max-height: 180px;
+            border: 2px solid #fff;
+            border-radius: 10px;
+            object-fit: cover;
+        }
+
+        .call-controls,
+        .incoming-actions {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 14px;
+        }
+
+        .call-controls button,
+        .incoming-actions button {
+            padding: 11px 16px;
+            border: 0;
+            border-radius: 10px;
+            background: var(--primary);
+            color: #fff;
+        }
+
+        .call-controls .end-call,
+        .incoming-actions .decline-call {
+            background: #d93025;
+        }
+
+        .incoming-dialog {
+            width: min(380px, 92vw);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            background: var(--panel);
+            color: var(--text);
+        }
+
+        .incoming-dialog::backdrop {
+            background: rgb(0 0 0 / 55%);
+        }
+
+        .chat-messages {
+            display: flex;
+            min-height: 0;
+            flex: 1;
+            flex-direction: column;
+            gap: 14px;
+            overflow-y: auto;
+            padding: 20px;
+        }
+
+        .load-older-messages {
+            align-self: center;
+            padding: 8px 12px;
+            border: 1px solid var(--border);
+            border-radius: 18px;
+            background: var(--panel);
+            color: var(--primary);
+        }
+
+        .load-older-messages:disabled {
+            opacity: .6;
+        }
+
+        .empty-state {
+            margin: auto;
+            padding: 24px;
+            color: var(--muted);
+            line-height: 1.6;
+            text-align: center;
+        }
+
+        .message {
+            display: flex;
+            max-width: min(88%, 560px);
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .message.sent {
+            align-self: flex-end;
+            align-items: flex-end;
+        }
+
+        .message.received {
+            align-self: flex-start;
+            align-items: flex-start;
+        }
+
+        .message.received {
+            display: grid;
+            grid-template-columns: 28px minmax(0, 1fr);
+            grid-template-areas: "avatar bubble" ". time";
+            align-items: end;
+            column-gap: 8px;
+        }
+
+        .message-avatar {
+            grid-area: avatar;
+            width: 28px;
+            height: 28px;
+            flex-basis: 28px;
+        }
+
+        .message-avatar svg {
+            width: 17px;
+            height: 17px;
+        }
+
+        .message.received .bubble {
+            grid-area: bubble;
+        }
+
+        .message.received .message-time {
+            grid-area: time;
+        }
+
+        .bubble {
+            overflow-wrap: anywhere;
+            padding: 11px 14px;
+            border-radius: 17px;
+            background: var(--received);
+            line-height: 1.5;
+            white-space: pre-wrap;
+        }
+
+        .message.sent .bubble {
+            border-bottom-right-radius: 5px;
+            background: var(--primary);
+            color: #fff;
+        }
+
+        .message.received .bubble {
+            border-bottom-left-radius: 5px;
+        }
+
+        .message-time {
+            padding: 0 4px;
+            color: var(--muted);
+            font-size: 10px;
+        }
+
+        .message-media {
+            display: block;
+            width: min(100%, 420px);
+            max-height: 360px;
+            border-radius: 12px;
+            object-fit: contain;
+        }
+
+        .message-audio {
+            display: block;
+            width: min(100%, 360px);
+        }
+
+        .message-file {
+            display: inline-block;
+            color: var(--primary);
+            overflow-wrap: anywhere;
+        }
+
+        .message-attachment {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0 8px;
+            border: 1px solid var(--border);
+            border-radius: 50%;
+            background: var(--panel);
+            color: var(--primary);
+            font-size: 22px;
+            cursor: pointer;
+        }
+
+        .message-attachment input {
+            position: absolute;
+            width: 1px;
+            height: 1px;
+            overflow: hidden;
+            clip-path: inset(50%);
+            white-space: nowrap;
+        }
+
+        .chat-compose {
+            padding: 13px 16px;
+            border-top: 1px solid var(--border);
+        }
+
+        .compose-form {
+            display: flex;
+            align-items: flex-end;
+            gap: 9px;
+        }
+
+        .compose-form textarea {
+            min-width: 0;
+            min-height: 46px;
+            max-height: 130px;
+            flex: 1;
+            resize: none;
+            padding: 12px;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            background: var(--input);
+            color: var(--text);
+        }
+
+        .voice-button {
+            display: inline-flex;
+            width: 44px;
+            height: 44px;
+            flex: 0 0 44px;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            border: 0;
+            border-radius: 50%;
+            background: var(--primary);
+            color: #fff;
+            cursor: pointer;
+        }
+
+        .voice-button[hidden] {
+            display: none;
+        }
+
+        .voice-button:disabled {
+            cursor: not-allowed;
+            opacity: .5;
+        }
+
+        .voice-button svg {
+            width: 20px;
+            height: 20px;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .voice-button.stop-recording {
+            background: #d93025;
+        }
+
+        .voice-controls {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 8px;
+        }
+
+        .voice-controls button[hidden] {
+            display: none;
+        }
+
+        .voice-controls button {
+            padding: 8px 12px;
+            border: 1px solid var(--border);
+            border-radius: 18px;
+            background: var(--panel);
+            color: var(--primary);
+        }
+
+        .voice-recording-status {
+            min-height: 18px;
+            margin: 6px 2px 0;
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        .send-button {
+            padding: 13px 16px;
+            border: 0;
+            border-radius: 12px;
+            background: var(--primary);
+            color: white;
+            font-weight: bold;
+        }
+
+        .notice {
+            min-height: 18px;
+            margin: 8px 2px 0;
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        .notice.error {
+            color: #c62828;
+        }
+
+        .back-button {
+            display: none;
+        }
+
         .bottom-nav {
             position: fixed;
             z-index: 20;
@@ -361,7 +1143,11 @@
             box-shadow: 0 8px 28px rgb(20 40 60 / 18%);
             backdrop-filter: blur(18px);
         }
-        .bottom-nav[hidden] { display: none; }
+
+        .bottom-nav[hidden] {
+            display: none;
+        }
+
         .bottom-nav-link {
             display: flex;
             min-width: 0;
@@ -377,9 +1163,24 @@
             font-weight: 600;
             text-decoration: none;
         }
-        .bottom-nav-link.active { color: var(--primary); }
-        .bottom-nav-link svg { width: 23px; height: 23px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
-        .bottom-nav-link.active svg { stroke-width: 2.4; }
+
+        .bottom-nav-link.active {
+            color: var(--primary);
+        }
+
+        .bottom-nav-link svg {
+            width: 23px;
+            height: 23px;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 1.9;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .bottom-nav-link.active svg {
+            stroke-width: 2.4;
+        }
 
         /* Telegram-inspired conversation layout, without Telegram branding. */
         :root {
@@ -392,6 +1193,7 @@
             --received: #f0f4f7;
             --input: #f4f7f9;
         }
+
         body.dark-mode {
             --page: #0e1621;
             --panel: #17212b;
@@ -402,60 +1204,212 @@
             --received: #202d3a;
             --input: #202d3a;
         }
-        body { font-family: Inter, "Segoe UI", Arial, sans-serif; }
-        .app { width: min(1440px, 100%); gap: 0; padding: 12px; }
-        .sidebar { border-radius: 16px 0 0 16px; border-right: 0; background: var(--panel); }
-        .messaging { border-radius: 0 16px 16px 0; }
-        .brand { color: var(--primary); letter-spacing: -.5px; }
-        .nav-link { border-radius: 9px; font-weight: 600; }
-        .nav-link:hover, .nav-link.active { background: color-mix(in srgb, var(--primary) 11%, var(--panel)); color: var(--primary); }
-        .conversation-heading { padding: 22px 18px 14px; border-bottom: 1px solid var(--border); }
-        .conversation-heading h1 { letter-spacing: -.6px; }
-        .search { border-radius: 22px; padding: 11px 15px; }
-        .conversation-list { padding: 4px 8px; }
-        .conversation { min-height: 72px; border-radius: 11px; }
-        .conversation:hover, .conversation.selected { background: color-mix(in srgb, var(--primary) 10%, var(--panel)); }
-        .avatar { background: linear-gradient(145deg, #55a9f5, #2583dc); }
-        .chat-header { background: var(--panel); }
+
+        body {
+            font-family: Inter, "Segoe UI", Arial, sans-serif;
+        }
+
+        .app {
+            width: min(1440px, 100%);
+            gap: 0;
+            padding: 12px;
+        }
+
+        .sidebar {
+            border-radius: 16px 0 0 16px;
+            border-right: 0;
+            background: var(--panel);
+        }
+
+        .messaging {
+            border-radius: 0 16px 16px 0;
+        }
+
+        .brand {
+            color: var(--primary);
+            letter-spacing: -.5px;
+        }
+
+        .nav-link {
+            border-radius: 9px;
+            font-weight: 600;
+        }
+
+        .nav-link:hover,
+        .nav-link.active {
+            background: color-mix(in srgb, var(--primary) 11%, var(--panel));
+            color: var(--primary);
+        }
+
+        .conversation-heading {
+            padding: 22px 18px 14px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .conversation-heading h1 {
+            letter-spacing: -.6px;
+        }
+
+        .search {
+            border-radius: 22px;
+            padding: 11px 15px;
+        }
+
+        .conversation-list {
+            padding: 4px 8px;
+        }
+
+        .conversation {
+            min-height: 72px;
+            border-radius: 11px;
+        }
+
+        .conversation:hover,
+        .conversation.selected {
+            background: color-mix(in srgb, var(--primary) 10%, var(--panel));
+        }
+
+        .avatar {
+            background: linear-gradient(145deg, #55a9f5, #2583dc);
+        }
+
+        .chat-header {
+            background: var(--panel);
+        }
+
         .chat-person h2 {
             overflow: hidden;
             letter-spacing: -.25px;
             text-overflow: ellipsis;
             white-space: nowrap;
         }
-        .chat-person p { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .call-actions { flex: 0 0 auto; }
-        .call-button { flex: 0 0 auto; }
-        .call-button svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+        .chat-person p {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .call-actions {
+            flex: 0 0 auto;
+        }
+
+        .call-button {
+            flex: 0 0 auto;
+        }
+
+        .call-button svg {
+            width: 20px;
+            height: 20px;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 1.8;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
         .chat-messages {
             background-color: var(--page);
             background-image: radial-gradient(rgb(89 130 160 / 8%) .75px, transparent .75px);
             background-size: 18px 18px;
         }
+
         body.dark-mode .chat-messages {
             background-image: radial-gradient(rgb(160 190 215 / 5%) .75px, transparent .75px);
         }
-        .bubble { border-radius: 16px; box-shadow: 0 1px 1px rgb(20 40 60 / 7%); }
-        .message.sent .bubble { border-bottom-right-radius: 5px; background: #d9fdd3; color: #182b20; }
-        .message.received .bubble { border-bottom-left-radius: 5px; background: var(--panel); }
-        body.dark-mode .message.sent .bubble { background: #075e54; color: #f2f7fb; }
-        .message-time { color: var(--muted); }
-        .chat-compose { background: var(--panel); }
-        .compose-form textarea { border-radius: 22px; padding: 13px 17px; }
-        .send-button { min-height: 46px; border-radius: 24px; background: var(--primary); }
-        .call-button, .icon-button { border-radius: 50%; color: var(--primary); }
-        .call-contact { border-color: var(--border); border-radius: 13px; background: var(--panel); }
-        .call-contact-actions button { border-radius: 20px; color: var(--primary); }
-        .bottom-nav { bottom: calc(4px + env(safe-area-inset-bottom)); border-color: var(--border); box-shadow: 0 8px 28px rgb(28 48 66 / 14%); }
-        .bottom-nav-link { transition: background-color .16s ease, color .16s ease; }
-        .bottom-nav-link.active { background: color-mix(in srgb, var(--primary) 9%, var(--panel)); }
+
+        .bubble {
+            border-radius: 16px;
+            box-shadow: 0 1px 1px rgb(20 40 60 / 7%);
+        }
+
+        .message.sent .bubble {
+            border-bottom-right-radius: 5px;
+            background: #d9fdd3;
+            color: #182b20;
+        }
+
+        .message.received .bubble {
+            border-bottom-left-radius: 5px;
+            background: var(--panel);
+        }
+
+        body.dark-mode .message.sent .bubble {
+            background: #075e54;
+            color: #f2f7fb;
+        }
+
+        .message-time {
+            color: var(--muted);
+        }
+
+        .chat-compose {
+            background: var(--panel);
+        }
+
+        .compose-form textarea {
+            border-radius: 22px;
+            padding: 13px 17px;
+        }
+
+        .send-button {
+            min-height: 46px;
+            border-radius: 24px;
+            background: var(--primary);
+        }
+
+        .call-button,
+        .icon-button {
+            border-radius: 50%;
+            color: var(--primary);
+        }
+
+        .call-contact {
+            border-color: var(--border);
+            border-radius: 13px;
+            background: var(--panel);
+        }
+
+        .call-contact-actions button {
+            border-radius: 20px;
+            color: var(--primary);
+        }
+
+        .bottom-nav {
+            bottom: calc(4px + env(safe-area-inset-bottom));
+            border-color: var(--border);
+            box-shadow: 0 8px 28px rgb(28 48 66 / 14%);
+        }
+
+        .bottom-nav-link {
+            transition: background-color .16s ease, color .16s ease;
+        }
+
+        .bottom-nav-link.active {
+            background: color-mix(in srgb, var(--primary) 9%, var(--panel));
+        }
 
         @media (max-width: 780px) {
-            .app { padding: 0; }
-            .messaging { border-radius: 0; }
-            .conversations { background: var(--panel); }
-            .conversation-heading { padding-top: max(18px, env(safe-area-inset-top)); }
-            .chat-header { padding-top: max(10px, env(safe-area-inset-top)); }
+            .app {
+                padding: 0;
+            }
+
+            .messaging {
+                border-radius: 0;
+            }
+
+            .conversations {
+                background: var(--panel);
+            }
+
+            .conversation-heading {
+                padding-top: max(18px, env(safe-area-inset-top));
+            }
+
+            .chat-header {
+                padding-top: max(10px, env(safe-area-inset-top));
+            }
+
             .app {
                 display: block;
                 height: calc(100vh - 96px - env(safe-area-inset-bottom, 0px));
@@ -463,34 +1417,111 @@
                 min-height: 0;
                 padding: 0;
             }
-            .sidebar { display: none; }
-            .settings-mode-toggle { display: block; }
-            .messaging { display: block; height: 100%; border: 0; border-radius: 0; }
-            .conversations { height: 100%; border-right: 0; }
-            .conversation-heading > div:first-child { flex-wrap: wrap; }
-            .chat { display: none; height: 100%; }
-            .messaging.chat-open .conversations { display: none; }
-            .messaging.chat-open .chat { display: flex; }
-            .messaging.show-calls { height: 100%; }
-            .messaging.show-calls .calls-panel { padding: 20px 14px; }
-            .chat-header { min-height: 70px; padding: 10px; }
-            .chat-messages { padding: 14px 11px; }
-            .chat-compose { padding: 10px; }
-            .message { max-width: 88%; }
-            .back-button { display: inline-block; }
-            .send-button { padding: 13px 12px; }
-            .call-contact { flex-wrap: wrap; }
-            .call-contact-actions { width: 100%; padding-left: 56px; }
-            .call-contact-actions button { flex: 1; }
-            .call-actions { gap: 3px; }
-            .call-button { padding: 8px; }
-            .chat-header { gap: 7px; }
-            .chat-person { flex: 1 1 70px; }
+
+            .sidebar {
+                display: none;
+            }
+
+            .settings-mode-toggle {
+                display: block;
+            }
+
+            .messaging {
+                display: block;
+                height: 100%;
+                border: 0;
+                border-radius: 0;
+            }
+
+            .conversations {
+                height: 100%;
+                border-right: 0;
+            }
+
+            .conversation-heading>div:first-child {
+                flex-wrap: wrap;
+            }
+
+            .chat {
+                display: none;
+                height: 100%;
+            }
+
+            .messaging.chat-open .conversations {
+                display: none;
+            }
+
+            .messaging.chat-open .chat {
+                display: flex;
+            }
+
+            .messaging.show-calls {
+                height: 100%;
+            }
+
+            .messaging.show-calls .calls-panel {
+                padding: 20px 14px;
+            }
+
+            .chat-header {
+                min-height: 70px;
+                padding: 10px;
+            }
+
+            .chat-messages {
+                padding: 14px 11px;
+            }
+
+            .chat-compose {
+                padding: 10px;
+            }
+
+            .message {
+                max-width: 88%;
+            }
+
+            .back-button {
+                display: inline-block;
+            }
+
+            .send-button {
+                padding: 13px 12px;
+            }
+
+            .call-contact {
+                flex-wrap: wrap;
+            }
+
+            .call-contact-actions {
+                width: 100%;
+                padding-left: 56px;
+            }
+
+            .call-contact-actions button {
+                flex: 1;
+            }
+
+            .call-actions {
+                gap: 3px;
+            }
+
+            .call-button {
+                padding: 8px;
+            }
+
+            .chat-header {
+                gap: 7px;
+            }
+
+            .chat-person {
+                flex: 1 1 70px;
+            }
         }
     </style>
-  <script type="module" crossorigin src="/assets/messages-DPqbubUl.js"></script>
+  <script type="module" crossorigin src="/assets/messages-CtI9KJ9_.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/app-lock-DV5ApokC.js">
 </head>
+
 <body>
     <main class="app">
         <aside class="sidebar">
@@ -510,26 +1541,43 @@
                     <div style="display:flex;align-items:center;gap:12px;">
                         <h1 data-i18n="Chats">Chats</h1>
                     </div>
-                    <p data-i18n="Search discoverable members by name, username, course, or shared contact details.">Search discoverable members by name, username, course, or shared contact details.</p>
+                    <p data-i18n="Search discoverable members by name, username, course, or shared contact details.">
+                        Search discoverable members by name, username, course, or shared contact details.</p>
                     <form id="conversation-search-form" class="search-form" role="search">
-                        <label for="conversation-search" hidden data-i18n="Search members by name, username, or university.">Search members by name, username, or university.</label>
-                        <input id="conversation-search" class="search" type="search" placeholder="Search members and universities..." data-i18n-placeholder="Search members and universities..." autocomplete="off">
-                        <button class="search-submit" type="submit" aria-label="Search members by name, username, or university." data-i18n-aria-label="Search members by name, username, or university.">
-                            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 5 5"/></svg>
+                        <label for="conversation-search" hidden
+                            data-i18n="Search members by name, username, or university.">Search members by name,
+                            username, or university.</label>
+                        <input id="conversation-search" class="search" type="search"
+                            placeholder="Search members and universities..."
+                            data-i18n-placeholder="Search members and universities..." autocomplete="off">
+                        <button class="search-submit" type="submit"
+                            aria-label="Search members by name, username, or university."
+                            data-i18n-aria-label="Search members by name, username, or university.">
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <circle cx="10.8" cy="10.8" r="6.8" />
+                                <path d="m16 16 5 5" />
+                            </svg>
                         </button>
                     </form>
                     <label for="gender-search" hidden data-i18n="Filter by gender">Filter by gender</label>
-                    <select id="gender-search" class="gender-filter" aria-label="Filter by gender" data-i18n-aria-label="Filter by gender">
+                    <select id="gender-search" class="gender-filter" aria-label="Filter by gender"
+                        data-i18n-aria-label="Filter by gender">
                         <option value="" data-i18n="All genders">All genders</option>
                         <option value="male" data-i18n="Male">Male</option>
                         <option value="female" data-i18n="Female">Female</option>
                         <option value="other" data-i18n="Other genders">Other genders</option>
                     </select>
-                    <div class="list-switcher" id="chat-filters" role="group" aria-label="Filter chats" data-i18n-aria-label="Filter chats">
+                    <div class="list-switcher" id="chat-filters" role="group" aria-label="Filter chats"
+                        data-i18n-aria-label="Filter chats">
                         <button type="button" data-chat-filter="all" aria-pressed="true" data-i18n="All">All</button>
-                        <button type="button" data-chat-filter="unread" aria-pressed="false" data-i18n="Unread">Unread</button>
-                        <button type="button" data-chat-filter="favorites" aria-pressed="false" data-i18n="Favorites">Favorites</button>
-                        <button type="button" data-chat-filter="groups" aria-pressed="false" data-i18n="Groups">Groups</button>
+                        <button type="button" data-chat-filter="unread" aria-pressed="false"
+                            data-i18n="Unread">Unread</button>
+                        <button type="button" data-chat-filter="favorites" aria-pressed="false"
+                            data-i18n="Favorites">Favorites</button>
+                        <button type="button" data-chat-filter="followers" aria-pressed="false"
+                            data-i18n="Followers">Followers</button>
+                        <button type="button" data-chat-filter="groups" aria-pressed="false"
+                            data-i18n="Groups">Groups</button>
                     </div>
                 </header>
                 <div class="conversation-list" id="conversation-list" aria-label="Students and conversations"></div>
@@ -537,15 +1585,20 @@
                     <form class="community-create" id="community-form">
                         <strong data-i18n="Create a group or channel">Create a group or channel</strong>
                         <label for="community-name" hidden>Name</label>
-                        <input id="community-name" maxlength="80" minlength="3" placeholder="Community name" data-i18n-placeholder="Community name" required>
+                        <input id="community-name" maxlength="80" minlength="3" placeholder="Community name"
+                            data-i18n-placeholder="Community name" required>
                         <label for="community-description" hidden>Description</label>
-                        <textarea id="community-description" maxlength="500" placeholder="What is this community about?" data-i18n-placeholder="What is this community about?"></textarea>
+                        <textarea id="community-description" maxlength="500" placeholder="What is this community about?"
+                            data-i18n-placeholder="What is this community about?"></textarea>
                         <label for="community-kind" hidden>Type</label>
                         <select id="community-kind">
-                            <option value="group" data-i18n="Group chat — members can post">Group chat — members can post</option>
-                            <option value="channel" data-i18n="Channel — owners publish">Channel — owners publish</option>
+                            <option value="group" data-i18n="Group chat — members can post">Group chat — members can
+                                post</option>
+                            <option value="channel" data-i18n="Channel — owners publish">Channel — owners publish
+                            </option>
                         </select>
-                        <button type="submit" id="create-community-button" data-i18n="Create community">Create community</button>
+                        <button type="submit" id="create-community-button" data-i18n="Create community">Create
+                            community</button>
                         <p class="notice" id="community-notice" role="status"></p>
                     </form>
                     <div id="communities-list" aria-live="polite"></div>
@@ -553,33 +1606,58 @@
             </aside>
             <section class="chat" aria-label="Private chat">
                 <header class="chat-header">
-                    <button id="back-button" class="icon-button back-button" type="button" aria-label="Back to students">←</button>
+                    <button id="back-button" class="icon-button back-button" type="button"
+                        aria-label="Back to students">←</button>
                     <div class="avatar" id="chat-avatar" aria-hidden="true">?</div>
                     <div class="chat-person">
                         <h2 id="chat-name" data-i18n="Choose a student">Choose a student</h2>
-                        <p id="chat-status" data-i18n="Messages are private to you and the recipient.">Messages are private to you and the recipient.</p>
+                        <p id="chat-status" data-i18n="Messages are private to you and the recipient.">Messages are
+                            private to you and the recipient.</p>
                     </div>
                     <div class="call-actions" id="call-actions" aria-label="Call actions">
-                        <button id="voice-call-button" class="call-button" type="button" aria-label="Start voice call" data-i18n-aria-label="Start voice call" title="Voice call" data-i18n-title="Voice call" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.2 3.5 10 7.2 8.4 9.5a15 15 0 0 0 6.1 6.1l2.3-1.6 3.7 2.8-.8 3.3a2 2 0 0 1-2.1 1.5A17.5 17.5 0 0 1 2.4 6.1a2 2 0 0 1 1.5-2.1l3.3-.5Z"/></svg></button>
-                        <button id="video-call-button" class="call-button" type="button" aria-label="Start video call" data-i18n-aria-label="Video call" title="Video call" data-i18n-title="Video call" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="m16 10 5-3v10l-5-3"/></svg></button>
+                        <button id="voice-call-button" class="call-button" type="button" aria-label="Start voice call"
+                            data-i18n-aria-label="Start voice call" title="Voice call" data-i18n-title="Voice call"
+                            disabled><svg viewBox="0 0 24 24" aria-hidden="true">
+                                <path
+                                    d="M7.2 3.5 10 7.2 8.4 9.5a15 15 0 0 0 6.1 6.1l2.3-1.6 3.7 2.8-.8 3.3a2 2 0 0 1-2.1 1.5A17.5 17.5 0 0 1 2.4 6.1a2 2 0 0 1 1.5-2.1l3.3-.5Z" />
+                            </svg></button>
+                        <button id="video-call-button" class="call-button" type="button" aria-label="Start video call"
+                            data-i18n-aria-label="Video call" title="Video call" data-i18n-title="Video call"
+                            disabled><svg viewBox="0 0 24 24" aria-hidden="true">
+                                <rect x="3" y="6" width="13" height="12" rx="2" />
+                                <path d="m16 10 5-3v10l-5-3" />
+                            </svg></button>
                     </div>
                     <details class="settings-menu">
-                        <summary aria-label="Settings" data-i18n-aria-label="Settings" title="Settings" data-i18n-title="Settings"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="m19.4 15 .1.1 1.4 1.1-1.4 2.4-1.7-.6a7.5 7.5 0 0 1-1.8 1l-.3 1.8h-2.8l-.3-1.8a7.5 7.5 0 0 1-1.8-1l-1.7.6-1.4-2.4 1.4-1.1a7.4 7.4 0 0 1 0-2.1l-1.4-1.1 1.4-2.4 1.7.6a7.5 7.5 0 0 1 1.8-1l.3-1.8h2.8l.3 1.8a7.5 7.5 0 0 1 1.8 1l1.7-.6 1.4 2.4-1.4 1.1a7.4 7.4 0 0 1 0 2.1Z"/></svg><span data-i18n="Settings">Settings</span></summary>
+                        <summary aria-label="Settings" data-i18n-aria-label="Settings" title="Settings"
+                            data-i18n-title="Settings"><svg viewBox="0 0 24 24" aria-hidden="true">
+                                <circle cx="12" cy="12" r="3" />
+                                <path
+                                    d="m19.4 15 .1.1 1.4 1.1-1.4 2.4-1.7-.6a7.5 7.5 0 0 1-1.8 1l-.3 1.8h-2.8l-.3-1.8a7.5 7.5 0 0 1-1.8-1l-1.7.6-1.4-2.4 1.4-1.1a7.4 7.4 0 0 1 0-2.1l-1.4-1.1 1.4-2.4 1.7.6a7.5 7.5 0 0 1 1.8-1l.3-1.8h2.8l.3 1.8a7.5 7.5 0 0 1 1.8 1l1.7-.6 1.4 2.4-1.4 1.1a7.4 7.4 0 0 1 0 2.1Z" />
+                            </svg><span data-i18n="Settings">Settings</span></summary>
                         <div class="settings-panel">
                             <label for="language-selector" hidden data-i18n="Language">Language</label>
-                            <select id="language-selector" class="language-selector" aria-label="Language" data-i18n-aria-label="Language">
+                            <select id="language-selector" class="language-selector" aria-label="Language"
+                                data-i18n-aria-label="Language">
                                 <option value="en">English</option>
                                 <option value="fr">Français</option>
                                 <option value="sw">Kiswahili</option>
                                 <option value="es">Español</option>
                             </select>
-                            <button id="mobile-access-mode-toggle" class="mode-toggle settings-mode-toggle" type="button" aria-pressed="false"></button>
-                            <button id="theme-toggle" class="theme-button" type="button" aria-pressed="false" data-i18n="🌙 Night Mode">🌙 Night Mode</button>
-                            <button id="biometric-lock-toggle" class="theme-button" type="button" hidden>Turn on biometric app lock</button>
-                            <small>Biometric lock is a device convenience and cannot prevent viruses or protect a compromised device.</small>
-                            <a href="/#profile" data-i18n="Privacy & contact settings">Privacy &amp; contact settings</a>
-                            <button id="install-app-button" class="theme-button" type="button" data-install-app data-i18n="Install app">Install app</button>
-                            <button class="theme-button" type="button" data-share-app data-i18n="Share app">Share app</button>
+                            <button id="mobile-access-mode-toggle" class="mode-toggle settings-mode-toggle"
+                                type="button" aria-pressed="false"></button>
+                            <button id="theme-toggle" class="theme-button" type="button" aria-pressed="false"
+                                data-i18n="🌙 Night Mode">🌙 Night Mode</button>
+                            <button id="biometric-lock-toggle" class="theme-button" type="button" hidden>Turn on
+                                biometric app lock</button>
+                            <small>Biometric lock is a device convenience and cannot prevent viruses or protect a
+                                compromised device.</small>
+                            <a href="/#profile" data-i18n="Privacy & contact settings">Privacy &amp; contact
+                                settings</a>
+                            <button id="install-app-button" class="theme-button" type="button" data-install-app
+                                data-i18n="Install app">Install app</button>
+                            <button class="theme-button" type="button" data-share-app data-i18n="Share app">Share
+                                app</button>
                             <details id="blocked-members-panel">
                                 <summary data-i18n="Blocked members">Blocked members</summary>
                                 <div id="blocked-members-list"></div>
@@ -587,34 +1665,56 @@
                             <a href="/#about" data-i18n="ⓘ About Campus Connect">ⓘ About Campus Connect</a>
                             <a href="/#stories" data-i18n="Updates">Updates</a>
                             <strong data-i18n="Quick access">Quick access</strong>
-                            <a href="https://www.youtube.com/" target="_blank" rel="noopener noreferrer" data-i18n="YouTube">YouTube</a>
-                            <a href="https://www.google.com/" target="_blank" rel="noopener noreferrer" data-i18n="Google">Google</a>
-                            <a href="https://www.meta.ai/" target="_blank" rel="noopener noreferrer" data-i18n="Meta AI">Meta AI</a>
-                            <button id="logout-button" class="logout-button" type="button" data-i18n="Log out">Log out</button>
+                            <a href="https://www.youtube.com/" target="_blank" rel="noopener noreferrer"
+                                data-i18n="YouTube">YouTube</a>
+                            <a href="https://www.google.com/" target="_blank" rel="noopener noreferrer"
+                                data-i18n="Google">Google</a>
+                            <a href="https://www.meta.ai/" target="_blank" rel="noopener noreferrer"
+                                data-i18n="Meta AI">Meta AI</a>
+                            <button id="logout-button" class="logout-button" type="button" data-i18n="Log out">Log
+                                out</button>
                         </div>
                     </details>
                 </header>
                 <div class="chat-messages" id="chat-messages" aria-live="polite" aria-label="Messages">
-                    <div class="empty-state" data-i18n="Select a student to view or start a conversation.">Select a student to view or start a conversation.</div>
+                    <div class="empty-state" data-i18n="Select a student to view or start a conversation.">Select a
+                        student to view or start a conversation.</div>
                 </div>
                 <div class="chat-compose">
                     <form class="compose-form" id="message-form">
-                        <label class="message-attachment" for="message-media" title="Attach media or audio" data-i18n-title="Attach media or audio" aria-label="Attach media or audio" data-i18n-aria-label="Attach media or audio">＋
-                            <input id="message-media" type="file" accept="image/*,video/*,audio/*,.pdf,.txt,.csv,.rtf,.doc,.docx,.xls,.xlsx,.ppt,.pptx" disabled>
+                        <label class="message-attachment" for="message-media" title="Attach media or audio"
+                            data-i18n-title="Attach media or audio" aria-label="Attach media or audio"
+                            data-i18n-aria-label="Attach media or audio">＋
+                            <input id="message-media" type="file"
+                                accept="image/*,video/*,audio/*,.pdf,.txt,.csv,.rtf,.doc,.docx,.xls,.xlsx,.ppt,.pptx"
+                                disabled>
                         </label>
                         <label for="message-input" hidden data-i18n="Write a message">Write a message</label>
-                        <textarea id="message-input" placeholder="Write a message..." data-i18n-placeholder="Write a message..." rows="1" maxlength="5000" disabled></textarea>
-                        <button id="start-voice-recording" class="voice-button" type="button" aria-label="Record voice message" data-i18n-aria-label="Record voice message" title="Record voice message" data-i18n-title="Record voice message" disabled>
-                            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="2.5" width="6" height="12" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3.5M9 21.5h6"/></svg>
+                        <textarea id="message-input" placeholder="Write a message..."
+                            data-i18n-placeholder="Write a message..." rows="1" maxlength="5000" disabled></textarea>
+                        <button id="start-voice-recording" class="voice-button" type="button"
+                            aria-label="Record voice message" data-i18n-aria-label="Record voice message"
+                            title="Record voice message" data-i18n-title="Record voice message" disabled>
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <rect x="9" y="2.5" width="6" height="12" rx="3" />
+                                <path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3.5M9 21.5h6" />
+                            </svg>
                         </button>
-                        <button id="stop-voice-recording" class="voice-button stop-recording" type="button" aria-label="Stop recording" data-i18n-aria-label="Stop recording" title="Stop recording" hidden>
-                            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+                        <button id="stop-voice-recording" class="voice-button stop-recording" type="button"
+                            aria-label="Stop recording" data-i18n-aria-label="Stop recording" title="Stop recording"
+                            hidden>
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <rect x="6" y="6" width="12" height="12" rx="2" />
+                            </svg>
                         </button>
-                        <button class="send-button" type="submit" id="send-button" data-i18n="Send ➤" disabled>Send ➤</button>
+                        <button class="send-button" type="submit" id="send-button" data-i18n="Send ➤" disabled>Send
+                            ➤</button>
                     </form>
                     <div class="voice-controls" aria-label="Voice message">
-                        <button id="send-voice-message" type="button" data-i18n="Send voice message" hidden>Send voice message</button>
-                        <button id="discard-voice-message" type="button" data-i18n="Discard recording" hidden>Discard</button>
+                        <button id="send-voice-message" type="button" data-i18n="Send voice message" hidden>Send voice
+                            message</button>
+                        <button id="discard-voice-message" type="button" data-i18n="Discard recording"
+                            hidden>Discard</button>
                     </div>
                     <p id="voice-recording-status" class="voice-recording-status" role="status"></p>
                     <p class="notice" id="message-notice" role="status"></p>
@@ -622,16 +1722,26 @@
             </section>
             <section id="calls-panel" class="calls-panel" aria-label="Start a call">
                 <h1 data-i18n="Calls">Calls</h1>
-                <p data-i18n="Choose a member to start a voice or video call.">Choose a member to start a voice or video call.</p>
+                <p data-i18n="Choose a member to start a voice or video call.">Choose a member to start a voice or video
+                    call.</p>
                 <form id="calls-search-form" class="search-form" role="search">
-                    <label for="calls-search" hidden data-i18n="Search members by name, username, or university.">Search members by name, username, or university.</label>
-                    <input id="calls-search" class="search" type="search" placeholder="Search members and universities..." data-i18n-placeholder="Search members and universities..." autocomplete="off">
-                    <button class="search-submit" type="submit" aria-label="Search members by name, username, or university." data-i18n-aria-label="Search members by name, username, or university.">
-                        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 5 5"/></svg>
+                    <label for="calls-search" hidden data-i18n="Search members by name, username, or university.">Search
+                        members by name, username, or university.</label>
+                    <input id="calls-search" class="search" type="search"
+                        placeholder="Search members and universities..."
+                        data-i18n-placeholder="Search members and universities..." autocomplete="off">
+                    <button class="search-submit" type="submit"
+                        aria-label="Search members by name, username, or university."
+                        data-i18n-aria-label="Search members by name, username, or university.">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <circle cx="10.8" cy="10.8" r="6.8" />
+                            <path d="m16 16 5 5" />
+                        </svg>
                     </button>
                 </form>
                 <label for="calls-gender-search" hidden data-i18n="Filter by gender">Filter by gender</label>
-                <select id="calls-gender-search" class="gender-filter" aria-label="Filter by gender" data-i18n-aria-label="Filter by gender">
+                <select id="calls-gender-search" class="gender-filter" aria-label="Filter by gender"
+                    data-i18n-aria-label="Filter by gender">
                     <option value="" data-i18n="All genders">All genders</option>
                     <option value="male" data-i18n="Male">Male</option>
                     <option value="female" data-i18n="Female">Female</option>
@@ -650,6 +1760,15 @@
             <button id="decline-call-button" class="decline-call" type="button" data-i18n="Decline">Decline</button>
         </div>
     </dialog>
+    <dialog id="member-profile-dialog" class="member-profile-dialog" aria-labelledby="member-profile-name">
+        <button id="close-member-profile" class="icon-button member-profile-close" type="button" aria-label="Close profile">×</button>
+        <div id="member-profile-avatar" class="avatar member-profile-avatar" aria-hidden="true"></div>
+        <h2 id="member-profile-name"></h2>
+        <p id="member-profile-username" class="member-profile-muted"></p>
+        <p id="member-profile-course"></p>
+        <p id="member-profile-bio"></p>
+        <p id="member-profile-contact"></p>
+    </dialog>
     <dialog id="call-dialog" class="call-dialog" aria-labelledby="call-title">
         <h2 id="call-title" data-i18n="Call">Call</h2>
         <p id="call-state" class="notice" role="status"></p>
@@ -666,21 +1785,35 @@
     </dialog>
     <nav class="bottom-nav" aria-label="Main navigation" hidden>
         <a class="bottom-nav-link active" href="/messages.html" data-destination="chats" aria-current="page">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11.5a7.5 7.5 0 0 1-7.5 7.5H5l1.8-3.2A7.5 7.5 0 1 1 20 11.5Z"/><path d="M8 11.5h8M8 14.5h5"/></svg>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M20 11.5a7.5 7.5 0 0 1-7.5 7.5H5l1.8-3.2A7.5 7.5 0 1 1 20 11.5Z" />
+                <path d="M8 11.5h8M8 14.5h5" />
+            </svg>
             <span data-i18n="Chats">Chats</span>
         </a>
         <button class="bottom-nav-link" type="button" data-destination="calls" aria-pressed="false">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.2 3.5 10 7.2 8.4 9.5a15 15 0 0 0 6.1 6.1l2.3-1.6 3.7 2.8-.8 3.3a2 2 0 0 1-2.1 1.5A17.5 17.5 0 0 1 2.4 6.1a2 2 0 0 1 1.5-2.1l3.3-.5Z"/></svg>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path
+                    d="M7.2 3.5 10 7.2 8.4 9.5a15 15 0 0 0 6.1 6.1l2.3-1.6 3.7 2.8-.8 3.3a2 2 0 0 1-2.1 1.5A17.5 17.5 0 0 1 2.4 6.1a2 2 0 0 1 1.5-2.1l3.3-.5Z" />
+            </svg>
             <span data-i18n="Calls">Calls</span>
         </button>
         <a class="bottom-nav-link" href="/#stories" data-destination="updates">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5.8"/><circle cx="12" cy="12" r="2.5"/></svg>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="12" cy="12" r="9" />
+                <circle cx="12" cy="12" r="5.8" />
+                <circle cx="12" cy="12" r="2.5" />
+            </svg>
             <span data-i18n="Updates">Updates</span>
         </a>
         <a class="bottom-nav-link" href="/#profile" data-destination="profile">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/></svg>
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+                <circle cx="12" cy="8" r="3.5" />
+                <path d="M4.5 20a7.5 7.5 0 0 1 15 0" />
+            </svg>
             <span data-i18n="Profile">Profile</span>
         </a>
     </nav>
 </body>
+
 </html>
