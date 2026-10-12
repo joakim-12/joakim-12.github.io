@@ -1,4 +1,4 @@
-const CACHE_NAME = "campus-connect-v2";
+const CACHE_NAME = "campus-connect-v3";
 const APP_SHELL = [
     "/",
     "/messages.html",

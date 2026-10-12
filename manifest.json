@@ -1,7 +1,7 @@
 {
   "id": "/",
-  "name": "campus connect - University Social Network",
-  "short_name": "campus connect",
+  "name": "Campus Connect",
+  "short_name": "Campus Connect",
   "description": "Campus Connect helps university students connect with classmates, share posts, discover students, exchange messages, and stay connected on campus.",
   "lang": "en",
   "start_url": "/",
@@ -12,8 +12,8 @@
     "minimal-ui"
   ],
   "orientation": "any",
-  "background_color": "#ffffff",
-  "theme_color": "#2563eb",
+  "background_color": "#075b57",
+  "theme_color": "#075b57",
   "categories": [
     "social",
     "education",
