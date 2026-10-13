@@ -608,6 +608,22 @@
     .bottom-nav a.active { background: color-mix(in srgb, var(--blue) 12%, var(--surface)); }
     #profileForm .contact-sharing-option { display: flex; align-items: center; gap: 8px; }
     #profileForm .contact-sharing-option input { width: auto; margin: 0; }
+    #profileForm .invite-link-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: .85rem; }
+    #profileForm .invite-link { flex: 1 1 220px; overflow-wrap: anywhere; color: var(--muted); }
+    .membership-banner { margin: 0 0 12px; padding: 10px 12px; border-radius: 10px; font-size: 14px; border: 1px solid var(--border); background: color-mix(in srgb, var(--blue) 8%, var(--surface)); }
+    .membership-banner.warning { background: color-mix(in srgb, #f5a623 14%, var(--surface)); }
+    .role-line { font-size: 14px; color: var(--muted); }
+    .role-line strong { color: inherit; }
+    .role-badge { display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; border: 1px solid var(--border); background: color-mix(in srgb, var(--blue) 12%, var(--surface)); vertical-align: middle; }
+    .role-badge.security { background: color-mix(in srgb, #d93025 14%, var(--surface)); }
+    .pending-member-list { display: grid; gap: 10px; }
+    .pending-member { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px; border: 1px solid var(--border); border-radius: 10px; }
+    .pending-member .pending-meta { flex: 1 1 200px; font-size: 14px; color: var(--muted); overflow-wrap: anywhere; }
+    .admin-lookup-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .admin-lookup-row label { flex: 0 0 auto; }
+    .admin-lookup-row input { flex: 1 1 160px; margin: 0; }
+    .admin-member-result { margin-top: 10px; padding: 10px; border: 1px solid var(--border); border-radius: 10px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .admin-member-result select { flex: 0 0 auto; }
 
     @media (max-width: 480px) {
       body { padding-bottom: calc(100px + env(safe-area-inset-bottom, 0px)); }
@@ -631,17 +647,428 @@
 
       #authSection { margin: 18px auto; }
     }
+    /* ============ PROFILE ("YOU") TAB — mobile first ============ */
+    #appSection:has(#profile:target) > section:not(#profile):not(#adminPanel) {
+      display: none;
+    }
+
+    /* The You tab is a full screen, so the footer card steps out of it. */
+    main:has(#profile:target) > #about {
+      display: none;
+    }
+
+    .you-tab {
+      padding: 0;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+    }
+
+    .you-topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 4px 2px 12px;
+    }
+
+    .you-round {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 44px;
+      height: 44px;
+      border: 0;
+      border-radius: 50%;
+      background: var(--surface);
+      color: var(--blue);
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      transition: background-color .16s ease;
+    }
+
+    .you-round svg {
+      width: 21px;
+      height: 21px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .you-pill {
+      display: inline-flex;
+      gap: 2px;
+      padding: 3px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: var(--surface);
+    }
+
+    .you-pill .you-round { background: transparent; }
+
+    .you-round:hover,
+    .you-pill .you-round:hover { background: color-mix(in srgb, var(--blue) 12%, var(--surface)); }
+
+    .you-hero {
+      display: grid;
+      justify-items: center;
+      gap: 6px;
+      padding: 4px 0 16px;
+    }
+
+    .you-status-bubble {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      max-width: 92%;
+      min-height: 40px;
+      padding: 8px 15px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: var(--surface);
+      color: var(--muted);
+      font: inherit;
+      font-size: 14px;
+      cursor: pointer;
+      transition: background-color .16s ease, color .16s ease;
+    }
+
+    .you-status-bubble svg {
+      flex: 0 0 auto;
+      width: 16px;
+      height: 16px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.9;
+      stroke-linecap: round;
+    }
+
+    .you-status-bubble.has-status { color: var(--text); }
+
+    .you-status-text {
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+
+    .you-avatar-wrap { position: relative; margin-top: 6px; }
+
+    .you-avatar {
+      display: grid;
+      place-items: center;
+      width: 128px;
+      height: 128px;
+      border-radius: 50%;
+      overflow: hidden;
+      background: var(--blue);
+      color: #fff;
+      font-size: 44px;
+      font-weight: 700;
+    }
+
+    .you-avatar img { width: 100%; height: 100%; object-fit: cover; }
+
+    .you-avatar svg {
+      width: 58px;
+      height: 58px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.6;
+      stroke-linecap: round;
+    }
+
+    .you-avatar-plus {
+      position: absolute;
+      right: 0;
+      bottom: 0;
+      display: grid;
+      place-items: center;
+      width: 40px;
+      height: 40px;
+      border: 3px solid var(--background);
+      border-radius: 50%;
+      background: var(--blue);
+      color: #fff;
+      font-size: 24px;
+      line-height: 1;
+      cursor: pointer;
+    }
+
+    .you-name-row {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      max-width: 100%;
+      min-height: 44px;
+      padding: 8px 14px;
+      border: 0;
+      border-radius: 999px;
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      font-size: 21px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .you-name-row:hover { background: var(--surface); }
+
+    .you-name-row > svg {
+      flex: 0 0 auto;
+      width: 16px;
+      height: 16px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2.2;
+      stroke-linecap: round;
+      transition: transform .18s ease;
+    }
+
+    .you-name-row[aria-expanded="true"] > svg { transform: rotate(180deg); }
+
+    .you-details {
+      margin: 0 0 16px;
+      padding: 14px 16px;
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      background: var(--surface);
+      font-size: 14px;
+      line-height: 1.8;
+    }
+
+    #profileDetails { display: block; }
+
+    #profileDetails .profile-avatar { display: none; }
+
+    .you-setup {
+      position: relative;
+      display: grid;
+      gap: 10px;
+      margin: 0 0 16px;
+      padding: 16px 44px 16px 16px;
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      background: var(--surface);
+    }
+
+    .you-setup-close {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      width: 38px;
+      height: 38px;
+      border: 0;
+      border-radius: 50%;
+      background: transparent;
+      color: var(--muted);
+      font-size: 22px;
+      line-height: 1;
+      cursor: pointer;
+    }
+
+    .you-setup ul { margin: 0; padding-left: 18px; color: var(--muted); font-size: 14px; }
+    .you-setup li { cursor: pointer; }
+    .you-setup li:hover { color: var(--blue); }
+
+    .you-group {
+      margin: 0 0 14px;
+      padding: 2px 0;
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      background: var(--surface);
+      overflow: hidden;
+    }
+
+    .you-group h3 {
+      margin: 0;
+      padding: 12px 16px 2px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+    }
+
+    .you-row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      width: 100%;
+      min-height: 56px;
+      padding: 10px 16px;
+      border: 0;
+      border-top: 1px solid var(--border);
+      background: transparent;
+      color: inherit;
+      font: inherit;
+      font-size: 16px;
+      text-align: left;
+      text-decoration: none;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+      transition: background-color .16s ease;
+    }
+
+    .you-group h3 + .you-row { border-top: 0; }
+
+    .you-row:hover { background: color-mix(in srgb, var(--blue) 8%, var(--surface)); }
+
+    .you-row-icon {
+      display: grid;
+      place-items: center;
+      flex: 0 0 34px;
+      width: 34px;
+      height: 34px;
+      border-radius: 50%;
+      background: color-mix(in srgb, var(--blue) 14%, var(--surface));
+      color: var(--blue);
+    }
+
+    .you-row-icon svg {
+      width: 19px;
+      height: 19px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 1.9;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .you-row-label {
+      flex: 1;
+      min-width: 0;
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+    }
+
+    .you-row-value { flex: 0 0 auto; color: var(--muted); font-size: 13px; }
+
+    .you-row-chevron {
+      flex: 0 0 auto;
+      width: 16px;
+      height: 16px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2;
+      stroke-linecap: round;
+      color: var(--muted);
+    }
+
+    .you-row.danger { color: #e5484d; }
+
+    .you-row.danger .you-row-icon { background: color-mix(in srgb, #e5484d 14%, var(--surface)); color: #e5484d; }
+
+    .you-sheet,
+    .you-editor {
+      display: grid;
+      gap: 12px;
+      margin: 0 0 14px;
+      padding: 16px;
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      background: var(--surface);
+    }
+
+    .you-sheet h3 { margin: 0; }
+
+    .you-fieldset {
+      display: grid;
+      gap: 12px;
+      min-width: 0;
+      padding: 0;
+      border: 0;
+    }
+
+    .you-fieldset legend { padding: 0 0 4px; font-size: 15px; font-weight: 700; }
+
+    .you-fieldset + .you-fieldset { margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--border); }
+
+    .you-qr { display: grid; place-items: center; gap: 10px; }
+
+    .you-qr canvas { padding: 6px; border-radius: 12px; background: #fff; max-width: 100%; height: auto; }
+
+    .you-inline-link { color: var(--blue); font-size: 14px; }
+
+    .you-theme-options { display: flex; flex-wrap: wrap; gap: 8px; }
+
+    .you-theme-options button {
+      min-height: 44px;
+      padding: 10px 18px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: var(--surface);
+      color: inherit;
+      font: inherit;
+      cursor: pointer;
+    }
+
+    .you-theme-options button[aria-pressed="true"] {
+      border-color: var(--blue);
+      background: color-mix(in srgb, var(--blue) 14%, var(--surface));
+      color: var(--blue);
+      font-weight: 700;
+    }
+
+    /* ============ FLOATING BOTTOM NAV ============ */
+    .bottom-nav a {
+      position: relative;
+      padding: 6px 4px;
+      transition: background-color .16s ease, color .16s ease;
+    }
+
+    .bottom-nav a.active { background: color-mix(in srgb, var(--blue) 12%, var(--surface)); }
+
+    .bottom-nav-photo {
+      display: grid;
+      place-items: center;
+      width: 25px;
+      height: 25px;
+      border-radius: 50%;
+      overflow: hidden;
+      background: var(--blue);
+      color: #fff;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .bottom-nav-photo img { width: 100%; height: 100%; object-fit: cover; }
+    .bottom-nav-photo svg { width: 16px; height: 16px; }
+
+    .bottom-nav-badge {
+      position: absolute;
+      top: 2px;
+      right: 14%;
+      min-width: 18px;
+      padding: 1px 5px;
+      border-radius: 999px;
+      background: #25a244;
+      color: #fff;
+      font-size: 10px;
+      font-weight: 700;
+      line-height: 1.5;
+      text-align: center;
+    }
+
+    @media (min-width: 720px) {
+      .you-avatar { width: 148px; height: 148px; }
+      .you-group,
+      .you-sheet,
+      .you-editor,
+      .you-setup,
+      .you-details { margin-left: auto; margin-right: auto; max-width: 620px; }
+    }
   </style>
-  <script type="module" crossorigin src="/assets/main-8y_v3HOK.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/app-lock-DV5ApokC.js">
+  <script type="module" crossorigin src="/assets/main-DCpni_EX.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/app-lock-DJ_rZt2Z.js">
 </head>
 
 <body>
   <header>
     <div class="brand-stack">
       <h1>campus connect</h1>
-      <button id="access-mode-toggle" class="mode-toggle" type="button" aria-pressed="false"></button>
-      <p id="mode-note" class="mode-note muted" aria-live="polite"></p>
     </div>
     <div class="header-actions">
       <a href="/messages.html" class="secondary"
@@ -669,7 +1096,6 @@
           <button id="themeButton" class="secondary" type="button" data-i18n="🌙 Theme">🌙 Theme</button>
           <button id="biometric-lock-toggle" class="secondary" type="button" hidden>Turn on biometric app lock</button>
           <small>Biometric lock is a device convenience and cannot prevent viruses or protect a compromised device.</small>
-          <button id="logoutButton" class="hidden" type="button" data-i18n="Log out">Log out</button>
         </div>
       </details>
     </div>
@@ -777,6 +1203,14 @@
         <label for="registerCourse" data-i18n="University, school, course, or organization (optional)">University, school, course, or organization (optional)</label>
         <input id="registerCourse" type="text" maxlength="100">
 
+        <label for="registerRole" data-i18n="I am a">I am a</label>
+        <select id="registerRole">
+          <option value="student" data-i18n="Student">Student</option>
+          <option value="lecturer" data-i18n="Lecturer">Lecturer</option>
+          <option value="security" data-i18n="Security staff">Security staff</option>
+        </select>
+        <p class="muted" data-i18n="Students start immediately. Lecturer and Security accounts are reviewed by an app admin before they get their role - you can still use the app as a student while you wait.">Students start immediately. Lecturer and Security accounts are reviewed by an app admin before they get their role - you can still use the app as a student while you wait.</p>
+
         <div id="registrationPasswordField">
           <label for="registerPassword" data-i18n="Password (at least 6 characters)">Password (at least 6 characters)</label>
           <input id="registerPassword" type="password" minlength="6" autocomplete="new-password" required>
@@ -799,39 +1233,212 @@
 
     <!-- APPLICATION -->
     <section id="appSection" class="hidden">
-      <section id="profile" class="card">
-        <h2 data-i18n="Your profile">Your profile</h2>
-        <div id="profileDetails" data-i18n="Loading your profile...">Loading your profile...</div>
-        <form id="profileForm">
-          <label for="profileAvatarFile" data-i18n="Profile picture">Profile picture</label>
-          <img id="profileAvatarPreview" alt="Profile picture preview" hidden>
-          <input id="profileAvatarFile" type="file" accept="image/*">
-          <label for="profileName" data-i18n="Display name">Display name</label>
-          <input id="profileName" type="text" maxlength="100" required>
-          <label for="profileGender" data-i18n="Gender (optional)">Gender (optional)</label>
-          <select id="profileGender">
-            <option value="" data-i18n="Prefer not to say">Prefer not to say</option>
-            <option value="male" data-i18n="Male">Male</option>
-            <option value="female" data-i18n="Female">Female</option>
-            <option value="other" data-i18n="Other genders">Other genders</option>
-          </select>
-          <small data-i18n="Your gender is shown to signed-in members only when your profile is discoverable.">Your gender is shown to signed-in members only when your profile is discoverable.</small>
-          <label for="profileBio" data-i18n="About you">About you</label>
-          <textarea id="profileBio" maxlength="500" placeholder="A little about you..." data-i18n-placeholder="A little about you..."></textarea>
-          <label for="profileCourse" data-i18n="University, school, course, or organization">University, school, course, or organization</label>
-          <input id="profileCourse" type="text" maxlength="120">
-          <label for="profileContactEmail" data-i18n="Contact email (optional)">Contact email (optional)</label>
-          <input id="profileContactEmail" type="email" maxlength="254" autocomplete="email">
-          <label class="contact-sharing-option"><input id="shareProfileEmail" type="checkbox"> <span data-i18n="Show my contact email to signed-in students">Show my contact email to signed-in students</span></label>
-          <label for="profileContactPhone" data-i18n="Contact phone (optional)">Contact phone (optional)</label>
-          <input id="profileContactPhone" type="tel" maxlength="32" autocomplete="tel">
-          <label class="contact-sharing-option"><input id="shareProfilePhone" type="checkbox"> <span data-i18n="Show my contact phone to signed-in students">Show my contact phone to signed-in students</span></label>
-          <label class="contact-sharing-option"><input id="discoverProfile" type="checkbox"> <span data-i18n="Show my profile in student search">Show my profile in student search</span></label>
-          <small data-i18n="Your profile is hidden from student search unless you enable this option. Your profile picture remains visible in chats.">Your profile is hidden from student search unless you enable this option. Your profile picture remains visible in chats.</small>
+      <section id="profile" class="card you-tab">
+        <header class="you-topbar">
+          <a class="you-round" href="/messages.html" aria-label="Find people" data-i18n-aria-label="Find people" title="Find people" data-i18n-title="Find people">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 5 5"/></svg>
+          </a>
+          <div class="you-pill">
+            <button id="youQrButton" class="you-round" type="button" aria-label="My QR code" data-i18n-aria-label="My QR code" title="My QR code" data-i18n-title="My QR code">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/><path d="M8.5 8.5h2v2h-2zM13.5 8.5h2v2h-2zM8.5 13.5h2v2h-2zM13.5 13.5h2v2h-2z"/></svg>
+            </button>
+            <button id="youEditButton" class="you-round" type="button" aria-label="Edit profile" data-i18n-aria-label="Edit profile" title="Edit profile" data-i18n-title="Edit profile">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L18 10l-4-4L4 16v4Z"/><path d="m14 6 4 4"/></svg>
+            </button>
+          </div>
+        </header>
+
+        <div class="you-hero">
+          <button id="youStatusButton" class="you-status-bubble" type="button">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11.5a7.5 7.5 0 0 1-7.5 7.5H5l1.8-3.2A7.5 7.5 0 1 1 20 11.5Z"/></svg>
+            <span id="youStatusText" class="you-status-text">Share a thought!</span>
+          </button>
+          <div class="you-avatar-wrap">
+            <div id="youAvatar" class="you-avatar" aria-hidden="true"></div>
+            <button id="youAvatarButton" class="you-avatar-plus" type="button" aria-label="Change profile picture" data-i18n-aria-label="Change profile picture">+</button>
+          </div>
+          <button id="youNameRow" class="you-name-row" type="button" aria-expanded="false" aria-controls="youDetails">
+            <span id="youName">…</span>
+            <span id="youRoleSlot"></span>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+          </button>
+        </div>
+
+        <div id="youDetails" class="you-details hidden">
+          <div id="profileDetails" data-i18n="Loading your profile...">Loading your profile...</div>
+        </div>
+
+        <div id="youSetupCard" class="you-setup hidden">
+          <button id="youSetupClose" class="you-setup-close" type="button" aria-label="Dismiss" data-i18n-aria-label="Dismiss">×</button>
+          <strong id="youSetupTitle" data-i18n="Complete your profile">Complete your profile</strong>
+          <ul id="youSetupList"></ul>
+          <button id="youSetupAction" class="secondary" type="button" data-i18n="Add it now">Add it now</button>
+        </div>
+
+        <p id="membershipStatus" class="membership-banner" role="status" hidden></p>
+
+        <div class="you-group">
+          <h3 data-i18n="Chats and groups">Chats and groups</h3>
+          <a class="you-row" href="/messages.html">
+            <span class="you-row-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 13.5a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9Z"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M17 5.5a4 4 0 0 1 0 7.6M18.5 20a6 6 0 0 0-2-4.4"/></svg></span>
+            <span class="you-row-label" data-i18n="Lists and groups">Lists and groups</span>
+            <svg class="you-row-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+          </a>
+          <a class="you-row" href="/messages.html?filter=favorites">
+            <span class="you-row-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 4 2.4 5 5.6.7-4 4 .9 5.6-4.9-2.7-4.9 2.7.9-5.6-4-4L9.6 9Z"/></svg></span>
+            <span class="you-row-label" data-i18n="Starred messages">Starred messages</span>
+            <svg class="you-row-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+          </a>
+        </div>
+
+        <div class="you-group">
+          <h3 data-i18n="Account">Account</h3>
+          <button class="you-row" type="button" data-you-target="account">
+            <span class="you-row-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/></svg></span>
+            <span class="you-row-label" data-i18n="Account">Account</span>
+            <span class="you-row-value" id="youAccountValue"></span>
+            <svg class="you-row-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+          </button>
+          <button class="you-row" type="button" data-you-target="privacy">
+            <span class="you-row-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 19 6v5.5c0 4.2-2.9 7.4-7 9-4.1-1.6-7-4.8-7-9V6l7-2.5Z"/></svg></span>
+            <span class="you-row-label" data-i18n="Privacy">Privacy</span>
+            <span class="you-row-value" id="youPrivacyValue"></span>
+            <svg class="you-row-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+          </button>
+          <button class="you-row" type="button" data-you-target="appearance">
+            <span class="you-row-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17M3.5 12h17"/></svg></span>
+            <span class="you-row-label" data-i18n="Appearance">Appearance</span>
+            <span class="you-row-value" id="youThemeValue"></span>
+            <svg class="you-row-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+          </button>
+          <a class="you-row" href="/#notifications">
+            <span class="you-row-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 10a5.5 5.5 0 0 1 11 0c0 4 1.5 5.5 1.5 5.5H5S6.5 14 6.5 10Z"/><path d="M10 19a2 2 0 0 0 4 0"/></svg></span>
+            <span class="you-row-label" data-i18n="Notifications">Notifications</span>
+            <span class="you-row-value" id="youNotificationsValue"></span>
+            <svg class="you-row-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+          </a>
+          <button id="youChatsRow" class="you-row" type="button" data-you-target="chats">
+            <span class="you-row-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11.5a7.5 7.5 0 0 1-7.5 7.5H5l1.8-3.2A7.5 7.5 0 1 1 20 11.5Z"/></svg></span>
+            <span class="you-row-label" data-i18n="Chats">Chats</span>
+            <span class="you-row-value" id="youChatsValue"></span>
+            <svg class="you-row-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+          </button>
+        </div>
+
+        <div class="you-group">
+          <h3 data-i18n="Help">Help</h3>
+          <button class="you-row" type="button" data-you-target="invite">
+            <span class="you-row-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20s-7-4.4-7-9.2A4.8 4.8 0 0 1 12 8a4.8 4.8 0 0 1 7 2.8c0 4.8-7 9.2-7 9.2Z"/></svg></span>
+            <span class="you-row-label" data-i18n="Invite a friend">Invite a friend</span>
+            <svg class="you-row-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+          </button>
+          <a class="you-row" href="/#about">
+            <span class="you-row-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 8h.01"/></svg></span>
+            <span class="you-row-label" data-i18n="Help and feedback">Help and feedback</span>
+            <svg class="you-row-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+          </a>
+          <button id="logoutButton" class="you-row danger hidden" type="button">
+            <span class="you-row-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M15 4.5H6v15h9"/><path d="M12 12h9m0 0-3-3m3 3-3 3"/></svg></span>
+            <span class="you-row-label" data-i18n="Log out">Log out</span>
+          </button>
+        </div>
+
+        <div id="youAppearanceSheet" class="you-sheet hidden">
+          <h3 data-i18n="Appearance">Appearance</h3>
+          <div class="you-theme-options" role="group" aria-label="Appearance" data-i18n-aria-label="Appearance">
+            <button type="button" data-theme-mode="light" data-i18n="Light">Light</button>
+            <button type="button" data-theme-mode="dark" data-i18n="Dark">Dark</button>
+            <button type="button" data-theme-mode="system" data-i18n="Follow system">Follow system</button>
+          </div>
+        </div>
+
+        <div id="youInviteSheet" class="you-sheet hidden">
+          <h3 data-i18n="Invite someone to chat">Invite someone to chat</h3>
+          <div class="you-qr" id="youInviteQr"></div>
+          <p class="invite-link-row">
+            <span data-i18n="Your invite link">Your invite link</span>:
+            <output id="myInviteLink" class="invite-link"></output>
+          </p>
+          <button id="copyMyInviteLink" class="secondary" type="button" data-i18n="Copy invite link">Copy invite link</button>
+          <button id="shareMyInviteButton" class="secondary" type="button" data-i18n="Share invite link">Share invite link</button>
+          <small data-i18n="Anyone with this link can open a chat with you.">Anyone with this link can open a chat with you.</small>
+        </div>
+
+        <form id="profileForm" class="you-editor hidden">
+          <fieldset id="youAccountFields" class="you-fieldset">
+            <legend data-i18n="Account">Account</legend>
+            <label for="profileAvatarFile" data-i18n="Profile picture">Profile picture</label>
+            <img id="profileAvatarPreview" alt="Profile picture preview" hidden>
+            <input id="profileAvatarFile" type="file" accept="image/*">
+            <label for="profileName" data-i18n="Display name">Display name</label>
+            <input id="profileName" type="text" maxlength="100" required>
+            <label for="profileUsername" data-i18n="Username">Username</label>
+            <input id="profileUsername" type="text" maxlength="30" minlength="3" autocomplete="username" spellcheck="false" pattern="[a-z0-9_]{3,30}" data-i18n-placeholder="your_name">
+            <p id="usernameStatus" class="status" role="status"></p>
+            <small data-i18n="Other members find you by this username. It is shown instead of your display name in search and chats.">Other members find you by this username. It is shown instead of your display name in search and chats.</small>
+            <label for="profileGender" data-i18n="Gender (optional)">Gender (optional)</label>
+            <select id="profileGender">
+              <option value="" data-i18n="Prefer not to say">Prefer not to say</option>
+              <option value="male" data-i18n="Male">Male</option>
+              <option value="female" data-i18n="Female">Female</option>
+              <option value="other" data-i18n="Other genders">Other genders</option>
+            </select>
+            <small data-i18n="Your gender is shown to signed-in members only when your profile is discoverable.">Your gender is shown to signed-in members only when your profile is discoverable.</small>
+            <label for="profileBio" data-i18n="About you">About you</label>
+            <textarea id="profileBio" maxlength="500" placeholder="A little about you..." data-i18n-placeholder="A little about you..."></textarea>
+            <label for="profileCourse" data-i18n="University, school, course, or organization">University, school, course, or organization</label>
+            <input id="profileCourse" type="text" maxlength="120">
+            <label for="profileUniversity" data-i18n="University">University</label>
+            <input id="profileUniversity" type="text" maxlength="120" placeholder="Kabarak University" data-i18n-placeholder="Kabarak University">
+            <small data-i18n="This decides which classes and announcements reach you.">This decides which classes and announcements reach you.</small>
+            <label for="profileRegistration" data-i18n="Registration number (optional)">Registration number (optional)</label>
+            <input id="profileRegistration" type="text" maxlength="32" spellcheck="false" autocomplete="off" pattern="[A-Za-z0-9][-./ A-Za-z0-9]{2,31}">
+            <small id="registrationHint" data-i18n="Only you and an app admin can read this. It lets a found ID be matched back to you, and nobody can browse a list of these numbers.">Only you and an app admin can read this. It lets a found ID be matched back to you, and nobody can browse a list of these numbers.</small>
+            <p id="myRoleLine" class="role-line"></p>
+            <div id="roleRequestFields">
+              <label for="profileRoleRequest" data-i18n="Ask for a role">Ask for a role</label>
+              <select id="profileRoleRequest">
+                <option value="" data-i18n="Keep my current role">Keep my current role</option>
+                <option value="lecturer" data-i18n="Lecturer">Lecturer</option>
+                <option value="security" data-i18n="Security staff">Security staff</option>
+              </select>
+              <small data-i18n="An app admin checks your claim before this role is given. Asking for it does not change what you can do until it is approved.">An app admin checks your claim before this role is given. Asking for it does not change what you can do until it is approved.</small>
+            </div>
+          </fieldset>
+          <fieldset id="youPrivacyFields" class="you-fieldset">
+            <legend data-i18n="Privacy">Privacy</legend>
+            <label for="profileContactEmail" data-i18n="Contact email (optional)">Contact email (optional)</label>
+            <input id="profileContactEmail" type="email" maxlength="254" autocomplete="email">
+            <label class="contact-sharing-option"><input id="shareProfileEmail" type="checkbox"> <span data-i18n="Show my contact email to signed-in students">Show my contact email to signed-in students</span></label>
+            <label for="profileContactPhone" data-i18n="Contact phone (optional)">Contact phone (optional)</label>
+            <input id="profileContactPhone" type="tel" maxlength="32" autocomplete="tel">
+            <label class="contact-sharing-option"><input id="shareProfilePhone" type="checkbox"> <span data-i18n="Show my contact phone to signed-in students">Show my contact phone to signed-in students</span></label>
+            <label class="contact-sharing-option"><input id="discoverProfile" type="checkbox"> <span data-i18n="Show my profile in student search">Show my profile in student search</span></label>
+            <small data-i18n="Your profile is hidden from student search unless you enable this option. Your profile picture remains visible in chats.">Your profile is hidden from student search unless you enable this option. Your profile picture remains visible in chats.</small>
+            <p class="muted" data-i18n="Blocked members">Blocked members</p>
+            <a class="you-inline-link" href="/messages.html" data-i18n="Manage blocked members">Manage blocked members</a>
+          </fieldset>
           <small>Profile edits can be saved offline on this device and sync automatically when you reconnect.</small>
+          <p id="profileStatus" class="status" role="status"></p>
           <button id="saveProfileButton" type="submit" data-i18n="Save profile">Save profile</button>
         </form>
-        <p id="profileStatus" class="status" role="status"></p>
+      </section>
+
+      <section id="adminPanel" class="card hidden">
+        <h2 data-i18n="Member administration">Member administration</h2>
+        <p class="muted" data-i18n="Approve or reject lecturer and security requests, and give a role directly. Every action here is recorded.">Approve or reject lecturer and security requests, and give a role directly. Every action here is recorded.</p>
+        <h3 data-i18n="Requests waiting for review">Requests waiting for review</h3>
+        <div id="pendingMemberList" class="pending-member-list">
+          <p class="muted" data-i18n="Loading...">Loading...</p>
+        </div>
+        <h3 data-i18n="Change a member's role">Change a member's role</h3>
+        <div class="admin-lookup-row">
+          <label for="adminMemberUsername" data-i18n="Username">Username</label>
+          <input id="adminMemberUsername" type="text" maxlength="30" spellcheck="false" autocomplete="off">
+          <button id="adminLookupButton" type="button" data-i18n="Find member">Find member</button>
+        </div>
+        <div id="adminMemberResult" class="admin-member-result" hidden></div>
+        <p id="adminStatus" class="status" role="status"></p>
       </section>
 
       <section id="notifications" class="card">
@@ -898,20 +1505,23 @@
   </main>
 
   <nav class="bottom-nav" aria-label="Main navigation" hidden>
-    <a href="/messages.html" data-destination="chats">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11.5a7.5 7.5 0 0 1-7.5 7.5H5l1.8-3.2A7.5 7.5 0 1 1 20 11.5Z"/><path d="M8 11.5h8M8 14.5h5"/></svg>
-      <span>Chats</span>
+    <a href="/#stories" data-destination="updates">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5.8"/><circle cx="12" cy="12" r="2.5"/></svg>
+      <span>Updates</span>
     </a>
     <a href="/messages.html#calls" data-destination="calls">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.2 3.5 10 7.2 8.4 9.5a15 15 0 0 0 6.1 6.1l2.3-1.6 3.7 2.8-.8 3.3a2 2 0 0 1-2.1 1.5A17.5 17.5 0 0 1 2.4 6.1a2 2 0 0 1 1.5-2.1l3.3-.5Z"/></svg>
       <span>Calls</span>
     </a>
-    <a href="/#stories" data-destination="updates">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5.8"/><circle cx="12" cy="12" r="2.5"/></svg>
-      <span>Updates</span>
+    <a href="/messages.html" data-destination="chats">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11.5a7.5 7.5 0 0 1-7.5 7.5H5l1.8-3.2A7.5 7.5 0 1 1 20 11.5Z"/><path d="M8 11.5h8M8 14.5h5"/></svg>
+      <span>Chats</span>
+      <span id="navChatsBadge" class="bottom-nav-badge hidden"></span>
     </a>
     <a href="/#profile" data-destination="profile">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/></svg>
+      <span id="navProfilePhoto" class="bottom-nav-photo" aria-hidden="true">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/></svg>
+      </span>
       <span>Profile</span>
     </a>
   </nav>
@@ -946,6 +1556,6 @@
       <p id="newPasswordStatus" class="status" role="status"></p>
     </form>
   </dialog>
-
+
 </body>
 </html>

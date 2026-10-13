@@ -811,6 +811,31 @@
         .member-profile-dialog p { overflow-wrap: anywhere; }
         .member-profile-muted { margin-top: 0; color: var(--muted); }
 
+        .member-profile-actions { display: grid; gap: 10px; margin-top: 16px; }
+        .role-badge { display: inline-block; margin-left: 6px; padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; border: 1px solid var(--border); background: color-mix(in srgb, var(--blue) 12%, var(--surface)); vertical-align: middle; }
+        .role-badge.security { background: color-mix(in srgb, #d93025 14%, var(--surface)); }
+        .primary-action {
+            padding: 12px 18px;
+            border: none;
+            border-radius: 12px;
+            background: var(--accent, #1877f2);
+            color: #fff;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .primary-action:disabled { opacity: .55; cursor: progress; }
+
+        .invite-body { display: grid; gap: 8px; text-align: left; padding: 8px 0; }
+        .invite-handle { margin: 0; font-weight: 700; }
+        .invite-link {
+            display: block;
+            overflow-wrap: anywhere;
+            font-size: .8rem;
+            color: var(--muted);
+        }
+        .invite-qr { display: flex; justify-content: center; }
+        .invite-qr canvas { border-radius: 10px; background: #fff; }
+
         .call-videos {
             position: relative;
             min-height: 220px;
@@ -1150,11 +1175,13 @@
 
         .bottom-nav-link {
             display: flex;
+            position: relative;
             min-width: 0;
             flex-direction: column;
             align-items: center;
             justify-content: center;
             gap: 4px;
+            padding: 6px 4px;
             border: 0;
             border-radius: 999px;
             background: transparent;
@@ -1162,10 +1189,13 @@
             font-size: 11px;
             font-weight: 600;
             text-decoration: none;
+            transition: background-color .16s ease, color .16s ease;
+            -webkit-tap-highlight-color: transparent;
         }
 
         .bottom-nav-link.active {
             color: var(--primary);
+            background: color-mix(in srgb, var(--primary) 12%, var(--panel));
         }
 
         .bottom-nav-link svg {
@@ -1180,6 +1210,43 @@
 
         .bottom-nav-link.active svg {
             stroke-width: 2.4;
+        }
+
+        .bottom-nav-photo {
+            display: grid;
+            place-items: center;
+            width: 25px;
+            height: 25px;
+            border-radius: 50%;
+            overflow: hidden;
+            background: var(--primary);
+            color: #fff;
+        }
+
+        .bottom-nav-photo img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .bottom-nav-photo svg {
+            width: 16px;
+            height: 16px;
+        }
+
+        .bottom-nav-badge {
+            position: absolute;
+            top: 2px;
+            right: 14%;
+            min-width: 18px;
+            padding: 1px 5px;
+            border-radius: 999px;
+            background: #25a244;
+            color: #fff;
+            font-size: 10px;
+            font-weight: 700;
+            line-height: 1.5;
+            text-align: center;
         }
 
         /* Telegram-inspired conversation layout, without Telegram branding. */
@@ -1518,8 +1585,8 @@
             }
         }
     </style>
-  <script type="module" crossorigin src="/assets/messages-CtI9KJ9_.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/app-lock-DV5ApokC.js">
+  <script type="module" crossorigin src="/assets/messages-qeGUEhWD.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/app-lock-DJ_rZt2Z.js">
 </head>
 
 <body>
@@ -1658,6 +1725,20 @@
                                 data-i18n="Install app">Install app</button>
                             <button class="theme-button" type="button" data-share-app data-i18n="Share app">Share
                                 app</button>
+                            <details id="invite-panel">
+                                <summary data-i18n="Invite someone to chat">Invite someone to chat</summary>
+                                <div class="invite-body">
+                                    <p class="invite-handle" id="invite-handle">@username</p>
+                                    <p><output id="invite-link" class="invite-link" for="invite-handle"></output></p>
+                                    <div id="invite-qr" class="invite-qr"></div>
+                                    <button id="copy-invite-link" class="theme-button" type="button"
+                                        data-i18n="Copy invite link">Copy invite link</button>
+                                    <button id="share-invite-link" class="theme-button" type="button"
+                                        data-i18n="Share invite link">Share invite link</button>
+                                    <small data-i18n="Anyone with this link can open a chat with you.">Anyone with
+                                        this link can open a chat with you.</small>
+                                </div>
+                            </details>
                             <details id="blocked-members-panel">
                                 <summary data-i18n="Blocked members">Blocked members</summary>
                                 <div id="blocked-members-list"></div>
@@ -1768,6 +1849,9 @@
         <p id="member-profile-course"></p>
         <p id="member-profile-bio"></p>
         <p id="member-profile-contact"></p>
+        <div class="member-profile-actions">
+            <button id="message-member-profile" class="primary-action" type="button" data-i18n="Message">Message</button>
+        </div>
     </dialog>
     <dialog id="call-dialog" class="call-dialog" aria-labelledby="call-title">
         <h2 id="call-title" data-i18n="Call">Call</h2>
@@ -1784,20 +1868,6 @@
         </div>
     </dialog>
     <nav class="bottom-nav" aria-label="Main navigation" hidden>
-        <a class="bottom-nav-link active" href="/messages.html" data-destination="chats" aria-current="page">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path d="M20 11.5a7.5 7.5 0 0 1-7.5 7.5H5l1.8-3.2A7.5 7.5 0 1 1 20 11.5Z" />
-                <path d="M8 11.5h8M8 14.5h5" />
-            </svg>
-            <span data-i18n="Chats">Chats</span>
-        </a>
-        <button class="bottom-nav-link" type="button" data-destination="calls" aria-pressed="false">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-                <path
-                    d="M7.2 3.5 10 7.2 8.4 9.5a15 15 0 0 0 6.1 6.1l2.3-1.6 3.7 2.8-.8 3.3a2 2 0 0 1-2.1 1.5A17.5 17.5 0 0 1 2.4 6.1a2 2 0 0 1 1.5-2.1l3.3-.5Z" />
-            </svg>
-            <span data-i18n="Calls">Calls</span>
-        </button>
         <a class="bottom-nav-link" href="/#stories" data-destination="updates">
             <svg viewBox="0 0 24 24" aria-hidden="true">
                 <circle cx="12" cy="12" r="9" />
@@ -1806,11 +1876,28 @@
             </svg>
             <span data-i18n="Updates">Updates</span>
         </a>
-        <a class="bottom-nav-link" href="/#profile" data-destination="profile">
+        <button class="bottom-nav-link" type="button" data-destination="calls" aria-pressed="false">
             <svg viewBox="0 0 24 24" aria-hidden="true">
-                <circle cx="12" cy="8" r="3.5" />
-                <path d="M4.5 20a7.5 7.5 0 0 1 15 0" />
+                <path
+                    d="M7.2 3.5 10 7.2 8.4 9.5a15 15 0 0 0 6.1 6.1l2.3-1.6 3.7 2.8-.8 3.3a2 2 0 0 1-2.1 1.5A17.5 17.5 0 0 1 2.4 6.1a2 2 0 0 1 1.5-2.1l3.3-.5Z" />
             </svg>
+            <span data-i18n="Calls">Calls</span>
+        </button>
+        <a class="bottom-nav-link active" href="/messages.html" data-destination="chats" aria-current="page">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M20 11.5a7.5 7.5 0 0 1-7.5 7.5H5l1.8-3.2A7.5 7.5 0 1 1 20 11.5Z" />
+                <path d="M8 11.5h8M8 14.5h5" />
+            </svg>
+            <span data-i18n="Chats">Chats</span>
+            <span id="nav-chats-badge" class="bottom-nav-badge hidden"></span>
+        </a>
+        <a class="bottom-nav-link" href="/#profile" data-destination="profile">
+            <span id="nav-profile-photo" class="bottom-nav-photo" aria-hidden="true">
+                <svg viewBox="0 0 24 24">
+                    <circle cx="12" cy="8" r="3.5" />
+                    <path d="M4.5 20a7.5 7.5 0 0 1 15 0" />
+                </svg>
+            </span>
             <span data-i18n="Profile">Profile</span>
         </a>
     </nav>
