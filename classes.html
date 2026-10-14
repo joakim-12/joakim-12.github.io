@@ -212,6 +212,13 @@
             font-weight: 700;
         }
 
+        .form-button.ghost {
+            margin-left: 8px;
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--muted);
+        }
+
         .managed-list { display: grid; gap: 6px; margin-top: 8px; }
 
         .managed-row {
@@ -236,13 +243,19 @@
             font-size: 12px;
         }
 
+        .my-studies-card { margin-top: 14px; }
+        .my-studies-card h2 { margin: 0 0 6px; font-size: 16px; }
+        .my-studies-hint { margin: 0 0 10px; color: var(--muted); font-size: 13px; }
+        .programme-info { margin: 10px 0 0; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+        .programme-info strong { color: var(--text); }
+
         @media (max-width: 540px) {
             .filter-row { grid-template-columns: 1fr 1fr; }
             .filter-row select:first-child { grid-column: 1 / -1; }
             .form-grid.two { grid-template-columns: 1fr; }
         }
     </style>
-  <script type="module" crossorigin src="/assets/classes-BUgmG4Iq.js"></script>
+  <script type="module" crossorigin src="/assets/classes-KPJJ8vEr.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/pwa-SJ1x9Wss.js">
 </head>
 
@@ -269,6 +282,14 @@
         <section class="card filter-card" aria-label="Timetable filters">
             <div class="filter-row">
                 <select id="programme-filter" aria-label="Programme" data-i18n-aria-label="Programme"></select>
+                <select id="level-filter" aria-label="Level" data-i18n-aria-label="Level">
+                    <option value="" data-i18n="All levels">All levels</option>
+                    <option value="phd" data-i18n="PhD">PhD</option>
+                    <option value="masters" data-i18n="Masters">Masters</option>
+                    <option value="undergraduate" data-i18n="Bachelor">Bachelor</option>
+                    <option value="diploma" data-i18n="Diploma">Diploma</option>
+                    <option value="certificate" data-i18n="Certificate">Certificate</option>
+                </select>
                 <select id="year-filter" aria-label="Year" data-i18n-aria-label="Year">
                     <option value="" data-i18n="All years">All years</option>
                 </select>
@@ -278,7 +299,25 @@
                     <option value="2" data-i18n="Sem 2">Sem 2</option>
                 </select>
             </div>
+            <p id="programme-info" class="programme-info"></p>
             <p id="my-class-line" class="my-class-line"></p>
+        </section>
+
+        <section id="my-studies-card" class="card my-studies-card" hidden>
+            <h2 data-i18n="What do you want to study or teach?">What do you want to study or teach?</h2>
+            <p class="my-studies-hint" data-i18n="Pick a programme above, choose your year and semester here, then save it to your profile. Students see their class level; lecturers see the classes they teach.">Pick a programme above, choose your year and semester here, then save it to your profile. Students see their class level; lecturers see the classes they teach.</p>
+            <div class="filter-row">
+                <label for="study-year" class="visually-hidden" hidden>Year</label>
+                <select id="study-year" aria-label="Your year" data-i18n-aria-label="Your year"></select>
+                <select id="study-semester" aria-label="Your semester" data-i18n-aria-label="Your semester">
+                    <option value="1" data-i18n="Semester 1">Semester 1</option>
+                    <option value="2" data-i18n="Semester 2">Semester 2</option>
+                </select>
+            </div>
+            <button id="save-studies" class="form-button" type="button"
+                data-i18n="Save as my programme">Save as my programme</button>
+            <button id="clear-studies" class="form-button ghost" type="button"
+                data-i18n="Remove my programme">Remove my programme</button>
         </section>
 
         <section id="timetable" aria-label="Weekly timetable"></section>
