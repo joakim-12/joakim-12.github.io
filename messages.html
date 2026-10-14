@@ -998,6 +998,60 @@
             font-size: 10px;
         }
 
+        .message-edited {
+            margin-left: 4px;
+            font-style: italic;
+        }
+
+        .message-deleted {
+            font-style: italic;
+            color: var(--muted);
+        }
+
+        .message-actions-button {
+            align-self: flex-end;
+            margin: -2px 2px 0 0;
+            padding: 1px 10px;
+            border: 0;
+            border-radius: 10px;
+            background: transparent;
+            color: var(--muted);
+            font-size: 15px;
+            line-height: 1.3;
+            cursor: pointer;
+        }
+
+        .message-actions-button:hover {
+            background: var(--received);
+            color: var(--text);
+        }
+
+        .message-action-dialog {
+            width: min(320px, calc(100vw - 40px));
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 18px;
+            background: var(--panel);
+            color: var(--text);
+        }
+
+        .message-action-dialog::backdrop { background: rgb(0 0 0 / 58%); }
+        .message-action-dialog h3 { margin: 0 0 12px; font-size: 15px; }
+        .message-action-options { display: grid; gap: 8px; }
+        .message-action-options button {
+            padding: 11px 14px;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            background: var(--surface);
+            color: var(--text);
+            font-size: 14px;
+            text-align: left;
+            cursor: pointer;
+        }
+        .message-action-options button:hover { background: var(--received); }
+        .message-action-danger { color: #d93025; }
+        .message-action-hint { margin: 10px 0 0; color: var(--muted); font-size: 12px; }
+
         .message-media {
             display: block;
             width: min(100%, 420px);
@@ -1585,7 +1639,7 @@
             }
         }
     </style>
-  <script type="module" crossorigin src="/assets/messages-lgAyk77i.js"></script>
+  <script type="module" crossorigin src="/assets/messages-BK_jffbW.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/app-lock-DJ_rZt2Z.js">
 </head>
 
@@ -1851,6 +1905,18 @@
         <p id="member-profile-contact"></p>
         <div class="member-profile-actions">
             <button id="message-member-profile" class="primary-action" type="button" data-i18n="Message">Message</button>
+        </div>
+    </dialog>
+    <dialog id="message-action-dialog" class="message-action-dialog" aria-labelledby="message-action-title">
+        <h3 id="message-action-title" data-i18n="Message options">Message options</h3>
+        <div class="message-action-options">
+            <button id="edit-message-button" type="button" data-i18n="✎ Edit message">✎ Edit message</button>
+            <button id="delete-message-me-button" type="button" data-i18n="Delete for me">Delete for me</button>
+            <button id="delete-message-all-button" class="message-action-danger" type="button" data-i18n="Delete for everyone">Delete for everyone</button>
+        </div>
+        <p id="message-action-hint" class="message-action-hint"></p>
+        <div class="message-action-options">
+            <button id="close-message-action-button" type="button" data-i18n="Cancel">Cancel</button>
         </div>
     </dialog>
     <dialog id="call-dialog" class="call-dialog" aria-labelledby="call-title">
