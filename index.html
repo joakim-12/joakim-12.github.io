@@ -630,6 +630,8 @@
     .membership-banner.warning { background: color-mix(in srgb, #f5a623 14%, var(--surface)); }
     .role-line { font-size: 14px; color: var(--muted); }
     .role-line strong { color: inherit; }
+    .class-level-row { display: flex; gap: 10px; flex-wrap: wrap; }
+    .class-level-row > div { flex: 1; min-width: 120px; }
     .role-badge { display: inline-block; padding: 1px 7px; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; border: 1px solid var(--border); background: color-mix(in srgb, var(--blue) 12%, var(--surface)); vertical-align: middle; }
     .role-badge.security { background: color-mix(in srgb, #d93025 14%, var(--surface)); }
     .pending-member-list { display: grid; gap: 10px; }
@@ -1077,8 +1079,10 @@
       .you-details { margin-left: auto; margin-right: auto; max-width: 620px; }
     }
   </style>
-  <script type="module" crossorigin src="/assets/main-DCpni_EX.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/app-lock-DJ_rZt2Z.js">
+  <script type="module" crossorigin src="/assets/main-CjNPY2LE.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/pwa-SJ1x9Wss.js">
+  <link rel="modulepreload" crossorigin href="/assets/index-LrY2BCsq.js">
+  <link rel="modulepreload" crossorigin href="/assets/app-lock-BytF_Qw4.js">
 </head>
 
 <body>
@@ -1305,6 +1309,11 @@
             <span class="you-row-label" data-i18n="Starred messages">Starred messages</span>
             <svg class="you-row-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
           </a>
+          <a class="you-row" href="/classes.html">
+            <span class="you-row-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 5h8a3 3 0 0 1 3 3v11a3 3 0 0 0-3-3H3Z"/><path d="M21 5h-8a3 3 0 0 0-3 3v11a3 3 0 0 1 3-3h8Z"/></svg></span>
+            <span class="you-row-label" data-i18n="Campus classes and timetable">Campus classes and timetable</span>
+            <svg class="you-row-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+          </a>
         </div>
 
         <div class="you-group">
@@ -1404,6 +1413,30 @@
             <textarea id="profileBio" maxlength="500" placeholder="A little about you..." data-i18n-placeholder="A little about you..."></textarea>
             <label for="profileCourse" data-i18n="University, school, course, or organization">University, school, course, or organization</label>
             <input id="profileCourse" type="text" maxlength="120">
+            <div id="class-level-fields" hidden>
+              <label for="profileProgramme" data-i18n="My Kabarak programme">My Kabarak programme</label>
+              <select id="profileProgramme">
+                <option value="" data-i18n="Not listed / other">Not listed / other</option>
+              </select>
+              <div class="class-level-row">
+                <div style="flex:1; min-width:120px;">
+                  <label for="profileStudyYear" data-i18n="Year">Year</label>
+                  <select id="profileStudyYear" style="width:100%;">
+                    <option value="" data-i18n="Select year">Select year</option>
+                  </select>
+                </div>
+                <div style="flex:1; min-width:120px;">
+                  <label for="profileSemester" data-i18n="Semester">Semester</label>
+                  <select id="profileSemester" style="width:100%;">
+                    <option value="" data-i18n="Select semester">Select semester</option>
+                    <option value="1" data-i18n="Semester 1">Semester 1</option>
+                    <option value="2" data-i18n="Semester 2">Semester 2</option>
+                  </select>
+                </div>
+              </div>
+              <p id="class-level-preview" class="role-line" role="status"></p>
+              <small data-i18n="Choosing your programme, year and semester classifies your class (for example 2.1). It also fills the course line above.">Choosing your programme, year and semester classifies your class (for example 2.1). It also fills the course line above.</small>
+            </div>
             <label for="profileUniversity" data-i18n="University">University</label>
             <input id="profileUniversity" type="text" maxlength="120" placeholder="Kabarak University" data-i18n-placeholder="Kabarak University">
             <small data-i18n="This decides which classes and announcements reach you.">This decides which classes and announcements reach you.</small>

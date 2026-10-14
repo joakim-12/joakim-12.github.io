@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#075b57">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="campus connect">
+    <meta name="description" content="Kabarak University course units and weekly class timetable on Campus Connect.">
+    <link rel="icon" type="image/png" href="/icons/icon-192.png">
+    <link rel="apple-touch-icon" href="/icons/icon-192.png">
+    <link rel="manifest" href="/manifest.json">
+    <title>Classes | campus connect</title>
+    <style>
+        :root {
+            color-scheme: light;
+            --page: #f4f6fb;
+            --panel: #fff;
+            --text: #172033;
+            --muted: #788198;
+            --border: #e7eaf1;
+            --primary: #6658e8;
+            --received: #f0f2f8;
+            --input: #f5f6fa;
+        }
+
+        body.dark-mode {
+            color-scheme: dark;
+            --page: #10131b;
+            --panel: #191e29;
+            --text: #f2f4fb;
+            --muted: #a0a9bd;
+            --border: #303747;
+            --primary: #8175ff;
+            --received: #282f3e;
+            --input: #222938;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            background: var(--page);
+            color: var(--text);
+            font-family: Arial, Helvetica, sans-serif;
+        }
+
+        button, input, select, textarea { font: inherit; }
+
+        button { cursor: pointer; }
+
+        a { color: var(--primary); text-decoration: none; }
+
+        .classes-topbar {
+            position: sticky;
+            top: 0;
+            z-index: 5;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 14px;
+            background: var(--primary);
+            color: #fff;
+        }
+
+        .classes-topbar h1 { flex: 1; margin: 0; font-size: 17px; }
+        .classes-topbar a { color: #fff; font-size: 14px; }
+
+        .topbar-actions { display: flex; align-items: center; gap: 8px; }
+
+        .language-selector {
+            padding: 6px 8px;
+            border: 1px solid rgb(255 255 255 / 40%);
+            border-radius: 10px;
+            background: transparent;
+            color: #fff;
+            font-size: 13px;
+        }
+
+        .language-selector option { color: var(--text); }
+
+        .theme-button {
+            padding: 6px 10px;
+            border: 1px solid rgb(255 255 255 / 40%);
+            border-radius: 10px;
+            background: transparent;
+            color: #fff;
+            font-size: 13px;
+        }
+
+        .classes-main {
+            max-width: 860px;
+            margin: 0 auto;
+            padding: 14px 14px 48px;
+        }
+
+        .notice {
+            min-height: 20px;
+            margin: 0 0 10px;
+            color: var(--muted);
+            font-size: 13px;
+            overflow-wrap: anywhere;
+        }
+
+        .notice.error { color: #d93025; }
+
+        .card {
+            padding: 16px;
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            background: var(--panel);
+        }
+
+        .filter-card { display: grid; gap: 10px; margin-bottom: 14px; }
+
+        .filter-row { display: grid; grid-template-columns: 1fr 90px 96px; gap: 8px; }
+
+        .filter-card select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            background: var(--input);
+            color: var(--text);
+        }
+
+        .my-class-line { margin: 0; color: var(--muted); font-size: 13px; }
+        .my-class-line strong { color: var(--primary); }
+
+        .day-group { margin-bottom: 16px; }
+        .day-title {
+            margin: 0 0 8px;
+            font-size: 13px;
+            font-weight: 700;
+            letter-spacing: .06em;
+            text-transform: uppercase;
+            color: var(--muted);
+        }
+
+        .session-card {
+            display: grid;
+            grid-template-columns: 84px 1fr;
+            gap: 10px;
+            padding: 12px;
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            background: var(--panel);
+            margin-bottom: 8px;
+        }
+
+        .session-time { color: var(--primary); font-weight: 700; font-size: 14px; }
+        .session-unit { margin: 0 0 2px; font-size: 15px; font-weight: 600; }
+        .session-meta { margin: 0; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
+        .level-chip {
+            display: inline-block;
+            margin-left: 6px;
+            padding: 1px 8px;
+            border-radius: 999px;
+            background: color-mix(in srgb, var(--primary) 14%, var(--panel));
+            color: var(--primary);
+            font-size: 11px;
+            font-weight: 700;
+            vertical-align: middle;
+        }
+
+        .session-open {
+            display: inline-block;
+            margin-top: 6px;
+            padding: 7px 12px;
+            border-radius: 10px;
+            background: var(--primary);
+            color: #fff;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .empty-timetable {
+            padding: 22px;
+            border: 1px dashed var(--border);
+            border-radius: 14px;
+            color: var(--muted);
+            text-align: center;
+        }
+
+        .lecturer-card { margin-top: 18px; }
+        .lecturer-card h2 { margin: 0 0 12px; font-size: 16px; }
+        .lecturer-card h3 { margin: 16px 0 8px; font-size: 14px; }
+
+        .form-grid { display: grid; gap: 8px; }
+        .form-grid.two { grid-template-columns: 1fr 1fr; }
+
+        .form-grid label { font-size: 12px; color: var(--muted); }
+
+        .form-grid input, .form-grid select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            background: var(--input);
+            color: var(--text);
+        }
+
+        .form-button {
+            margin-top: 10px;
+            padding: 11px 16px;
+            border: none;
+            border-radius: 12px;
+            background: var(--primary);
+            color: #fff;
+            font-weight: 700;
+        }
+
+        .managed-list { display: grid; gap: 6px; margin-top: 8px; }
+
+        .managed-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 9px 12px;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            background: var(--received);
+            font-size: 13px;
+        }
+
+        .managed-row span { flex: 1; overflow-wrap: anywhere; }
+
+        .managed-delete {
+            padding: 4px 10px;
+            border: 1px solid #d93025;
+            border-radius: 9px;
+            background: transparent;
+            color: #d93025;
+            font-size: 12px;
+        }
+
+        @media (max-width: 540px) {
+            .filter-row { grid-template-columns: 1fr 1fr; }
+            .filter-row select:first-child { grid-column: 1 / -1; }
+            .form-grid.two { grid-template-columns: 1fr; }
+        }
+    </style>
+  <script type="module" crossorigin src="/assets/classes-BUgmG4Iq.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/pwa-SJ1x9Wss.js">
+</head>
+
+<body>
+    <header class="classes-topbar">
+        <a href="/messages.html" data-i18n="← Chats">← Chats</a>
+        <h1 data-i18n="Campus Classes">Campus Classes</h1>
+        <div class="topbar-actions">
+            <label for="language-selector" hidden data-i18n="Language">Language</label>
+            <select id="language-selector" class="language-selector" aria-label="Language" data-i18n-aria-label="Language">
+                <option value="en">English</option>
+                <option value="fr">Français</option>
+                <option value="sw">Kiswahili</option>
+                <option value="es">Español</option>
+            </select>
+            <button id="theme-toggle" class="theme-button" type="button" aria-pressed="false"
+                data-i18n="🌙 Night Mode">🌙 Night Mode</button>
+        </div>
+    </header>
+
+    <main class="classes-main">
+        <p id="classes-notice" class="notice" role="status"></p>
+
+        <section class="card filter-card" aria-label="Timetable filters">
+            <div class="filter-row">
+                <select id="programme-filter" aria-label="Programme" data-i18n-aria-label="Programme"></select>
+                <select id="year-filter" aria-label="Year" data-i18n-aria-label="Year">
+                    <option value="" data-i18n="All years">All years</option>
+                </select>
+                <select id="semester-filter" aria-label="Semester" data-i18n-aria-label="Semester">
+                    <option value="" data-i18n="Both">Both</option>
+                    <option value="1" data-i18n="Sem 1">Sem 1</option>
+                    <option value="2" data-i18n="Sem 2">Sem 2</option>
+                </select>
+            </div>
+            <p id="my-class-line" class="my-class-line"></p>
+        </section>
+
+        <section id="timetable" aria-label="Weekly timetable"></section>
+
+        <section id="lecturer-panel" class="card lecturer-card" hidden>
+            <h2 data-i18n="Lecturer tools">Lecturer tools</h2>
+            <h3 data-i18n="Add a unit to this programme">Add a unit to this programme</h3>
+            <form id="unit-form" class="form-grid">
+                <div class="form-grid two">
+                    <div>
+                        <label for="unit-code" data-i18n="Unit code">Unit code</label>
+                        <input id="unit-code" type="text" maxlength="16" required placeholder="CS 101"
+                            data-i18n-placeholder="Unit code">
+                    </div>
+                    <div>
+                        <label for="unit-year" data-i18n="Year">Year</label>
+                        <select id="unit-year"></select>
+                    </div>
+                </div>
+                <div class="form-grid two">
+                    <div>
+                        <label for="unit-title" data-i18n="Unit title">Unit title</label>
+                        <input id="unit-title" type="text" maxlength="120" required>
+                    </div>
+                    <div>
+                        <label for="unit-semester" data-i18n="Semester">Semester</label>
+                        <select id="unit-semester">
+                            <option value="1" data-i18n="Semester 1">Semester 1</option>
+                            <option value="2" data-i18n="Semester 2">Semester 2</option>
+                        </select>
+                    </div>
+                </div>
+                <button class="form-button" type="submit" data-i18n="Add unit">Add unit</button>
+            </form>
+
+            <h3 data-i18n="Plan a weekly class">Plan a weekly class</h3>
+            <form id="session-form" class="form-grid">
+                <div>
+                    <label for="session-unit" data-i18n="Unit">Unit</label>
+                    <select id="session-unit" required></select>
+                </div>
+                <div class="form-grid two">
+                    <div>
+                        <label for="session-weekday" data-i18n="Day">Day</label>
+                        <select id="session-weekday">
+                            <option value="1" data-i18n="Monday">Monday</option>
+                            <option value="2" data-i18n="Tuesday">Tuesday</option>
+                            <option value="3" data-i18n="Wednesday">Wednesday</option>
+                            <option value="4" data-i18n="Thursday">Thursday</option>
+                            <option value="5" data-i18n="Friday">Friday</option>
+                            <option value="6" data-i18n="Saturday">Saturday</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="session-mode" data-i18n="Mode">Mode</label>
+                        <select id="session-mode">
+                            <option value="physical" data-i18n="In a room">In a room</option>
+                            <option value="online" data-i18n="Online class">Online class</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-grid two">
+                    <div>
+                        <label for="session-start" data-i18n="Start time">Start time</label>
+                        <input id="session-start" type="time" required value="09:00">
+                    </div>
+                    <div>
+                        <label for="session-end" data-i18n="End time">End time</label>
+                        <input id="session-end" type="time" required value="11:00">
+                    </div>
+                </div>
+                <div id="session-room-field">
+                    <label for="session-location" data-i18n="Room or place">Room or place</label>
+                    <input id="session-location" type="text" maxlength="120" placeholder="Room 204, School of Education">
+                </div>
+                <div id="session-online-field" hidden>
+                    <label for="session-link" data-i18n="Meeting link">Meeting link</label>
+                    <input id="session-link" type="url" maxlength="300" placeholder="https://meet...">
+                </div>
+                <div>
+                    <label for="session-note" data-i18n="Note (optional)">Note (optional)</label>
+                    <input id="session-note" type="text" maxlength="160">
+                </div>
+                <button class="form-button" type="submit" data-i18n="Save class plan">Save class plan</button>
+            </form>
+
+            <h3 data-i18n="My units and classes">My units and classes</h3>
+            <div id="managed-list" class="managed-list"></div>
+        </section>
+    </main>
+
+</body>
+
+</html>
