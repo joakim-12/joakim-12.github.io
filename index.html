@@ -471,22 +471,6 @@
       display: none;
     }
 
-    .notification-list {
-      display: grid;
-      gap: 8px;
-      margin-top: 12px;
-    }
-
-    .notification-item {
-      padding: 12px;
-      border-radius: 12px;
-      background: var(--background);
-    }
-
-    .notification-item.unread {
-      border-left: 3px solid var(--blue);
-    }
-
     .owner-about {
       line-height: 1.6;
     }
@@ -1080,7 +1064,7 @@
       .you-details { margin-left: auto; margin-right: auto; max-width: 620px; }
     }
   </style>
-  <script type="module" crossorigin src="/assets/main-FrMRC1M2.js"></script>
+  <script type="module" crossorigin src="/assets/main-5wy_uO6S.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/pwa-SJ1x9Wss.js">
   <link rel="modulepreload" crossorigin href="/assets/index-LrY2BCsq.js">
   <link rel="modulepreload" crossorigin href="/assets/app-lock-BytF_Qw4.js">
@@ -1337,12 +1321,6 @@
             <span class="you-row-value" id="youThemeValue"></span>
             <svg class="you-row-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
           </button>
-          <a class="you-row" href="/#notifications">
-            <span class="you-row-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 10a5.5 5.5 0 0 1 11 0c0 4 1.5 5.5 1.5 5.5H5S6.5 14 6.5 10Z"/><path d="M10 19a2 2 0 0 0 4 0"/></svg></span>
-            <span class="you-row-label" data-i18n="Notifications">Notifications</span>
-            <span class="you-row-value" id="youNotificationsValue"></span>
-            <svg class="you-row-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
-          </a>
           <button id="youChatsRow" class="you-row" type="button" data-you-target="chats">
             <span class="you-row-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11.5a7.5 7.5 0 0 1-7.5 7.5H5l1.8-3.2A7.5 7.5 0 1 1 20 11.5Z"/></svg></span>
             <span class="you-row-label" data-i18n="Chats">Chats</span>
@@ -1489,12 +1467,6 @@
         </div>
         <div id="adminMemberResult" class="admin-member-result" hidden></div>
         <p id="adminStatus" class="status" role="status"></p>
-      </section>
-
-      <section id="notifications" class="card">
-        <h2><span data-i18n="Notifications">Notifications</span> <span id="notificationCount" class="muted"></span></h2>
-        <div id="notificationList" class="notification-list" aria-live="polite"><p class="muted" data-i18n="Loading notifications...">Loading notifications...</p></div>
-        <p id="notificationStatus" class="status" role="status" aria-live="polite"></p>
       </section>
 
       <section id="stories" class="card">
