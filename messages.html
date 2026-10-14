@@ -1729,6 +1729,15 @@
                 display: flex;
             }
 
+            body:has(.messaging.chat-open) .bottom-nav {
+                display: none;
+            }
+
+            body:has(.messaging.chat-open) .app {
+                height: calc(100vh - env(safe-area-inset-bottom, 0px));
+                height: calc(100dvh - env(safe-area-inset-bottom, 0px));
+            }
+
             .messaging.show-calls {
                 height: 100%;
             }
