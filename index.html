@@ -1064,7 +1064,7 @@
       .you-details { margin-left: auto; margin-right: auto; max-width: 620px; }
     }
   </style>
-  <script type="module" crossorigin src="/assets/main-5wy_uO6S.js"></script>
+  <script type="module" crossorigin src="/assets/main-DOdrY3yY.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/pwa-SJ1x9Wss.js">
   <link rel="modulepreload" crossorigin href="/assets/index-LrY2BCsq.js">
   <link rel="modulepreload" crossorigin href="/assets/app-lock-BytF_Qw4.js">
@@ -1215,6 +1215,15 @@
           <option value="security" data-i18n="Security staff">Security staff</option>
         </select>
         <p class="muted" data-i18n="Students start immediately. Lecturer and Security accounts are reviewed by an app admin before they get their role - you can still use the app as a student while you wait.">Students start immediately. Lecturer and Security accounts are reviewed by an app admin before they get their role - you can still use the app as a student while you wait.</p>
+
+        <label for="registerGender" data-i18n="Gender (optional)">Gender (optional)</label>
+        <select id="registerGender">
+          <option value="" data-i18n="Prefer not to say">Prefer not to say</option>
+          <option value="male" data-i18n="Male">Male</option>
+          <option value="female" data-i18n="Female">Female</option>
+          <option value="other" data-i18n="Other genders">Other genders</option>
+        </select>
+        <p class="muted" data-i18n="Your gender is shown to signed-in members only when your profile is discoverable.">Your gender is shown to signed-in members only when your profile is discoverable.</p>
 
         <div id="registrationPasswordField">
           <label for="registerPassword" data-i18n="Password (at least 6 characters)">Password (at least 6 characters)</label>
@@ -1380,14 +1389,6 @@
             <input id="profileUsername" type="text" maxlength="30" minlength="3" autocomplete="username" spellcheck="false" pattern="[a-z0-9_]{3,30}" data-i18n-placeholder="your_name">
             <p id="usernameStatus" class="status" role="status"></p>
             <small data-i18n="Other members find you by this username. It is shown instead of your display name in search and chats.">Other members find you by this username. It is shown instead of your display name in search and chats.</small>
-            <label for="profileGender" data-i18n="Gender (optional)">Gender (optional)</label>
-            <select id="profileGender">
-              <option value="" data-i18n="Prefer not to say">Prefer not to say</option>
-              <option value="male" data-i18n="Male">Male</option>
-              <option value="female" data-i18n="Female">Female</option>
-              <option value="other" data-i18n="Other genders">Other genders</option>
-            </select>
-            <small data-i18n="Your gender is shown to signed-in members only when your profile is discoverable.">Your gender is shown to signed-in members only when your profile is discoverable.</small>
             <label for="profileBio" data-i18n="About you">About you</label>
             <textarea id="profileBio" maxlength="500" placeholder="A little about you..." data-i18n-placeholder="A little about you..."></textarea>
             <label for="profileCourse" data-i18n="University, school, course, or organization">University, school, course, or organization</label>
