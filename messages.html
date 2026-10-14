@@ -1077,13 +1077,71 @@
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            padding: 0 8px;
-            border: 1px solid var(--border);
+            width: 44px;
+            height: 44px;
+            flex: 0 0 44px;
+            padding: 0;
+            border: 0;
             border-radius: 50%;
-            background: var(--panel);
+            background: transparent;
             color: var(--primary);
-            font-size: 22px;
+            font-size: 26px;
             cursor: pointer;
+        }
+
+        .message-attachment:disabled,
+        .emoji-toggle:disabled,
+        .camera-shortcut:disabled {
+            cursor: not-allowed;
+            opacity: .45;
+        }
+
+        .attach-menu {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 10px;
+        }
+
+        .attach-menu[hidden] {
+            display: none;
+        }
+
+        .attach-option {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            padding: 7px 13px 7px 7px;
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            background: var(--panel);
+            color: var(--text);
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .attach-icon {
+            display: inline-flex;
+            width: 28px;
+            height: 28px;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            font-size: 15px;
+        }
+
+        .attach-icon.doc { background: #6c5ce7; }
+        .attach-icon.photo { background: #00a884; }
+        .attach-icon.camera { background: #e17076; }
+        .attach-icon.location { background: #00a884; }
+        .attach-icon.contact { background: #0084ff; }
+
+        .compose-field {
+            position: relative;
+            display: flex;
+            flex: 1;
+            min-width: 0;
         }
 
         .message-attachment input {
@@ -1117,6 +1175,81 @@
             border-radius: 12px;
             background: var(--input);
             color: var(--text);
+        }
+
+        .compose-field textarea {
+            padding-right: 42px;
+        }
+
+        .emoji-toggle {
+            position: absolute;
+            right: 6px;
+            bottom: 7px;
+            display: inline-flex;
+            width: 32px;
+            height: 32px;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            border: 0;
+            border-radius: 50%;
+            background: transparent;
+            color: var(--muted);
+            cursor: pointer;
+        }
+
+        .emoji-toggle svg,
+        .camera-shortcut svg {
+            width: 20px;
+            height: 20px;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .emoji-picker {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            gap: 2px;
+            margin-top: 10px;
+            padding: 8px;
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            background: var(--panel);
+        }
+
+        .emoji-picker[hidden] {
+            display: none;
+        }
+
+        .emoji-picker button {
+            padding: 6px;
+            border: 0;
+            border-radius: 8px;
+            background: transparent;
+            font-size: 21px;
+            cursor: pointer;
+        }
+
+        .emoji-picker button:hover {
+            background: var(--input);
+        }
+
+        .camera-shortcut {
+            display: inline-flex;
+            width: 44px;
+            height: 44px;
+            flex: 0 0 44px;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            border: 0;
+            border-radius: 50%;
+            background: transparent;
+            color: var(--primary);
+            cursor: pointer;
         }
 
         .voice-button {
@@ -1184,12 +1317,30 @@
         }
 
         .send-button {
-            padding: 13px 16px;
+            display: inline-flex;
+            width: 46px;
+            height: 46px;
+            flex: 0 0 46px;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
             border: 0;
-            border-radius: 12px;
+            border-radius: 50%;
             background: var(--primary);
-            color: white;
+            color: #fff;
             font-weight: bold;
+            cursor: pointer;
+        }
+
+        .send-button[hidden] {
+            display: none;
+        }
+
+        .send-button svg {
+            width: 21px;
+            height: 21px;
+            fill: currentColor;
+            stroke: none;
         }
 
         .notice {
@@ -1478,8 +1629,6 @@
         }
 
         .send-button {
-            min-height: 46px;
-            border-radius: 24px;
             background: var(--primary);
         }
 
@@ -1609,10 +1758,6 @@
                 display: inline-block;
             }
 
-            .send-button {
-                padding: 13px 12px;
-            }
-
             .call-contact {
                 flex-wrap: wrap;
             }
@@ -1643,7 +1788,7 @@
             }
         }
     </style>
-  <script type="module" crossorigin src="/assets/messages-CbHaFj4B.js"></script>
+  <script type="module" crossorigin src="/assets/messages-D75YwL87.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/pwa-SJ1x9Wss.js">
   <link rel="modulepreload" crossorigin href="/assets/index-LrY2BCsq.js">
   <link rel="modulepreload" crossorigin href="/assets/app-lock-BytF_Qw4.js">
@@ -1824,20 +1969,55 @@
                         student to view or start a conversation.</div>
                 </div>
                 <div class="chat-compose">
+                    <div id="attach-menu" class="attach-menu" hidden>
+                        <button id="attach-document" type="button" class="attach-option">
+                            <span class="attach-icon doc" aria-hidden="true">📄</span>
+                            <span data-i18n="Document">Document</span>
+                        </button>
+                        <button id="attach-photo" type="button" class="attach-option">
+                            <span class="attach-icon photo" aria-hidden="true">🖼️</span>
+                            <span data-i18n="Photos">Photos</span>
+                        </button>
+                        <button id="attach-camera" type="button" class="attach-option">
+                            <span class="attach-icon camera" aria-hidden="true">📷</span>
+                            <span data-i18n="Camera">Camera</span>
+                        </button>
+                        <button id="attach-location" type="button" class="attach-option">
+                            <span class="attach-icon location" aria-hidden="true">📍</span>
+                            <span data-i18n="Location">Location</span>
+                        </button>
+                        <button id="attach-contact" type="button" class="attach-option">
+                            <span class="attach-icon contact" aria-hidden="true">👤</span>
+                            <span data-i18n="Contacts">Contacts</span>
+                        </button>
+                    </div>
                     <form class="compose-form" id="message-form">
-                        <label class="message-attachment" for="message-media" title="Attach media or audio"
-                            data-i18n-title="Attach media or audio" aria-label="Attach media or audio"
-                            data-i18n-aria-label="Attach media or audio">＋
-                            <input id="message-media" type="file"
-                                accept="image/*,video/*,audio/*,.pdf,.txt,.csv,.rtf,.doc,.docx,.xls,.xlsx,.ppt,.pptx"
-                                disabled>
-                        </label>
-                        <label for="message-input" hidden data-i18n="Write a message">Write a message</label>
-                        <textarea id="message-input" placeholder="Write a message..."
-                            data-i18n-placeholder="Write a message..." rows="1" maxlength="5000" disabled></textarea>
+                        <button id="attach-button" class="message-attachment" type="button" aria-label="Attach"
+                            data-i18n-aria-label="Attach" aria-expanded="false" title="Attach"
+                            data-i18n-title="Attach" disabled>＋</button>
+                        <div class="compose-field">
+                            <label for="message-input" hidden data-i18n="Write a message">Write a message</label>
+                            <textarea id="message-input" placeholder="Write a message..."
+                                data-i18n-placeholder="Write a message..." rows="1" maxlength="5000" disabled></textarea>
+                            <button id="emoji-toggle" class="emoji-toggle" type="button" aria-label="Stickers and emoji"
+                                data-i18n-aria-label="Stickers and emoji" title="Stickers and emoji"
+                                data-i18n-title="Stickers and emoji" disabled>
+                                <svg viewBox="0 0 24 24" aria-hidden="true">
+                                    <circle cx="12" cy="12" r="9" />
+                                    <path d="M8.5 14.5a4.5 4.5 0 0 0 7 0M9 9.5h.01M15 9.5h.01" />
+                                </svg>
+                            </button>
+                        </div>
+                        <button id="camera-shortcut" class="camera-shortcut" type="button" aria-label="Camera"
+                            data-i18n-aria-label="Camera" title="Camera" data-i18n-title="Camera" disabled>
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <path d="M4 8.5h3L9 6h6l2 2.5h3v10.5H4z" />
+                                <circle cx="12" cy="13.5" r="3.2" />
+                            </svg>
+                        </button>
                         <button id="start-voice-recording" class="voice-button" type="button"
                             aria-label="Record voice message" data-i18n-aria-label="Record voice message"
-                            title="Record voice message" data-i18n-title="Record voice message" disabled>
+                            title="Hold to record a voice message" data-i18n-title="Hold to record a voice message" disabled>
                             <svg viewBox="0 0 24 24" aria-hidden="true">
                                 <rect x="9" y="2.5" width="6" height="12" rx="3" />
                                 <path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3.5M9 21.5h6" />
@@ -1850,9 +2030,16 @@
                                 <rect x="6" y="6" width="12" height="12" rx="2" />
                             </svg>
                         </button>
-                        <button class="send-button" type="submit" id="send-button" data-i18n="Send ➤" disabled>Send
-                            ➤</button>
+                        <button class="send-button" type="submit" id="send-button" aria-label="Send"
+                            data-i18n-aria-label="Send" title="Send" data-i18n-title="Send" disabled hidden>
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <path d="M3.4 20.6 21 12 3.4 3.4v6.5l12.6 2.1-12.6 2.1z" />
+                            </svg>
+                        </button>
                     </form>
+                    <div id="emoji-picker" class="emoji-picker" hidden></div>
+                    <input id="message-media" type="file" hidden disabled
+                        accept="image/*,video/*,audio/*,.pdf,.txt,.csv,.rtf,.doc,.docx,.xls,.xlsx,.ppt,.pptx">
                     <div class="voice-controls" aria-label="Voice message">
                         <button id="send-voice-message" type="button" data-i18n="Send voice message" hidden>Send voice
                             message</button>
