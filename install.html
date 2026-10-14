@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Campus Connect — 下载 Android 应用 / Download the Android app</title>
+<meta name="description" content="Download the Campus Connect Android app (APK) for Kabarak University.">
+<style>
+    :root { color-scheme: light dark; }
+    * { box-sizing: border-box; }
+    body {
+        margin: 0;
+        font-family: -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        background: #0f172a;
+        color: #e2e8f0;
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+    }
+    header { padding: 40px 20px 12px; text-align: center; }
+    .logo {
+        width: 96px; height: 96px; border-radius: 24px;
+        background: linear-gradient(135deg, #2563eb, #7c3aed);
+        display: flex; align-items: center; justify-content: center;
+        font-size: 40px; color: #fff; margin: 0 auto 16px;
+        box-shadow: 0 12px 32px rgba(37, 99, 235, .45);
+    }
+    h1 { margin: 0 0 4px; font-size: 28px; }
+    .sub { color: #94a3b8; margin: 0; }
+    main { width: min(680px, 92vw); padding: 16px 0 48px; }
+    .card {
+        background: #1e293b; border: 1px solid #334155; border-radius: 16px;
+        padding: 20px 24px; margin-top: 20px;
+    }
+    .btn {
+        display: block; text-align: center; text-decoration: none;
+        background: linear-gradient(135deg, #2563eb, #7c3aed);
+        color: #fff; font-size: 19px; font-weight: 700;
+        padding: 15px 24px; border-radius: 12px; margin: 14px 0 6px;
+        box-shadow: 0 8px 24px rgba(37, 99, 235, .4);
+    }
+    .btn.secondary {
+        background: #334155; box-shadow: none; font-size: 16px; font-weight: 600;
+    }
+    .meta { color: #94a3b8; font-size: 13px; text-align: center; }
+    h2 { font-size: 18px; margin: 0 0 10px; }
+    ol, ul { margin: 0; padding-left: 22px; color: #cbd5e1; line-height: 1.7; }
+    .lang-toggle { margin-top: 14px; }
+    .lang-toggle button {
+        background: #334155; color: #e2e8f0; border: 0; border-radius: 8px;
+        padding: 6px 14px; margin: 0 4px; font-size: 14px; cursor: pointer;
+    }
+    .lang-toggle button.active { background: #2563eb; }
+    footer { color: #64748b; font-size: 12px; padding: 0 20px 32px; text-align: center; }
+    [data-lang="en"] { display: none; }
+    body.en [data-lang="zh"] { display: none; }
+    body.en [data-lang="en"] { display: block; }
+    @media (max-width: 480px) { h1 { font-size: 22px; } }
+</style>
+</head>
+<body>
+<header>
+    <div class="logo">🎓</div>
+    <h1>Campus Connect</h1>
+    <p class="sub" data-lang="zh">Kabarak University · 校园社交应用</p>
+    <p class="sub" data-lang="en">Kabarak University · Campus social app</p>
+    <div class="lang-toggle">
+        <button type="button" class="active" onclick="setLang('zh', this)">中文</button>
+        <button type="button" onclick="setLang('en', this)">English</button>
+    </div>
+</header>
+<main>
+    <section class="card">
+        <div data-lang="zh"><h2>📱 下载 Android 应用</h2></div>
+        <div data-lang="en"><h2>📱 Download the Android app</h2></div>
+        <a class="btn" href="./campus-connect.apk" data-lang="zh">⬇️ 下载 Campus Connect.apk</a>
+        <a class="btn" href="./campus-connect.apk" data-lang="en">⬇️ Download Campus Connect.apk</a>
+        <p class="meta" id="apk-meta" data-lang="zh">适用于 Android 8.0 及以上 · 请在下载提示中选择“仍要下载”</p>
+        <p class="meta" id="apk-meta-en" data-lang="en">Requires Android 8.0 or newer · If the browser warns, choose “Download anyway”</p>
+        <a class="btn secondary" href="./index.html" data-lang="zh">没有手机？先在网页版体验 →</a>
+        <a class="btn secondary" href="./index.html" data-lang="en">No phone yet? Try the web version →</a>
+    </section>
+
+    <section class="card" data-lang="zh">
+        <h2>安装步骤</h2>
+        <ol>
+            <li>点击上方按钮下载 <b>campus-connect.apk</b>。</li>
+            <li>浏览器弹出安全提示时，选择 <b>“仍要下载 / 保留文件”</b>。</li>
+            <li>打开“文件管理”里的下载文件，点击安装。</li>
+            <li>首次安装会提示 <b>“未知来源应用”</b>：进入 设置 → 应用 → 特殊应用权限 → <b>安装未知应用</b>，允许你使用的浏览器安装，然后返回重试。</li>
+            <li>安装完成后打开应用，用你的 <b>已批准账号</b> 登录即可（如果数据库迁移还没执行，管理员功能会暂时不可用）。</li>
+        </ol>
+    </section>
+    <section class="card" data-lang="en">
+        <h2>How to install</h2>
+        <ol>
+            <li>Tap the download button above to get <b>campus-connect.apk</b>.</li>
+            <li>If the browser shows a security warning, choose <b>“Download anyway / Keep file”</b>.</li>
+            <li>Open the file in your Downloads folder and tap Install.</li>
+            <li>On first install, Android asks about <b>“Unknown apps”</b>: go to Settings → Apps → Special app access → <b>Install unknown apps</b>, allow your browser, then retry.</li>
+            <li>Launch the app and sign in with your approved account.</li>
+        </ol>
+    </section>
+
+    <section class="card" data-lang="zh">
+        <h2>常见问题</h2>
+        <ul>
+            <li><b>这安全吗？</b>应用由 Campus Connect 官方使用固定签名密钥构建，源码与网页版一致。</li>
+            <li><b>以后怎么更新？</b>重新访问本页下载最新版，直接覆盖安装，数据不会丢失。</li>
+            <li><b>iPhone 能装吗？</b>不能。iOS 版本需要通过 App Store 分发。</li>
+        </ul>
+    </section>
+    <section class="card" data-lang="en">
+        <h2>FAQ</h2>
+        <ul>
+            <li><b>Is it safe?</b> The APK is built and signed by the official Campus Connect build with a fixed release key — the same code as the web version.</li>
+            <li><b>How do I update?</b> Return to this page, download the newest APK, install over the old one. Your data is kept.</li>
+            <li><b>iPhone?</b> Not supported via this page — iOS requires the App Store.</li>
+        </ul>
+    </section>
+</main>
+<footer>
+    <span data-lang="zh">Campus Connect · Kabarak University</span>
+    <span data-lang="en">Campus Connect · Kabarak University</span>
+</footer>
+<script>
+    function setLang(lang, button) {
+        document.body.classList.toggle('en', lang === 'en');
+        document.querySelectorAll('.lang-toggle button').forEach(b => b.classList.remove('active'));
+        button.classList.add('active');
+    }
+</script>
+</body>
+</html>
