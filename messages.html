@@ -1518,31 +1518,168 @@
         }
 
         .conversation-heading {
-            padding: 22px 18px 14px;
+            padding: 14px 16px 10px;
             border-bottom: 1px solid var(--border);
         }
 
-        .conversation-heading h1 {
-            letter-spacing: -.6px;
+        .chat-top-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 6px;
         }
 
-        .search {
-            border-radius: 22px;
-            padding: 11px 15px;
+        .chat-top-spacer {
+            flex: 1;
+        }
+
+        .icon-round {
+            display: grid;
+            width: 42px;
+            height: 42px;
+            flex: 0 0 42px;
+            place-items: center;
+            border: 0;
+            border-radius: 50%;
+            background: var(--input);
+            color: var(--text);
+        }
+
+        .icon-round:disabled {
+            opacity: .45;
+        }
+
+        .icon-round svg {
+            width: 21px;
+            height: 21px;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 1.9;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        #chat-new-button {
+            background: var(--primary);
+            color: #fff;
+        }
+
+        .conversation-heading h1 {
+            margin: 0 0 10px;
+            font-size: 28px;
+            font-weight: 800;
+            letter-spacing: -.8px;
+        }
+
+        .heading-hint {
+            display: none;
+        }
+
+        .conversation-heading.filters-collapsed .list-switcher,
+        .conversation-heading.filters-collapsed .gender-filter {
+            display: none;
+        }
+
+        .search-form {
+            position: relative;
+        }
+
+        .search-form .search {
+            padding: 12px 14px 12px 42px;
+            border: 0;
+            border-radius: 999px;
+            background: var(--input);
+            font-size: 14px;
+        }
+
+        .search-form .search-submit {
+            position: absolute;
+            top: 50%;
+            left: 12px;
+            width: 22px;
+            height: 22px;
+            transform: translateY(-50%);
+            background: transparent;
+            color: var(--muted);
         }
 
         .conversation-list {
-            padding: 4px 8px;
+            padding: 0 8px;
+        }
+
+        .student-directory-item {
+            display: grid;
+            grid-template-columns: minmax(0, 1fr) auto;
+            align-items: start;
+            margin-bottom: 0;
+        }
+
+        .student-directory-item:not(:last-child)::after {
+            content: "";
+            grid-column: 1 / -1;
+            height: 1px;
+            margin-left: 70px;
+            background: var(--border);
         }
 
         .conversation {
-            min-height: 72px;
-            border-radius: 11px;
+            min-height: 68px;
+            padding: 10px 6px;
+            border-radius: 12px;
         }
 
         .conversation:hover,
         .conversation.selected {
             background: color-mix(in srgb, var(--primary) 10%, var(--panel));
+        }
+
+        .conversation-top {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+        }
+
+        .conversation-side {
+            display: flex;
+            flex-direction: column;
+            flex: 0 0 auto;
+            align-items: flex-end;
+            gap: 5px;
+        }
+
+        .conversation-time {
+            color: var(--muted);
+            font-size: 12px;
+            white-space: nowrap;
+        }
+
+        .conversation-time.has-unread {
+            color: var(--primary);
+            font-weight: 700;
+        }
+
+        .conversation-list .unread {
+            padding: 2px 8px;
+            border-radius: 999px;
+            background: var(--primary);
+            color: #fff;
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .avatar .unread {
+            display: none;
+        }
+
+        .favorite-chat-button {
+            width: 30px;
+            height: 30px;
+            font-size: 17px;
+        }
+
+        .member-presence,
+        .student-controls {
+            padding-left: 70px;
         }
 
         .avatar {
@@ -1617,6 +1754,94 @@
 
         .message-time {
             color: var(--muted);
+        }
+
+        .voice-audio {
+            display: none;
+        }
+
+        .voice-player {
+            display: flex;
+            align-items: center;
+            gap: 9px;
+            width: min(240px, 60vw);
+            margin: 2px 0;
+        }
+
+        .voice-play {
+            display: grid;
+            width: 34px;
+            height: 34px;
+            flex: 0 0 34px;
+            place-items: center;
+            border: 0;
+            border-radius: 50%;
+            background: var(--primary);
+            color: #fff;
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        .voice-wave {
+            display: flex;
+            flex: 1;
+            align-items: center;
+            gap: 2px;
+            height: 26px;
+            min-width: 0;
+        }
+
+        .voice-wave i {
+            flex: 1;
+            min-width: 2px;
+            border-radius: 2px;
+            background: color-mix(in srgb, var(--muted) 45%, transparent);
+        }
+
+        .voice-wave i.played {
+            background: var(--primary);
+        }
+
+        .voice-duration {
+            color: var(--muted);
+            font-size: 11px;
+            white-space: nowrap;
+        }
+
+        .message.sent .voice-play {
+            background: rgb(0 0 0 / 22%);
+            color: #fff;
+        }
+
+        .message.sent .voice-wave i {
+            background: rgb(0 0 0 / 18%);
+        }
+
+        .message.sent .voice-wave i.played {
+            background: #fff;
+        }
+
+        .message.sent .voice-duration {
+            color: inherit;
+            opacity: .7;
+        }
+
+        .bottom-nav-link.active {
+            border-radius: 999px;
+            background: color-mix(in srgb, var(--primary) 16%, var(--panel));
+        }
+
+        .bottom-nav-badge {
+            min-width: 19px;
+            height: 19px;
+            padding: 0 5px;
+            border-radius: 999px;
+            background: var(--primary);
+            color: #fff;
+            font-size: 11px;
+            font-weight: 700;
+            line-height: 19px;
+            text-align: center;
         }
 
         .chat-compose {
@@ -1797,7 +2022,7 @@
             }
         }
     </style>
-  <script type="module" crossorigin src="/assets/messages-D75YwL87.js"></script>
+  <script type="module" crossorigin src="/assets/messages-Bt2fbTOY.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/pwa-SJ1x9Wss.js">
   <link rel="modulepreload" crossorigin href="/assets/index-LrY2BCsq.js">
   <link rel="modulepreload" crossorigin href="/assets/app-lock-BytF_Qw4.js">
@@ -1819,11 +2044,34 @@
         </aside>
         <section class="messaging" id="messaging">
             <aside class="conversations" id="conversations-panel">
-                <header class="conversation-heading">
-                    <div style="display:flex;align-items:center;gap:12px;">
-                        <h1 data-i18n="Chats">Chats</h1>
+                <header class="conversation-heading filters-collapsed">
+                    <div class="chat-top-actions">
+                        <button id="chat-options-button" class="icon-round" type="button" aria-expanded="false"
+                            aria-label="More chat options" data-i18n-aria-label="More chat options">
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <circle cx="5.5" cy="12" r="1.7" />
+                                <circle cx="12" cy="12" r="1.7" />
+                                <circle cx="18.5" cy="12" r="1.7" />
+                            </svg>
+                        </button>
+                        <span class="chat-top-spacer"></span>
+                        <button id="chat-camera-button" class="icon-round" type="button" aria-label="Camera"
+                            data-i18n-aria-label="Camera">
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <path d="M4 8.4h3.1l1.4-2.2h6.6l1.4 2.2H20V19H4z" />
+                                <circle cx="12" cy="13.4" r="3.3" />
+                            </svg>
+                        </button>
+                        <button id="chat-new-button" class="icon-round" type="button" aria-label="New chat"
+                            data-i18n-aria-label="New chat">
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <path d="M12 5.2v13.6M5.2 12h13.6" />
+                            </svg>
+                        </button>
                     </div>
-                    <p data-i18n="Search discoverable members by name, username, course, or shared contact details.">
+                    <h1 data-i18n="Chats">Chats</h1>
+                    <p class="heading-hint"
+                        data-i18n="Search discoverable members by name, username, course, or shared contact details.">
                         Search discoverable members by name, username, course, or shared contact details.</p>
                     <form id="conversation-search-form" class="search-form" role="search">
                         <label for="conversation-search" hidden
@@ -2170,7 +2418,7 @@
             </span>
             <span data-i18n="Profile">Profile</span>
         </a>
-    </nav>
+    </nav>
 </body>
 
 </html>
