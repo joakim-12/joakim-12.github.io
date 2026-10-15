@@ -931,35 +931,27 @@
         }
 
         .message {
+            position: relative;
             display: flex;
             max-width: min(88%, 560px);
-            flex-direction: column;
-            gap: 5px;
+            align-items: flex-end;
+            gap: 8px;
         }
 
         .message.sent {
             align-self: flex-end;
-            align-items: flex-end;
+            justify-content: flex-end;
         }
 
         .message.received {
             align-self: flex-start;
-            align-items: flex-start;
-        }
-
-        .message.received {
-            display: grid;
-            grid-template-columns: 28px minmax(0, 1fr);
-            grid-template-areas: "avatar bubble" ". time";
-            align-items: end;
-            column-gap: 8px;
+            justify-content: flex-start;
         }
 
         .message-avatar {
-            grid-area: avatar;
             width: 28px;
             height: 28px;
-            flex-basis: 28px;
+            flex: 0 0 28px;
         }
 
         .message-avatar svg {
@@ -967,17 +959,29 @@
             height: 17px;
         }
 
-        .message.received .bubble {
-            grid-area: bubble;
+        .voice-avatar {
+            position: relative;
+            width: 34px;
+            height: 34px;
+            flex: 0 0 34px;
         }
 
-        .message.received .message-time {
-            grid-area: time;
+        .voice-avatar::after {
+            content: "🎤";
+            position: absolute;
+            right: -5px;
+            bottom: -3px;
+            padding: 1px;
+            border-radius: 50%;
+            background: var(--panel);
+            font-size: 9px;
+            line-height: 1;
         }
 
         .bubble {
+            position: relative;
             overflow-wrap: anywhere;
-            padding: 11px 14px;
+            padding: 9px 12px 22px;
             border-radius: 17px;
             background: var(--received);
             line-height: 1.5;
@@ -995,7 +999,9 @@
         }
 
         .message-time {
-            padding: 0 4px;
+            position: absolute;
+            right: 10px;
+            bottom: 7px;
             color: var(--muted);
             font-size: 10px;
         }
@@ -1011,8 +1017,10 @@
         }
 
         .message-actions-button {
-            align-self: flex-end;
-            margin: -2px 2px 0 0;
+            position: absolute;
+            top: -6px;
+            right: 2px;
+            z-index: 1;
             padding: 1px 10px;
             border: 0;
             border-radius: 10px;
@@ -1789,10 +1797,16 @@
 
         .voice-player {
             display: flex;
+            flex-direction: column;
+            gap: 3px;
+            width: min(260px, 62vw);
+            margin: 3px 0 1px;
+        }
+
+        .voice-row {
+            display: flex;
             align-items: center;
-            gap: 9px;
-            width: min(240px, 60vw);
-            margin: 2px 0;
+            gap: 10px;
         }
 
         .voice-play {
@@ -1805,28 +1819,49 @@
             border-radius: 50%;
             background: var(--primary);
             color: #fff;
-            font-size: 12px;
+            font-size: 11px;
             cursor: pointer;
         }
 
         .voice-wave {
+            position: relative;
             display: flex;
             flex: 1;
             align-items: center;
-            gap: 2px;
-            height: 26px;
+            gap: 1.5px;
+            height: 22px;
             min-width: 0;
         }
 
         .voice-wave i {
             flex: 1;
-            min-width: 2px;
-            border-radius: 2px;
+            min-width: 1.5px;
+            border-radius: 1px;
             background: color-mix(in srgb, var(--muted) 45%, transparent);
         }
 
         .voice-wave i.played {
             background: var(--primary);
+        }
+
+        .voice-dot {
+            position: absolute;
+            top: 50%;
+            left: 0;
+            z-index: 1;
+            width: 11px;
+            height: 11px;
+            border-radius: 50%;
+            background: var(--primary);
+            opacity: 0;
+            transform: translate(-50%, -50%);
+            transition: left .12s linear;
+        }
+
+        .voice-meta {
+            display: flex;
+            min-height: 14px;
+            padding-left: 3px;
         }
 
         .voice-duration {
@@ -1844,7 +1879,8 @@
             background: rgb(0 0 0 / 18%);
         }
 
-        .message.sent .voice-wave i.played {
+        .message.sent .voice-wave i.played,
+        .message.sent .voice-dot {
             background: #fff;
         }
 
@@ -2049,7 +2085,7 @@
             }
         }
     </style>
-  <script type="module" crossorigin src="/assets/messages-D1RromTd.js"></script>
+  <script type="module" crossorigin src="/assets/messages-DcFUrDQB.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/pwa-SJ1x9Wss.js">
   <link rel="modulepreload" crossorigin href="/assets/index-LrY2BCsq.js">
   <link rel="modulepreload" crossorigin href="/assets/app-lock-BytF_Qw4.js">
