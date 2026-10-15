@@ -391,11 +391,13 @@
 
         .list-switcher button {
             flex: 0 0 auto;
-            padding: 8px 13px;
+            padding: 7px 14px;
             border: 1px solid var(--border);
-            border-radius: 18px;
+            border-radius: 999px;
             background: var(--input);
             color: var(--text);
+            font-size: 13px;
+            font-weight: 600;
             white-space: nowrap;
         }
 
@@ -1089,6 +1091,54 @@
             color: #fff;
         }
 
+        .contact-name-dialog input {
+            width: 100%;
+            margin-top: 4px;
+            padding: 11px 12px;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            background: var(--input);
+            color: var(--text);
+            font: inherit;
+            font-size: 14px;
+        }
+
+        .contact-name-dialog .message-action-options {
+            grid-template-columns: 1fr 1fr 1fr;
+            margin-top: 12px;
+        }
+
+        .contact-name-dialog .message-action-options button { text-align: center; }
+
+        #save-contact-name-button {
+            border-color: var(--primary);
+            background: var(--primary);
+            color: #fff;
+        }
+
+        .chat-name-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            min-width: 0;
+        }
+
+        .rename-contact-button {
+            display: grid;
+            width: 28px;
+            height: 28px;
+            flex: 0 0 28px;
+            place-items: center;
+            border: 0;
+            border-radius: 50%;
+            background: transparent;
+            color: var(--primary);
+            font-size: 15px;
+            cursor: pointer;
+        }
+
+        .rename-contact-button:hover { background: var(--input); }
+
         .message-media {
             display: block;
             width: min(100%, 420px);
@@ -1245,9 +1295,8 @@
         }
 
         .emoji-picker {
-            display: grid;
-            grid-template-columns: repeat(8, 1fr);
-            gap: 2px;
+            max-height: 320px;
+            overflow-y: auto;
             margin-top: 10px;
             padding: 8px;
             border: 1px solid var(--border);
@@ -1257,6 +1306,25 @@
 
         .emoji-picker[hidden] {
             display: none;
+        }
+
+        .emoji-section h4 {
+            position: sticky;
+            top: 0;
+            z-index: 1;
+            margin: 8px 0 4px;
+            padding: 4px 6px;
+            background: var(--panel);
+            color: var(--muted);
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+
+        .emoji-grid {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            gap: 2px;
         }
 
         .emoji-picker button {
@@ -1610,7 +1678,6 @@
             display: none;
         }
 
-        .conversation-heading.filters-collapsed .list-switcher,
         .conversation-heading.filters-collapsed .gender-filter {
             display: none;
         }
@@ -2085,7 +2152,7 @@
             }
         }
     </style>
-  <script type="module" crossorigin src="/assets/messages-DcFUrDQB.js"></script>
+  <script type="module" crossorigin src="/assets/messages-CBpgQzYc.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/pwa-SJ1x9Wss.js">
   <link rel="modulepreload" crossorigin href="/assets/index-LrY2BCsq.js">
   <link rel="modulepreload" crossorigin href="/assets/app-lock-BytF_Qw4.js">
@@ -2203,7 +2270,12 @@
                         aria-label="Back to students">←</button>
                     <div class="avatar" id="chat-avatar" aria-hidden="true">?</div>
                     <div class="chat-person">
-                        <h2 id="chat-name" data-i18n="Choose a student">Choose a student</h2>
+                        <div class="chat-name-row">
+                            <h2 id="chat-name" data-i18n="Choose a student">Choose a student</h2>
+                            <button id="rename-contact-button" class="rename-contact-button hidden" type="button"
+                                aria-label="Name this friend" data-i18n-aria-label="Name this friend"
+                                title="Name this friend" data-i18n-title="Name this friend">✎</button>
+                        </div>
                         <p id="chat-status" data-i18n="Messages are private to you and the recipient.">Messages are
                             private to you and the recipient.</p>
                     </div>
@@ -2297,6 +2369,10 @@
                         <button id="attach-photo" type="button" class="attach-option">
                             <span class="attach-icon photo" aria-hidden="true">🖼️</span>
                             <span data-i18n="Photos">Photos</span>
+                        </button>
+                        <button id="attach-gif" type="button" class="attach-option">
+                            <span class="attach-icon gif" aria-hidden="true">🎞️</span>
+                            <span data-i18n="GIF">GIF</span>
                         </button>
                         <button id="attach-camera" type="button" class="attach-option">
                             <span class="attach-icon camera" aria-hidden="true">📷</span>
@@ -2444,6 +2520,19 @@
         <div class="message-action-options">
             <button id="save-edit-button" type="button" data-i18n="Save">Save</button>
             <button id="cancel-edit-button" type="button" data-i18n="Cancel">Cancel</button>
+        </div>
+    </dialog>
+    <dialog id="contact-name-dialog" class="message-action-dialog contact-name-dialog"
+        aria-labelledby="contact-name-title">
+        <h3 id="contact-name-title" data-i18n="Name this friend">Name this friend</h3>
+        <input id="contact-name-input" type="text" maxlength="80" autocomplete="off">
+        <p class="message-action-hint"
+            data-i18n="Only you see this name. It replaces their profile name in your chats.">Only you see this name.
+            It replaces their profile name in your chats.</p>
+        <div class="message-action-options">
+            <button id="save-contact-name-button" type="button" data-i18n="Save">Save</button>
+            <button id="clear-contact-name-button" type="button" data-i18n="Remove name">Remove name</button>
+            <button id="cancel-contact-name-button" type="button" data-i18n="Cancel">Cancel</button>
         </div>
     </dialog>
     <dialog id="call-dialog" class="call-dialog" aria-labelledby="call-title">
