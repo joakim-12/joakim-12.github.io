@@ -901,6 +901,700 @@
             background: rgb(0 0 0 / 55%);
         }
 
+        /* ---- Calls screen (WhatsApp style) ---------------------------- */
+        .calls-topbar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 6px;
+        }
+
+        .calls-top-spacer {
+            flex: 1;
+        }
+
+        .calls-action-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 18px;
+            margin: 18px 0 22px;
+        }
+
+        .calls-action {
+            display: grid;
+            justify-items: center;
+            gap: 8px;
+            width: 84px;
+            padding: 0;
+            border: 0;
+            background: none;
+            color: var(--primary);
+            font: inherit;
+            font-size: 12px;
+            font-weight: 600;
+            text-align: center;
+            cursor: pointer;
+        }
+
+        .calls-action span {
+            color: var(--text);
+        }
+
+        .calls-action i {
+            display: grid;
+            place-items: center;
+            width: 46px;
+            height: 46px;
+            border-radius: 50%;
+            background: color-mix(in srgb, var(--primary) 14%, transparent);
+        }
+
+        .calls-action svg {
+            width: 23px;
+            height: 23px;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 1.9;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .calls-section-title {
+            margin: 0 0 8px;
+            color: var(--muted);
+            font-size: 13px;
+            font-weight: 700;
+        }
+
+        .call-history {
+            display: grid;
+            gap: 2px;
+            max-width: 760px;
+            margin-bottom: 22px;
+        }
+
+        .call-history:empty {
+            display: none;
+        }
+
+        .call-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 10px 4px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .call-row-main {
+            display: flex;
+            flex: 1;
+            min-width: 0;
+            align-items: center;
+            gap: 12px;
+            padding: 0;
+            border: 0;
+            background: none;
+            color: inherit;
+            font: inherit;
+            text-align: left;
+            cursor: pointer;
+        }
+
+        .call-row-text {
+            min-width: 0;
+        }
+
+        .call-row-name {
+            overflow: hidden;
+            color: var(--text);
+            font-weight: 700;
+            font-size: 15px;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .call-row-name .call-count {
+            color: var(--muted);
+            font-weight: 600;
+        }
+
+        .call-row-meta {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 3px;
+            color: var(--muted);
+            font-size: 12.5px;
+        }
+
+        .call-row-meta.missed {
+            color: #ea4335;
+        }
+
+        .call-dir {
+            display: inline-block;
+            width: 14px;
+            height: 14px;
+            flex: none;
+        }
+
+        .call-dir svg {
+            display: block;
+            width: 14px;
+            height: 14px;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 2.1;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .call-row-time {
+            flex: none;
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        .call-row-actions {
+            display: flex;
+            flex: none;
+            gap: 6px;
+        }
+
+        .call-row-actions button {
+            display: grid;
+            place-items: center;
+            width: 32px;
+            height: 32px;
+            border: 0;
+            border-radius: 50%;
+            background: transparent;
+            color: var(--primary);
+            cursor: pointer;
+        }
+
+        .call-row-actions svg {
+            width: 19px;
+            height: 19px;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 1.9;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .calls-picker {
+            display: none;
+            gap: 10px;
+            max-width: 760px;
+            margin-bottom: 22px;
+        }
+
+        .calls-picker.open {
+            display: grid;
+        }
+
+        /* ---- Keypad / Schedule dialogs -------------------------------- */
+        .sheet-dialog {
+            width: min(420px, calc(100vw - 24px));
+            max-height: min(92dvh, 700px);
+            overflow-y: auto;
+            padding: 18px;
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            background: var(--panel);
+            color: var(--text);
+        }
+
+        .sheet-dialog::backdrop {
+            background: rgb(0 0 0 / 55%);
+        }
+
+        .sheet-dialog h3 {
+            margin: 0 0 10px;
+            font-size: 18px;
+        }
+
+        .dial-display {
+            display: block;
+            width: 100%;
+            margin-bottom: 12px;
+            padding: 10px 12px;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            background: var(--received);
+            color: var(--text);
+            font-size: 20px;
+            font-weight: 700;
+            text-align: center;
+            letter-spacing: .04em;
+        }
+
+        .dial-pad {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 4px 10px;
+            justify-items: center;
+            margin-bottom: 12px;
+        }
+
+        .dial-pad button {
+            display: grid;
+            place-items: center;
+            width: min(62px, 17vw);
+            height: min(62px, 17vw);
+            border: 0;
+            border-radius: 50%;
+            background: var(--received);
+            color: var(--text);
+            font-size: 21px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .dial-pad button small {
+            color: var(--muted);
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: .12em;
+        }
+
+        .dial-row {
+            display: flex;
+            justify-content: center;
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .dial-row .primary-action,
+        .dial-row .secondary-action {
+            display: inline-block;
+            padding: 10px 16px;
+            border: 0;
+            border-radius: 999px;
+            background: var(--primary);
+            color: #fff;
+            font-weight: 600;
+            text-align: center;
+            text-decoration: none;
+            cursor: pointer;
+        }
+
+        .dial-row .secondary-action {
+            background: var(--received);
+            color: var(--text);
+        }
+
+        .dial-result {
+            min-height: 1.2em;
+            margin: 12px 0 0;
+            color: var(--muted);
+            font-size: 13px;
+            text-align: center;
+        }
+
+        .sheet-field {
+            display: grid;
+            gap: 4px;
+            margin-bottom: 12px;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .sheet-field input,
+        .sheet-field select {
+            padding: 10px 12px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            background: var(--panel);
+            color: var(--text);
+            font: inherit;
+            font-weight: 400;
+        }
+
+        .call-controls button[hidden],
+        .incoming-actions button[hidden],
+        .call-dialog video[hidden] {
+            display: none;
+        }
+
+        .incoming-actions .decline-call svg {
+            transform: rotate(133deg);
+        }
+
+        .call-setup-note {
+            color: #8696a0;
+        }
+
+        /* ---- New chat sheet ------------------------------------------- */
+        .new-chat-dialog {
+            width: min(460px, calc(100vw - 20px));
+            max-height: min(640px, 88dvh);
+            overflow-y: auto;
+            padding: 16px 18px 22px;
+        }
+
+        .new-chat-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+        }
+
+        .new-chat-head h3 {
+            margin: 0;
+        }
+
+        .new-chat-commands {
+            display: flex;
+            gap: 10px;
+            margin: 12px 0 4px;
+        }
+
+        .new-chat-commands button {
+            flex: 1;
+            padding: 11px 10px;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            background: var(--received);
+            color: var(--text);
+            font: inherit;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .new-chat-body {
+            display: grid;
+            gap: 2px;
+            margin-top: 8px;
+        }
+
+        .new-chat-body .calls-section-title {
+            margin-top: 14px;
+        }
+
+        .new-chat-row {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            width: 100%;
+            padding: 9px 4px;
+            border: 0;
+            border-bottom: 1px solid var(--border);
+            background: none;
+            color: inherit;
+            font: inherit;
+            text-align: left;
+            cursor: pointer;
+        }
+
+        .new-chat-row strong {
+            display: block;
+            overflow: hidden;
+            font-size: 15px;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .new-chat-row small {
+            display: block;
+            margin-top: 2px;
+            color: var(--muted);
+            font-size: 12px;
+        }
+
+        .az-index {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 2px 8px;
+            margin: 12px 0 4px;
+            color: var(--primary);
+            font-size: 11px;
+            font-weight: 700;
+        }
+
+        .az-index button {
+            padding: 2px 3px;
+            border: 0;
+            background: none;
+            color: inherit;
+            font: inherit;
+            cursor: pointer;
+        }
+
+        .az-index button:disabled {
+            color: var(--muted);
+            opacity: .45;
+            cursor: default;
+        }
+
+        .az-heading {
+            color: var(--primary);
+            font-size: 12px;
+        }
+
+        /* ---- Call log rows inside a chat ------------------------------ */
+        .call-log-row .bubble {
+            display: grid;
+            gap: 3px;
+        }
+
+        .call-log-line {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .call-log-line.missed {
+            color: #ea4335;
+        }
+
+        .call-log-kind {
+            font-size: 14px;
+            line-height: 1;
+        }
+
+        .incoming-center {
+            display: grid;
+            justify-items: center;
+            gap: 2px;
+            padding: 0 12px;
+        }
+
+        .avatar-fallback {
+            display: grid;
+            place-items: center;
+            background: var(--primary);
+            color: #fff;
+            font-weight: 700;
+        }
+
+        /* ---- Full-screen call surfaces -------------------------------- */
+        .call-dialog[open],
+        .incoming-dialog[open] {
+            display: grid;
+            position: fixed;
+            inset: 0;
+            width: 100vw;
+            max-width: none;
+            height: 100dvh;
+            max-height: none;
+            margin: 0;
+            padding: max(18px, env(safe-area-inset-top)) 18px
+                max(22px, env(safe-area-inset-bottom));
+            border: 0;
+            border-radius: 0;
+            background: #0b141a;
+            color: #e9edef;
+            grid-template-rows: auto 1fr auto;
+        }
+
+        .call-dialog::backdrop,
+        .incoming-dialog::backdrop {
+            background: rgb(0 0 0 / 92%);
+        }
+
+        .call-surface-top {
+            text-align: center;
+        }
+
+        .call-surface-top h2,
+        .call-surface-top h3 {
+            margin: 0;
+            font-size: 20px;
+            font-weight: 600;
+        }
+
+        .call-surface-top .notice,
+        .call-surface-note {
+            margin: 6px 0 0;
+            color: #8696a0;
+            font-size: 13px;
+            text-align: center;
+        }
+
+        .incoming-call-name {
+            margin: 10px 0 4px;
+            color: #fff;
+            font-size: 26px;
+            font-weight: 700;
+            text-align: center;
+        }
+
+        .incoming-call-kind {
+            margin: 0;
+            color: #aebac1;
+            font-size: 14px;
+            text-align: center;
+        }
+
+        .incoming-stage {
+            position: relative;
+            display: grid;
+            place-items: center;
+            min-height: 0;
+        }
+
+        .incoming-avatar {
+            display: grid;
+            place-items: center;
+            width: 132px;
+            height: 132px;
+            border-radius: 50%;
+            background: #202c33;
+            color: #aebac1;
+            font-size: 44px;
+            font-weight: 700;
+            overflow: hidden;
+        }
+
+        .incoming-avatar img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .incoming-self-view {
+            position: absolute;
+            top: 12px;
+            right: 12px;
+            display: none;
+            width: 104px;
+            height: 148px;
+            border: 2px solid rgb(255 255 255 / 85%);
+            border-radius: 14px;
+            background: #000;
+            object-fit: cover;
+        }
+
+        .incoming-self-view.visible {
+            display: block;
+        }
+
+        .incoming-hints {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 18px;
+        }
+
+        .incoming-hints button {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 10px 16px;
+            border: 0;
+            border-radius: 999px;
+            background: rgb(255 255 255 / 12%);
+            color: #e9edef;
+            font: inherit;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+
+        .incoming-actions {
+            justify-content: space-between;
+            margin-top: 16px;
+            padding: 0 max(8px, calc(50vw - 240px));
+        }
+
+        .incoming-actions button {
+            display: grid;
+            place-items: center;
+            gap: 2px;
+            width: 68px;
+            height: 68px;
+            padding: 0;
+            border-radius: 50%;
+            background: #f0f4f9;
+            color: #111b21;
+            font: inherit;
+            font-size: 10px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .incoming-actions .decline-call {
+            background: #e74437;
+            color: #fff;
+        }
+
+        .incoming-actions .accept-call {
+            background: #00a884;
+            color: #fff;
+        }
+
+        .incoming-actions button svg {
+            width: 24px;
+            height: 24px;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 1.9;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        @media (min-width: 781px) {
+
+            /* On desktop a full-viewport call window looks broken. */
+            .call-dialog[open],
+            .incoming-dialog[open] {
+                position: absolute;
+                inset: 0;
+                width: min(520px, 92vw);
+                height: min(640px, 88dvh);
+                margin: auto;
+                border-radius: 20px;
+            }
+        }
+
+        .call-videos {
+            align-self: stretch;
+            min-height: 0;
+            height: 100%;
+            background: #000;
+            border-radius: 0;
+        }
+
+        .remote-video {
+            width: 100%;
+            height: 100%;
+            max-height: none;
+            min-height: 0;
+            object-fit: cover;
+        }
+
+        .call-controls {
+            justify-content: center;
+            gap: 16px;
+            margin-top: 16px;
+            flex-wrap: wrap;
+        }
+
+        .call-controls button {
+            display: grid;
+            place-items: center;
+            width: 56px;
+            height: 56px;
+            padding: 0;
+            border-radius: 50%;
+            background: rgb(255 255 255 / 14%);
+            color: #e9edef;
+            font-size: 10px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .call-controls .end-call {
+            width: 64px;
+            height: 64px;
+            background: #e74437;
+            color: #fff;
+        }
+
         .chat-messages {
             display: flex;
             min-height: 0;
@@ -1611,11 +2305,12 @@
             padding: 6px;
             bottom: calc(4px + env(safe-area-inset-bottom));
             transform: translateX(-50%);
-            border: 1px solid var(--border);
+            border: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
             border-radius: 999px;
-            background: color-mix(in srgb, var(--panel) 92%, transparent);
-            box-shadow: 0 8px 28px rgb(20 40 60 / 18%);
-            backdrop-filter: blur(18px);
+            background: color-mix(in srgb, var(--panel) 62%, transparent);
+            box-shadow: 0 10px 30px rgb(20 40 60 / 16%);
+            -webkit-backdrop-filter: blur(22px) saturate(1.8);
+            backdrop-filter: blur(22px) saturate(1.8);
         }
 
         .bottom-nav[hidden] {
@@ -1644,7 +2339,7 @@
 
         .bottom-nav-link.active {
             color: var(--primary);
-            background: color-mix(in srgb, var(--primary) 12%, var(--panel));
+            background: color-mix(in srgb, var(--primary) 14%, transparent);
         }
 
         .bottom-nav-link svg {
@@ -2097,7 +2792,7 @@
 
         .bottom-nav-link.active {
             border-radius: 999px;
-            background: color-mix(in srgb, var(--primary) 16%, var(--panel));
+            background: color-mix(in srgb, var(--primary) 16%, transparent);
         }
 
         .bottom-nav-badge {
@@ -2291,7 +2986,7 @@
             }
         }
     </style>
-  <script type="module" crossorigin src="/assets/messages-dnxDPIFK.js"></script>
+  <script type="module" crossorigin src="/assets/messages-2SnZg7WR.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/pwa-SJ1x9Wss.js">
   <link rel="modulepreload" crossorigin href="/assets/index-LrY2BCsq.js">
   <link rel="modulepreload" crossorigin href="/assets/app-lock-BytF_Qw4.js">
@@ -2598,44 +3293,142 @@
                     <p class="notice" id="message-notice" role="status"></p>
                 </div>
             </section>
-            <section id="calls-panel" class="calls-panel" aria-label="Start a call">
-                <h1 data-i18n="Calls">Calls</h1>
-                <p data-i18n="Choose a member to start a voice or video call.">Choose a member to start a voice or video
-                    call.</p>
-                <form id="calls-search-form" class="search-form" role="search">
-                    <label for="calls-search" hidden data-i18n="Search members by name, username, or university.">Search
-                        members by name, username, or university.</label>
-                    <input id="calls-search" class="search" type="search"
-                        placeholder="Search members and universities..."
-                        data-i18n-placeholder="Search members and universities..." autocomplete="off">
-                    <button class="search-submit" type="submit"
-                        aria-label="Search members by name, username, or university."
-                        data-i18n-aria-label="Search members by name, username, or university.">
+            <section id="calls-panel" class="calls-panel" aria-label="Calls">
+                <div class="calls-topbar">
+                    <button id="calls-menu-button" class="icon-round" type="button" aria-label="Call options"
+                        data-i18n-aria-label="Call options">
                         <svg viewBox="0 0 24 24" aria-hidden="true">
-                            <circle cx="10.8" cy="10.8" r="6.8" />
-                            <path d="m16 16 5 5" />
+                            <circle cx="5" cy="12" r="1.4" />
+                            <circle cx="12" cy="12" r="1.4" />
+                            <circle cx="19" cy="12" r="1.4" />
                         </svg>
                     </button>
-                </form>
-                <label for="calls-gender-search" hidden data-i18n="Filter by gender">Filter by gender</label>
-                <select id="calls-gender-search" class="gender-filter" aria-label="Filter by gender"
-                    data-i18n-aria-label="Filter by gender">
-                    <option value="" data-i18n="All genders">All genders</option>
-                    <option value="male" data-i18n="Male">Male</option>
-                    <option value="female" data-i18n="Female">Female</option>
-                    <option value="other" data-i18n="Other genders">Other genders</option>
-                </select>
-                <div id="call-directory" class="call-directory" aria-live="polite"></div>
+                    <span class="calls-top-spacer"></span>
+                    <button id="calls-add-button" class="icon-round" type="button" aria-label="New call"
+                        data-i18n-aria-label="New call">
+                        <svg viewBox="0 0 24 24" aria-hidden="true">
+                            <path d="M12 5.2v13.6M5.2 12h13.6" />
+                        </svg>
+                    </button>
+                </div>
+                <h1 data-i18n="Calls">Calls</h1>
+                <div class="calls-action-row">
+                    <button class="calls-action" type="button" data-calls-action="call">
+                        <i aria-hidden="true">
+                            <svg viewBox="0 0 24 24">
+                                <path
+                                    d="M7.2 3.5 10 7.2 8.4 9.5a15 15 0 0 0 6.1 6.1l2.3-1.6 3.7 2.8-.8 3.3a2 2 0 0 1-2.1 1.5A17.5 17.5 0 0 1 2.4 6.1a2 2 0 0 1 1.5-2.1l3.3-.5Z" />
+                            </svg>
+                        </i>
+                        <span data-i18n="Call">Call</span>
+                    </button>
+                    <button class="calls-action" type="button" data-calls-action="schedule">
+                        <i aria-hidden="true">
+                            <svg viewBox="0 0 24 24">
+                                <rect x="3.5" y="5" width="17" height="15" rx="3" />
+                                <path d="M8 3v4M16 3v4M3.5 10.5h17M12 14v3l2 1.4" />
+                            </svg>
+                        </i>
+                        <span data-i18n="Schedule">Schedule</span>
+                    </button>
+                    <button class="calls-action" type="button" data-calls-action="keypad">
+                        <i aria-hidden="true">
+                            <svg viewBox="0 0 24 24">
+                                <circle cx="7" cy="6" r="1.3" />
+                                <circle cx="12" cy="6" r="1.3" />
+                                <circle cx="17" cy="6" r="1.3" />
+                                <circle cx="7" cy="12" r="1.3" />
+                                <circle cx="12" cy="12" r="1.3" />
+                                <circle cx="17" cy="12" r="1.3" />
+                                <circle cx="7" cy="18" r="1.3" />
+                                <circle cx="12" cy="18" r="1.3" />
+                                <circle cx="17" cy="18" r="1.3" />
+                            </svg>
+                        </i>
+                        <span data-i18n="Keypad">Keypad</span>
+                    </button>
+                    <button class="calls-action" type="button" data-calls-action="favorites">
+                        <i aria-hidden="true">
+                            <svg viewBox="0 0 24 24">
+                                <path d="m12 4 2.4 4.9 5.4.8-3.9 3.8.9 5.4-4.8-2.5-4.8 2.5.9-5.4L4.2 9.7l5.4-.8Z" />
+                            </svg>
+                        </i>
+                        <span data-i18n="Favorites">Favorites</span>
+                    </button>
+                </div>
+                <h2 class="calls-section-title" id="calls-recent-heading" data-i18n="Recent">Recent</h2>
+                <div id="call-history" class="call-history" aria-live="polite"></div>
+                <div id="calls-picker" class="calls-picker">
+                    <form id="calls-search-form" class="search-form" role="search">
+                        <label for="calls-search" hidden
+                            data-i18n="Search members by name, username, or university.">Search members by name,
+                            username, or university.</label>
+                        <input id="calls-search" class="search" type="search"
+                            placeholder="Search members and universities..."
+                            data-i18n-placeholder="Search members and universities..." autocomplete="off">
+                        <button class="search-submit" type="submit"
+                            aria-label="Search members by name, username, or university."
+                            data-i18n-aria-label="Search members by name, username, or university.">
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <circle cx="10.8" cy="10.8" r="6.8" />
+                                <path d="m16 16 5 5" />
+                            </svg>
+                        </button>
+                    </form>
+                    <label for="calls-gender-search" hidden data-i18n="Filter by gender">Filter by gender</label>
+                    <select id="calls-gender-search" class="gender-filter" aria-label="Filter by gender"
+                        data-i18n-aria-label="Filter by gender">
+                        <option value="" data-i18n="All genders">All genders</option>
+                        <option value="male" data-i18n="Male">Male</option>
+                        <option value="female" data-i18n="Female">Female</option>
+                        <option value="other" data-i18n="Other genders">Other genders</option>
+                    </select>
+                    <div id="call-directory" class="call-directory" aria-live="polite"></div>
+                </div>
                 <p class="notice" id="calls-notice" role="status"></p>
             </section>
         </section>
     </main>
     <dialog id="incoming-call-dialog" class="incoming-dialog" aria-labelledby="incoming-call-title">
-        <h2 id="incoming-call-title" data-i18n="Incoming call">Incoming call</h2>
-        <p id="incoming-call-description"></p>
-        <div class="incoming-actions">
-            <button id="accept-call-button" type="button" data-i18n="Accept">Accept</button>
-            <button id="decline-call-button" class="decline-call" type="button" data-i18n="Decline">Decline</button>
+        <div class="call-surface-top">
+            <p class="call-surface-note" id="incoming-call-kind" data-i18n="Incoming voice call">Incoming voice call</p>
+        </div>
+        <div class="incoming-stage">
+            <video id="incoming-self-view" class="incoming-self-view" autoplay muted playsinline></video>
+            <div class="incoming-center">
+                <div id="incoming-call-avatar" class="incoming-avatar" aria-hidden="true">?</div>
+                <h2 id="incoming-call-title" class="incoming-call-name">Incoming call</h2>
+                <p id="incoming-call-description" class="incoming-call-kind"></p>
+            </div>
+        </div>
+        <div>
+            <div class="incoming-hints">
+                <button id="incoming-message-button" type="button" data-i18n="💬 Message">💬 Message</button>
+                <button id="incoming-remind-button" type="button" data-i18n="🔔 Remind me">🔔 Remind me</button>
+            </div>
+            <div class="incoming-actions">
+                <button id="decline-call-button" class="decline-call" type="button">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path
+                            d="M7.2 3.5 10 7.2 8.4 9.5a15 15 0 0 0 6.1 6.1l2.3-1.6 3.7 2.8-.8 3.3a2 2 0 0 1-2.1 1.5A17.5 17.5 0 0 1 2.4 6.1a2 2 0 0 1 1.5-2.1l3.3-.5Z" />
+                    </svg>
+                    <span data-i18n="Decline">Decline</span>
+                </button>
+                <button id="end-and-accept-button" class="accept-call" type="button" hidden>
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path
+                            d="M7.2 3.5 10 7.2 8.4 9.5a15 15 0 0 0 6.1 6.1l2.3-1.6 3.7 2.8-.8 3.3a2 2 0 0 1-2.1 1.5A17.5 17.5 0 0 1 2.4 6.1a2 2 0 0 1 1.5-2.1l3.3-.5Z" />
+                    </svg>
+                    <span data-i18n="End &amp; accept">End &amp; accept</span>
+                </button>
+                <button id="accept-call-button" class="accept-call" type="button">
+                    <svg viewBox="0 0 24 24" aria-hidden="true">
+                        <path
+                            d="M7.2 3.5 10 7.2 8.4 9.5a15 15 0 0 0 6.1 6.1l2.3-1.6 3.7 2.8-.8 3.3a2 2 0 0 1-2.1 1.5A17.5 17.5 0 0 1 2.4 6.1a2 2 0 0 1 1.5-2.1l3.3-.5Z" />
+                    </svg>
+                    <span data-i18n="Accept">Accept</span>
+                </button>
+            </div>
         </div>
     </dialog>
     <dialog id="member-profile-dialog" class="member-profile-dialog" aria-labelledby="member-profile-name">
@@ -2688,18 +3481,79 @@
         </div>
     </dialog>
     <dialog id="call-dialog" class="call-dialog" aria-labelledby="call-title">
-        <h2 id="call-title" data-i18n="Call">Call</h2>
-        <p id="call-state" class="notice" role="status"></p>
+        <div class="call-surface-top">
+            <h2 id="call-title" data-i18n="Call">Call</h2>
+            <p id="call-state" class="notice" role="status"></p>
+        </div>
         <div class="call-videos">
             <video id="remote-video" class="remote-video" autoplay playsinline></video>
             <video id="local-video" class="local-video" autoplay playsinline muted></video>
         </div>
         <audio id="remote-audio" autoplay></audio>
         <div class="call-controls">
-            <button id="toggle-mic-button" type="button" data-i18n="Mute microphone">Mute microphone</button>
-            <button id="toggle-camera-button" type="button" data-i18n="Turn camera off">Turn camera off</button>
-            <button id="end-call-button" class="end-call" type="button" data-i18n="End call">End call</button>
+            <button id="toggle-mic-button" type="button" data-i18n="Mute">Mute</button>
+            <button id="toggle-camera-button" type="button" data-i18n="Camera">Camera</button>
+            <button id="end-call-button" class="end-call" type="button" data-i18n="End">End</button>
         </div>
+    </dialog>
+    <dialog id="keypad-dialog" class="sheet-dialog" aria-labelledby="keypad-title">
+        <h3 id="keypad-title" data-i18n="Keypad">Keypad</h3>
+        <input id="dial-display" class="dial-display" type="text" inputmode="tel" autocomplete="off"
+            placeholder="+254 …" aria-label="Phone number" data-i18n-aria-label="Phone number"
+            data-i18n-placeholder="+254 …">
+        <div id="dial-pad" class="dial-pad" aria-label="Dial pad"></div>
+        <div class="dial-row">
+            <a id="dial-call-button" class="primary-action" href="#" data-i18n="Call by phone">Call by phone</a>
+            <button id="dial-find-button" class="secondary-action" type="button"
+                data-i18n="Find in Campus Connect">Find in Campus Connect</button>
+        </div>
+        <p id="dial-result" class="dial-result" role="status"></p>
+    </dialog>
+    <dialog id="schedule-call-dialog" class="sheet-dialog" aria-labelledby="schedule-call-title">
+        <h3 id="schedule-call-title" data-i18n="Schedule a call">Schedule a call</h3>
+        <label class="sheet-field" for="schedule-call-contact">
+            <span data-i18n="Contact">Contact</span>
+            <select id="schedule-call-contact"></select>
+        </label>
+        <label class="sheet-field" for="schedule-call-time">
+            <span data-i18n="When">When</span>
+            <input id="schedule-call-time" type="datetime-local">
+        </label>
+        <div class="dial-row">
+            <button id="schedule-call-save" class="primary-action" type="button"
+                data-i18n="Save reminder">Save reminder</button>
+            <button id="schedule-call-cancel" class="secondary-action" type="button"
+                data-i18n="Cancel">Cancel</button>
+        </div>
+        <p id="schedule-call-hint" class="dial-result"
+            data-i18n="You will be reminded in the app when the time arrives.">
+            You will be reminded in the app when the time arrives.</p>
+    </dialog>
+    <dialog id="calls-menu-dialog" class="sheet-dialog" aria-labelledby="calls-menu-title">
+        <h3 id="calls-menu-title" data-i18n="Calls">Calls</h3>
+        <div class="dial-row">
+            <button id="clear-call-history-button" class="secondary-action" type="button"
+                data-i18n="Clear recent calls">Clear recent calls</button>
+        </div>
+        <p class="dial-result" data-i18n="Call history is stored only on this device.">
+            Call history is stored only on this device.</p>
+    </dialog>
+    <dialog id="new-chat-dialog" class="sheet-dialog new-chat-dialog" aria-labelledby="new-chat-title">
+        <div class="new-chat-head">
+            <h3 id="new-chat-title" data-i18n="New chat">New chat</h3>
+            <button id="new-chat-close" class="icon-button" type="button" aria-label="Close"
+                data-i18n-aria-label="Close">×</button>
+        </div>
+        <input id="new-chat-search" class="dial-display" type="search" autocomplete="off"
+            placeholder="Name, number, @username" aria-label="Search by name, number, or username"
+            data-i18n-aria-label="Search by name, number, or username"
+            data-i18n-placeholder="Name, number, @username">
+        <div class="new-chat-commands">
+            <button id="new-chat-group" type="button" data-i18n="👥 New group">👥 New group</button>
+            <button id="new-chat-contact" type="button" data-i18n="👤 New contact">👤 New contact</button>
+        </div>
+        <p id="new-chat-result" class="dial-result" role="status"></p>
+        <div id="new-chat-body" class="new-chat-body" aria-live="polite"></div>
     </dialog>
     <nav class="bottom-nav" aria-label="Main navigation" hidden>
         <a class="bottom-nav-link" href="/#stories" data-destination="updates">

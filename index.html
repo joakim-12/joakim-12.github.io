@@ -515,11 +515,12 @@
       padding: 6px;
       bottom: calc(12px + env(safe-area-inset-bottom));
       transform: translateX(-50%);
-      border: 1px solid var(--border);
+      border: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
       border-radius: 999px;
-      background: color-mix(in srgb, var(--surface) 92%, transparent);
-      box-shadow: 0 8px 28px rgb(20 40 60 / 18%);
-      backdrop-filter: blur(18px);
+      background: color-mix(in srgb, var(--surface) 62%, transparent);
+      box-shadow: 0 10px 30px rgb(20 40 60 / 16%);
+      -webkit-backdrop-filter: blur(22px) saturate(1.8);
+      backdrop-filter: blur(22px) saturate(1.8);
     }
 
     .bottom-nav[hidden] { display: none; }
@@ -604,7 +605,7 @@
     .story-card { border-radius: 12px; }
     .story-card:hover { background: color-mix(in srgb, var(--blue) 7%, var(--surface)); }
     .post-actions { border-top-color: var(--border); }
-    .bottom-nav { backdrop-filter: blur(14px); background: color-mix(in srgb, var(--surface) 94%, transparent); }
+    .bottom-nav { background: color-mix(in srgb, var(--surface) 62%, transparent); -webkit-backdrop-filter: blur(22px) saturate(1.8); backdrop-filter: blur(22px) saturate(1.8); }
     .bottom-nav a { transition: background-color .16s ease, color .16s ease, transform .16s ease; }
     .bottom-nav a.active { background: color-mix(in srgb, var(--blue) 12%, var(--surface)); }
     #profileForm .contact-sharing-option { display: flex; align-items: center; gap: 8px; }
