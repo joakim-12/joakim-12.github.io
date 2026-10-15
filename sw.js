@@ -1,4 +1,6 @@
-const CACHE_NAME = "campus-connect-v25";
+const CACHE_NAME = "campus-connect-v26";
+const MEDIA_CACHE_NAME = "campus-connect-media-v1";
+const MAX_MEDIA_ENTRIES = 240;
 const APP_SHELL = [
     "/",
     "/messages.html",
@@ -9,7 +11,45 @@ const APP_SHELL = [
     "/icons/icon-192-maskable.png",
     "/icons/icon-512-maskable.png"
 ];
-const APP_PAGES = new Set(["/", "/messages.html"]);
+const APP_PAGES = new Set(["/", "/messages.html", "/classes.html"]);
+
+function isSupabaseMedia(url) {
+    return /^https?:$/.test(url.protocol) &&
+        url.hostname.endsWith(".supabase.co") &&
+        url.pathname.includes("/storage/");
+}
+
+async function trimMediaCache(cache) {
+    const keys = await cache.keys();
+    if (keys.length <= MAX_MEDIA_ENTRIES) return;
+    const excess = keys.length - MAX_MEDIA_ENTRIES;
+    await Promise.all(keys.slice(0, excess).map((key) => cache.delete(key)));
+}
+
+async function cacheMedia(event, request, url) {
+    // Store under the token-free path so a rotated signed URL still hits.
+    const stableKey = new Request(`${url.origin}${url.pathname}`, {
+        mode: request.mode === "no-cors" ? "no-cors" : "cors",
+        credentials: "omit"
+    });
+    const cache = await caches.open(MEDIA_CACHE_NAME);
+    const cached = await cache.match(stableKey) || await cache.match(request);
+    if (cached) return cached;
+
+    try {
+        const response = await fetch(request);
+        if (response.ok || response.type === "opaque") {
+            event.waitUntil(
+                cache.put(stableKey, response.clone())
+                    .then(() => trimMediaCache(cache))
+            );
+        }
+        return response;
+    } catch {
+        const fallback = await cache.match(stableKey);
+        return fallback || Response.error();
+    }
+}
 
 self.addEventListener("install", (event) => {
     event.waitUntil(
@@ -36,6 +76,15 @@ self.addEventListener("fetch", (event) => {
     if (request.method !== "GET") return;
 
     const url = new URL(request.url);
+
+    // Supabase-hosted media (avatars, public chat photos, voice notes) is
+    // served from another origin. Cache the stable path so it survives
+    // even when the signed token in the query string rolls over.
+    if (isSupabaseMedia(url)) {
+        event.respondWith(cacheMedia(event, request, url));
+        return;
+    }
+
     if (url.origin !== self.location.origin) return;
 
     if (request.mode === "navigate") {
