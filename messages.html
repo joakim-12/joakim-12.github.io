@@ -1393,30 +1393,169 @@
             background: #d93025;
         }
 
-        .voice-controls {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-            margin-top: 8px;
+        .voice-recorder {
+            margin-top: 10px;
+            padding: 12px 16px 14px;
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            background: var(--panel);
         }
 
-        .voice-controls button[hidden] {
+        .voice-recorder[hidden] {
             display: none;
         }
 
-        .voice-controls button {
-            padding: 8px 12px;
-            border: 1px solid var(--border);
-            border-radius: 18px;
-            background: var(--panel);
-            color: var(--primary);
+        .rec-top {
+            display: flex;
+            align-items: center;
+            gap: 12px;
         }
 
-        .voice-recording-status {
-            min-height: 18px;
-            margin: 6px 2px 0;
+        .rec-timer {
+            flex: 0 0 auto;
+            font-variant-numeric: tabular-nums;
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        .rec-wave {
+            flex: 1 1 auto;
+            display: flex;
+            align-items: center;
+            gap: 2px;
+            height: 30px;
+            overflow: hidden;
+        }
+
+        .rec-wave i {
+            flex: 1 1 0;
+            min-width: 2px;
+            height: 20%;
+            border-radius: 2px;
+            background: var(--muted);
+            transition: height .08s linear;
+        }
+
+        .rec-wave.live i {
+            background: var(--primary);
+        }
+
+        .rec-lock {
+            flex: 0 0 auto;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 22px;
+            height: 22px;
+            border: 1.5px dashed var(--muted);
+            border-radius: 50%;
             color: var(--muted);
             font-size: 12px;
+            font-weight: 700;
+        }
+
+        .rec-actions {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-top: 12px;
+        }
+
+        .rec-delete,
+        .rec-send {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 44px;
+            height: 44px;
+            padding: 0;
+            border: 0;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        .rec-delete {
+            background: transparent;
+            color: var(--muted);
+        }
+
+        .rec-delete svg,
+        .rec-send svg {
+            width: 22px;
+            height: 22px;
+        }
+
+        .rec-delete svg {
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 1.8;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .rec-send {
+            background: var(--primary);
+            color: #fff;
+        }
+
+        .rec-send svg {
+            fill: currentColor;
+        }
+
+        .rec-send[disabled] {
+            opacity: .45;
+        }
+
+        .rec-play {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 54px;
+            height: 54px;
+            padding: 0;
+            border: 0;
+            border-radius: 50%;
+            background: #e74437;
+            color: #fff;
+            cursor: pointer;
+        }
+
+        .rec-play svg {
+            width: 26px;
+            height: 26px;
+            display: none;
+        }
+
+        .rec-play .rec-stop,
+        .rec-play .rec-triangle {
+            fill: currentColor;
+        }
+
+        .rec-play .rec-pause {
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 2.4;
+            stroke-linecap: round;
+        }
+
+        .rec-play.mode-recording .rec-stop {
+            display: block;
+        }
+
+        .rec-play.mode-review .rec-triangle {
+            display: block;
+        }
+
+        .rec-play.mode-review.playing .rec-triangle {
+            display: none;
+        }
+
+        .rec-play.mode-review.playing .rec-pause {
+            display: block;
+        }
+
+        .rec-play.review {
+            background: var(--primary);
         }
 
         .send-button {
@@ -2152,7 +2291,7 @@
             }
         }
     </style>
-  <script type="module" crossorigin src="/assets/messages-DT_4q5Uo.js"></script>
+  <script type="module" crossorigin src="/assets/messages-dnxDPIFK.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/pwa-SJ1x9Wss.js">
   <link rel="modulepreload" crossorigin href="/assets/index-LrY2BCsq.js">
   <link rel="modulepreload" crossorigin href="/assets/app-lock-BytF_Qw4.js">
@@ -2419,13 +2558,6 @@
                                 <path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3.5M9 21.5h6" />
                             </svg>
                         </button>
-                        <button id="stop-voice-recording" class="voice-button stop-recording" type="button"
-                            aria-label="Stop recording" data-i18n-aria-label="Stop recording" title="Stop recording"
-                            hidden>
-                            <svg viewBox="0 0 24 24" aria-hidden="true">
-                                <rect x="6" y="6" width="12" height="12" rx="2" />
-                            </svg>
-                        </button>
                         <button class="send-button" type="submit" id="send-button" aria-label="Send"
                             data-i18n-aria-label="Send" title="Send" data-i18n-title="Send" disabled hidden>
                             <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -2436,13 +2568,33 @@
                     <div id="emoji-picker" class="emoji-picker" hidden></div>
                     <input id="message-media" type="file" hidden disabled
                         accept="image/*,video/*,audio/*,.pdf,.txt,.csv,.rtf,.doc,.docx,.xls,.xlsx,.ppt,.pptx">
-                    <div class="voice-controls" aria-label="Voice message">
-                        <button id="send-voice-message" type="button" data-i18n="Send voice message" hidden>Send voice
-                            message</button>
-                        <button id="discard-voice-message" type="button" data-i18n="Discard recording"
-                            hidden>Discard</button>
+                    <div id="voice-recorder" class="voice-recorder" hidden>
+                        <div class="rec-top">
+                            <span id="rec-timer" class="rec-timer" role="timer">0:00</span>
+                            <div id="rec-wave" class="rec-wave" aria-hidden="true"></div>
+                            <span class="rec-lock" aria-hidden="true">1</span>
+                        </div>
+                        <div class="rec-actions">
+                            <button id="discard-voice-message" class="rec-delete" type="button"
+                                aria-label="Delete recording" data-i18n-aria-label="Delete recording">
+                                <svg viewBox="0 0 24 24" aria-hidden="true">
+                                    <path d="M6 8h12l-1 12H7L6 8Zm3-3h6M9.5 8V5.5h5V8" />
+                                </svg>
+                            </button>
+                            <button id="rec-play" class="rec-play" type="button" aria-label="Stop recording"
+                                data-i18n-aria-label="Stop recording">
+                                <svg class="rec-stop" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="7" width="10" height="10" rx="2" /></svg>
+                                <svg class="rec-pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14M16 5v14" /></svg>
+                                <svg class="rec-triangle" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z" /></svg>
+                            </button>
+                            <button id="send-voice-message" class="rec-send" type="button" aria-label="Send"
+                                data-i18n-aria-label="Send">
+                                <svg viewBox="0 0 24 24" aria-hidden="true">
+                                    <path d="M3.4 20.6 21 12 3.4 3.4v6.5l12.6 2.1-12.6 2.1z" />
+                                </svg>
+                            </button>
+                        </div>
                     </div>
-                    <p id="voice-recording-status" class="voice-recording-status" role="status"></p>
                     <p class="notice" id="message-notice" role="status"></p>
                 </div>
             </section>
