@@ -1054,6 +1054,33 @@
         .message-action-danger { color: #d93025; }
         .message-action-hint { margin: 10px 0 0; color: var(--muted); font-size: 12px; }
 
+        .edit-message-dialog textarea {
+            width: 100%;
+            min-height: 92px;
+            margin-top: 4px;
+            padding: 11px 12px;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            background: var(--input);
+            color: var(--text);
+            font: inherit;
+            font-size: 14px;
+            resize: vertical;
+        }
+
+        .edit-message-dialog .message-action-options {
+            grid-template-columns: 1fr 1fr;
+            margin-top: 12px;
+        }
+
+        .edit-message-dialog .message-action-options button { text-align: center; }
+
+        #save-edit-button {
+            border-color: var(--primary);
+            background: var(--primary);
+            color: #fff;
+        }
+
         .message-media {
             display: block;
             width: min(100%, 420px);
@@ -2022,7 +2049,7 @@
             }
         }
     </style>
-  <script type="module" crossorigin src="/assets/messages-Bt2fbTOY.js"></script>
+  <script type="module" crossorigin src="/assets/messages-D1RromTd.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/pwa-SJ1x9Wss.js">
   <link rel="modulepreload" crossorigin href="/assets/index-LrY2BCsq.js">
   <link rel="modulepreload" crossorigin href="/assets/app-lock-BytF_Qw4.js">
@@ -2369,6 +2396,18 @@
         <p id="message-action-hint" class="message-action-hint"></p>
         <div class="message-action-options">
             <button id="close-message-action-button" type="button" data-i18n="Cancel">Cancel</button>
+        </div>
+    </dialog>
+    <dialog id="edit-message-dialog" class="message-action-dialog edit-message-dialog"
+        aria-labelledby="edit-message-title">
+        <h3 id="edit-message-title" data-i18n="Edit message">Edit message</h3>
+        <textarea id="edit-message-input" rows="4" maxlength="5000"></textarea>
+        <p class="message-action-hint" id="edit-message-hint"
+            data-i18n="You can save again as many times as you like within 20 minutes of sending.">You can save again
+            as many times as you like within 20 minutes of sending.</p>
+        <div class="message-action-options">
+            <button id="save-edit-button" type="button" data-i18n="Save">Save</button>
+            <button id="cancel-edit-button" type="button" data-i18n="Cancel">Cancel</button>
         </div>
     </dialog>
     <dialog id="call-dialog" class="call-dialog" aria-labelledby="call-title">
