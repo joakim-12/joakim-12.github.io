@@ -633,6 +633,9 @@
     .post-media-fallback { display: grid; gap: 8px; padding: 24px 14px; background: color-mix(in srgb, var(--text) 4%, var(--surface)); color: var(--muted); font-size: 14px; text-align: center; }
     .post-media-fallback a { color: var(--blue); font-weight: 600; }
     .post-media-fallback button { justify-self: center; padding: 7px 14px; border: 0; border-radius: 999px; background: var(--blue); color: #fff; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+    /* An unplayable clip keeps its frame; the notice lies over the bottom of it so the video stays a video. */
+    .post-media-fallback.post-media-overlay { position: absolute; inset: auto 0 0 0; padding: 22px 14px 14px; background: linear-gradient(to top, rgba(0, 0, 0, .82), rgba(0, 0, 0, .35) 70%, transparent); color: #fff; }
+    .post-media-fallback.post-media-overlay button { background: var(--blue); }
     .ig-post-bar { display: flex; align-items: center; gap: 14px; padding: 8px 10px 2px; }
     .ig-icon-button { display: inline-flex; align-items: center; gap: 6px; padding: 4px; border: 0; border-radius: 8px; background: transparent; color: var(--text); font: inherit; cursor: pointer; }
     .ig-icon-button:hover { filter: none; opacity: .6; }
@@ -1259,10 +1262,10 @@
       .you-details { margin-left: auto; margin-right: auto; max-width: 620px; }
     }
   </style>
-  <script type="module" crossorigin src="/assets/main-CJk4JU1-.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/pwa-C0ypnk1W.js">
-  <link rel="modulepreload" crossorigin href="/assets/staff-verification-ICDIHjdj.js">
-  <link rel="modulepreload" crossorigin href="/assets/app-lock-9zzAkJa0.js">
+  <script type="module" crossorigin src="/assets/main-BJQxmPsH.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/pwa-fmeqvY48.js">
+  <link rel="modulepreload" crossorigin href="/assets/staff-verification-ChJMk-cc.js">
+  <link rel="modulepreload" crossorigin href="/assets/app-lock-cHpTaERc.js">
 </head>
 
 <body>
