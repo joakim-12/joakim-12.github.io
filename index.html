@@ -333,6 +333,7 @@
       width: min(520px, 94vw);
       max-height: 90vh;
       padding: 20px;
+      overflow-y: auto;
       border: 0;
       border-radius: 16px;
       background: var(--surface);
@@ -556,7 +557,7 @@
     .story-thumb { display: grid; width: 100%; height: 100%; place-items: center; overflow: hidden; border: 3px solid var(--surface); border-radius: 50%; background: color-mix(in srgb, var(--text) 10%, var(--surface)); color: var(--text); font-size: 23px; font-weight: 600; }
     .story-thumb img { width: 100%; height: 100%; object-fit: cover; }
     .story-add-badge { position: absolute; right: -2px; bottom: 3px; display: grid; width: 22px; height: 22px; place-items: center; border: 2.5px solid var(--surface); border-radius: 50%; background: #0095f6; color: #fff; font-size: 13px; font-weight: 700; line-height: 1; }
-    .story-label { width: 100%; overflow: hidden; color: var(--text); font-size: 12px; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
+    .story-label { width: 100%; overflow: hidden; color: var(--text); font-size: 13px; font-weight: 500; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
 
     /* Instagram-style full-screen status viewer (dark like Instagram). */
     .story-viewer--full { width: min(420px, 100vw); height: min(100dvh, 880px); max-height: none; margin: auto; padding: 0; border: 0; border-radius: 0; overflow: hidden; background: #000; color: #fff; }
@@ -567,9 +568,9 @@
     .story-shell { position: relative; width: 100%; height: 100%; overflow: hidden; background: #000; }
     .story-stage { position: absolute; inset: 0; display: grid; place-items: center; overflow: hidden; }
     #storyViewer .story-media { width: 100%; height: 100%; max-height: none; margin: 0; border-radius: 0; background: #000; object-fit: contain; }
-    .story-stage-text { display: grid; width: 100%; height: 100%; place-items: center; padding: 66px 22px; background: linear-gradient(150deg, #405de6, #833ab4 42%, #e1306c 72%, #f77737); color: #fff; font-size: clamp(19px, 5.2vw, 25px); font-weight: 700; line-height: 1.35; text-align: center; white-space: pre-wrap; overflow-wrap: anywhere; }
-    .story-empty { padding: 24px; color: rgb(255 255 255 / 74%); font-size: 15px; text-align: center; }
-    .story-caption { position: absolute; right: 0; bottom: 0; left: 0; z-index: 2; max-height: 36%; overflow-y: auto; padding: 26px 14px 16px; background: linear-gradient(transparent, rgb(0 0 0 / 74%)); color: #fff; font-size: 15px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .story-stage-text { display: flex; width: 100%; height: 100%; flex-direction: column; justify-content: safe center; align-items: center; padding: 78px 24px 92px; overflow-y: auto; background: linear-gradient(150deg, #405de6, #833ab4 42%, #e1306c 72%, #f77737); color: #fff; font-size: clamp(27px, 7.4vw, 40px); font-weight: 800; letter-spacing: -.012em; line-height: 1.55; text-align: center; text-shadow: 0 2px 14px rgb(0 0 0 / 48%); white-space: pre-wrap; overflow-wrap: anywhere; }
+    .story-empty { padding: 24px; color: rgb(255 255 255 / 86%); font-size: 19px; font-weight: 600; text-align: center; }
+    .story-caption { position: absolute; right: 0; bottom: 0; left: 0; z-index: 2; max-height: 44%; overflow-y: auto; padding: 34px 16px 22px; background: linear-gradient(transparent, rgb(0 0 0 / 86%)); color: #fff; font-size: 18px; font-weight: 600; line-height: 1.5; text-shadow: 0 1px 8px rgb(0 0 0 / 70%); white-space: pre-wrap; overflow-wrap: anywhere; }
     .story-progress { position: absolute; top: 9px; right: 12px; left: 12px; z-index: 4; display: flex; gap: 4px; }
     .story-bar { position: relative; flex: 1; height: 2px; overflow: hidden; border-radius: 3px; background: rgb(255 255 255 / 32%); }
     .story-bar > i { position: absolute; inset: 0; display: block; transform: scaleX(0); transform-origin: left; background: #fff; }
@@ -580,12 +581,15 @@
     .story-head-thumb { display: grid; width: 34px; height: 34px; flex: 0 0 34px; place-items: center; overflow: hidden; border-radius: 50%; background: #262626; color: #fff; font-size: 14px; font-weight: 700; }
     .story-head-thumb img { width: 100%; height: 100%; object-fit: cover; }
     .story-head-meta { display: grid; flex: 1; min-width: 0; margin-right: auto; gap: 1px; }
-    .story-head-name { overflow: hidden; font-size: 14px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-    .story-head-time { color: rgb(255 255 255 / 72%); font-size: 12px; }
+    .story-head-name { overflow: hidden; font-size: 16px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; text-shadow: 0 1px 6px rgb(0 0 0 / 55%); }
+    .story-head-time { color: rgb(255 255 255 / 86%); font-size: 13px; font-weight: 500; text-shadow: 0 1px 6px rgb(0 0 0 / 55%); }
     .story-head-action { display: grid; width: 34px; height: 34px; flex: 0 0 34px; padding: 0; place-items: center; border: 0; border-radius: 50%; background: transparent; color: #fff; cursor: pointer; }
     .story-head-action[hidden] { display: none; }
     .story-head-action:hover { filter: none; background: rgb(255 255 255 / 14%); }
     .story-head-action svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .story-sound-off { display: none; }
+    .sound-muted .story-sound-on { display: none; }
+    .sound-muted .story-sound-off { display: block; }
     .story-close { width: 34px; height: 34px; flex: 0 0 34px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: #fff; font-size: 19px; line-height: 1; cursor: pointer; }
     .story-close:hover { filter: none; background: rgb(255 255 255 / 14%); }
     .story-side { position: absolute; top: 76px; bottom: 0; z-index: 3; width: 36%; padding: 0; border: 0; border-radius: 0; background: transparent; cursor: pointer; }
@@ -611,6 +615,23 @@
     .ig-post .post-video-wrap { position: relative; width: 100%; background: color-mix(in srgb, var(--text) 5%, var(--surface)); }
     .ig-post img.post-image { display: block; width: 100%; max-height: 74vh; margin: 0; border-radius: 0; object-fit: cover; }
     .ig-post video.post-video { display: block; width: 100%; max-height: 74vh; margin: 0; border-radius: 0; object-fit: contain; background: #000; }
+    .post-voice-wrap, .voice-swap { width: 100%; padding: 16px 12px; background: color-mix(in srgb, var(--text) 4%, var(--surface)); }
+    .voice-swap { display: flex; }
+    .story-voice { display: grid; min-height: 180px; padding: 26px 16px; place-items: center; }
+    .voice-audio { display: none; }
+    .voice-player { display: flex; width: min(320px, 100%); flex-direction: column; gap: 3px; margin: 0 auto; }
+    .voice-row { display: flex; align-items: center; gap: 10px; }
+    .voice-play { display: grid; width: 34px; height: 34px; flex: 0 0 34px; place-items: center; border: 0; border-radius: 50%; background: var(--blue); color: #fff; font-size: 11px; cursor: pointer; }
+    .voice-wave { position: relative; display: flex; flex: 1; align-items: center; gap: 1.5px; height: 22px; min-width: 0; }
+    .voice-wave i { flex: 1; min-width: 1.5px; border-radius: 1px; background: color-mix(in srgb, var(--muted) 45%, transparent); }
+    .voice-wave i.played { background: var(--blue); }
+    .voice-dot { position: absolute; top: 50%; left: 0; z-index: 1; width: 11px; height: 11px; border-radius: 50%; background: var(--blue); opacity: 0; transform: translate(-50%, -50%); transition: left .12s linear; }
+    .voice-meta { display: flex; min-height: 14px; padding-left: 3px; }
+    .voice-duration { color: var(--muted); font-size: 11px; white-space: nowrap; }
+    .post-file { display: block; padding: 14px 12px; color: var(--text); font-size: 14px; text-decoration: none; background: color-mix(in srgb, var(--text) 4%, var(--surface)); }
+    .post-file:hover { text-decoration: underline; }
+    .post-media-fallback { display: grid; gap: 8px; padding: 24px 14px; background: color-mix(in srgb, var(--text) 4%, var(--surface)); color: var(--muted); font-size: 14px; text-align: center; }
+    .post-media-fallback a { color: var(--blue); font-weight: 600; }
     .ig-post-bar { display: flex; align-items: center; gap: 14px; padding: 8px 10px 2px; }
     .ig-icon-button { display: inline-flex; align-items: center; gap: 6px; padding: 4px; border: 0; border-radius: 8px; background: transparent; color: var(--text); font: inherit; cursor: pointer; }
     .ig-icon-button:hover { filter: none; opacity: .6; }
@@ -655,6 +676,8 @@
       0%, 100% { box-shadow: 0 0 0 0 rgb(0 149 246 / 45%); }
       50% { box-shadow: 0 0 0 7px rgb(0 149 246 / 0%); }
     }
+    .status-audience { display: flex; align-items: center; gap: 6px; margin: 2px 0 10px; color: var(--muted); font-size: 13px; font-weight: 500; }
+    .status-audience svg { flex: 0 0 auto; width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
     .updates-divider { height: 1px; margin: 14px 0; background: var(--border); }
     .explore-pill { padding: 7px 16px; border: 0; border-radius: 999px; background: color-mix(in srgb, var(--text) 8%, var(--surface)); color: var(--text); font-size: 13px; font-weight: 700; cursor: pointer; }
     .explore-pill:hover { background: color-mix(in srgb, var(--blue) 16%, var(--surface)); }
@@ -1122,6 +1145,110 @@
       text-align: center;
     }
 
+    .mpesa-label {
+      margin: 18px 0 2px;
+      font-size: 12px;
+      letter-spacing: .06em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+
+    .mpesa-number {
+      margin: 0;
+      font-size: 30px;
+      font-weight: 800;
+      letter-spacing: .04em;
+      color: var(--blue);
+    }
+
+    .mpesa-steps { margin: 14px 0; padding-left: 22px; line-height: 1.6; }
+
+    .mpesa-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin: 10px 0;
+    }
+
+    .mpesa-links a {
+      padding: 7px 13px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      color: var(--blue);
+      font-size: 13px;
+      font-weight: 600;
+      text-decoration: none;
+    }
+
+    .fees-sub {
+      margin: 22px 0 10px;
+      padding-top: 14px;
+      border-top: 1px solid var(--border);
+      font-size: 16px;
+      font-weight: 800;
+    }
+
+    .fees-field { display: grid; gap: 4px; margin: 0 0 12px; }
+
+    .fees-field label { font-size: 13px; font-weight: 600; color: var(--muted); }
+
+    .fees-field input { width: 100%; }
+
+    .fees-copy {
+      justify-self: start;
+      margin-top: 2px;
+      padding: 6px 12px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      background: transparent;
+      color: var(--blue);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .fees-copy:hover { background: color-mix(in srgb, var(--blue) 10%, transparent); }
+
+    .fees-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 6px; }
+
+    .home-fees-pill {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+      margin: 0 0 14px;
+      padding: 14px 16px;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background: var(--surface);
+      color: var(--text);
+      font: inherit;
+      font-size: 16px;
+      font-weight: 700;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .home-fees-pill:hover { background: color-mix(in srgb, var(--blue) 8%, var(--surface)); }
+
+    .home-fees-pill svg {
+      flex: 0 0 26px;
+      width: 26px;
+      height: 26px;
+      fill: none;
+      stroke: var(--blue);
+      stroke-width: 1.8;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .home-fees-pill span:last-child {
+      margin-left: auto;
+      color: var(--muted);
+      font-size: 20px;
+      font-weight: 600;
+    }
+
     @media (min-width: 720px) {
       .you-avatar { width: 148px; height: 148px; }
       .you-group,
@@ -1131,10 +1258,10 @@
       .you-details { margin-left: auto; margin-right: auto; max-width: 620px; }
     }
   </style>
-  <script type="module" crossorigin src="/assets/main-CPqqf99S.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/pwa-DwNy9JWd.js">
-  <link rel="modulepreload" crossorigin href="/assets/index-kyC7gcBI.js">
-  <link rel="modulepreload" crossorigin href="/assets/app-lock-d64C7BqF.js">
+  <script type="module" crossorigin src="/assets/main-maZ2ZGAW.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/pwa-CKYaIuOn.js">
+  <link rel="modulepreload" crossorigin href="/assets/staff-verification-BYGl_avo.js">
+  <link rel="modulepreload" crossorigin href="/assets/app-lock-CRIkt0_9.js">
 </head>
 
 <body>
@@ -1152,6 +1279,7 @@
         <div class="settings-panel">
           <label for="language-selector" hidden data-i18n="Language">Language</label>
           <select id="language-selector" class="language-selector" aria-label="Language" data-i18n-aria-label="Language">
+            <option value="auto" data-i18n="Auto (my phone)">Auto (my phone)</option>
             <option value="en">English</option>
             <option value="fr">Français</option>
             <option value="sw">Kiswahili</option>
@@ -1280,8 +1408,26 @@
           <option value="student" data-i18n="Student">Student</option>
           <option value="lecturer" data-i18n="Lecturer">Lecturer</option>
           <option value="security" data-i18n="Security staff">Security staff</option>
+          <option value="member" data-i18n="None of these">None of these</option>
         </select>
-        <p class="muted" data-i18n="Students start immediately. Lecturer and Security accounts are reviewed by an app admin before they get their role - you can still use the app as a student while you wait.">Students start immediately. Lecturer and Security accounts are reviewed by an app admin before they get their role - you can still use the app as a student while you wait.</p>
+        <p class="muted" data-i18n="Students start immediately. A lecturer has to show a National ID, a staff ID card and the letter of introduction, and an admin has to accept them before the university system opens.">Students start immediately. A lecturer has to show a National ID, a staff ID card and the letter of introduction, and an admin has to accept them before the university system opens.</p>
+
+        <div id="registerNumberFields">
+          <label for="registerNumber" id="registerNumberLabel" data-i18n="Your registration number">Your registration number</label>
+          <input id="registerNumber" type="text" maxlength="32" spellcheck="false" autocomplete="off"
+                 placeholder="KU01-1234-2024" required>
+          <p class="muted" id="registerNumberHint" data-i18n="One number, one account. The system keeps it for you, and a number that is already known is refused even when two people share a name.">One number, one account. The system keeps it for you, and a number that is already known is refused even when two people share a name.</p>
+        </div>
+
+        <div id="registerStudyModeFields">
+          <label for="registerStudyMode" data-i18n="How you study">How you study</label>
+          <select id="registerStudyMode">
+            <option value="normal" data-i18n="Normal studies">Normal studies</option>
+            <option value="retake" data-i18n="Retake / supplementary">Retake / supplementary</option>
+            <option value="online" data-i18n="Online studies">Online studies</option>
+          </select>
+          <p class="muted" data-i18n="This is the badge people see on your profile: Normal, Retake or Online. You can change it later.">This is the badge people see on your profile: Normal, Retake or Online. You can change it later.</p>
+        </div>
 
         <label for="registerGender" data-i18n="Gender (optional)">Gender (optional)</label>
         <select id="registerGender">
@@ -1384,6 +1530,11 @@
             <span class="you-row-label" data-i18n="Student portals, ENT and LMS worldwide">Student portals, ENT and LMS worldwide</span>
             <svg class="you-row-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
           </a>
+          <button class="you-row" type="button" data-you-target="fees">
+            <span class="you-row-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 10h19"/></svg></span>
+            <span class="you-row-label" data-i18n="Pay school fees">Pay school fees</span>
+            <svg class="you-row-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+          </button>
         </div>
 
         <div class="you-group">
@@ -1430,6 +1581,15 @@
           <button id="logoutButton" class="you-row danger hidden" type="button">
             <span class="you-row-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M15 4.5H6v15h9"/><path d="M12 12h9m0 0-3-3m3 3-3 3"/></svg></span>
             <span class="you-row-label" data-i18n="Log out">Log out</span>
+          </button>
+        </div>
+
+        <div class="you-group">
+          <h3 data-i18n="Support">Support</h3>
+          <button class="you-row" type="button" data-you-target="mpesa">
+            <span class="you-row-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="6" width="19" height="12" rx="2.5"/><circle cx="12" cy="12" r="2.6"/></svg></span>
+            <span class="you-row-label" data-i18n="Send a M-Pesa gift to the developer">Send a M-Pesa gift to the developer</span>
+            <svg class="you-row-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
           </button>
         </div>
 
@@ -1507,6 +1667,13 @@
               <p id="class-level-preview" class="role-line" role="status"></p>
               <small data-i18n="Choosing your programme, year and semester classifies your class (for example 2.1). It also fills the course line above.">Choosing your programme, year and semester classifies your class (for example 2.1). It also fills the course line above.</small>
             </div>
+            <label for="profileStudyMode" data-i18n="How you study">How you study</label>
+            <select id="profileStudyMode">
+              <option value="normal" data-i18n="Normal studies">Normal studies</option>
+              <option value="retake" data-i18n="Retake / supplementary">Retake / supplementary</option>
+              <option value="online" data-i18n="Online studies">Online studies</option>
+            </select>
+            <small data-i18n="People see this on your profile as Normal, Retake or Online. An admin can correct it if it is wrong.">People see this on your profile as Normal, Retake or Online. An admin can correct it if it is wrong.</small>
             <label for="profileUniversity" data-i18n="University">University</label>
             <input id="profileUniversity" type="text" maxlength="120" placeholder="Kabarak University" data-i18n-placeholder="Kabarak University">
             <small data-i18n="This decides which classes and announcements reach you.">This decides which classes and announcements reach you.</small>
@@ -1521,7 +1688,7 @@
                 <option value="lecturer" data-i18n="Lecturer">Lecturer</option>
                 <option value="security" data-i18n="Security staff">Security staff</option>
               </select>
-              <small data-i18n="An app admin checks your claim before this role is given. Asking for it does not change what you can do until it is approved.">An app admin checks your claim before this role is given. Asking for it does not change what you can do until it is approved.</small>
+              <small data-i18n="An app admin checks your claim before this role is given. While a lecturer claim waits, the university system stays closed to you until you send your documents and an admin accepts them.">An app admin checks your claim before this role is given. While a lecturer claim waits, the university system stays closed to you until you send your documents and an admin accepts them.</small>
             </div>
           </fieldset>
           <fieldset id="youPrivacyFields" class="you-fieldset">
@@ -1548,6 +1715,19 @@
         <p class="muted" data-i18n="Approve or reject lecturer and security requests, and give a role directly. Every action here is recorded.">Approve or reject lecturer and security requests, and give a role directly. Every action here is recorded.</p>
         <h3 data-i18n="Requests waiting for review">Requests waiting for review</h3>
         <div id="pendingMemberList" class="pending-member-list">
+          <p class="muted" data-i18n="Loading...">Loading...</p>
+        </div>
+        <h3 data-i18n="Lecturer documents waiting for review">Lecturer documents waiting for review</h3>
+        <div id="staffSubmissionList" class="pending-member-list">
+          <p class="muted" data-i18n="Loading...">Loading...</p>
+        </div>
+        <h3 data-i18n="Lecturers on the staff list">Lecturers on the staff list</h3>
+        <p class="muted" data-i18n="Archiving a lecturer closes the university system to them. When they come back they must show a new staff ID card, because the old card stays retired.">Archiving a lecturer closes the university system to them. When they come back they must show a new staff ID card, because the old card stays retired.</p>
+        <div id="staffActiveList" class="pending-member-list">
+          <p class="muted" data-i18n="Loading...">Loading...</p>
+        </div>
+        <h3 data-i18n="Former lecturers (passive)">Former lecturers (passive)</h3>
+        <div id="staffPassiveList" class="pending-member-list">
           <p class="muted" data-i18n="Loading...">Loading...</p>
         </div>
         <h3 data-i18n="Change a member's role">Change a member's role</h3>
@@ -1591,6 +1771,14 @@
           </button>
         </div>
 
+        <p class="status-audience">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <rect x="5" y="10.5" width="14" height="9.5" rx="2" />
+            <path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5" />
+          </svg>
+          <span data-i18n="Only your friends can see your statuses.">Only your friends can see your statuses.</span>
+        </p>
+
         <p id="storyStatus" class="status" role="status" aria-live="polite"></p>
         <div id="storiesList" class="stories-list" aria-label="Student statuses"></div>
         <button id="boostStatusButton" class="boost-status" type="button" data-i18n="Boost status">Boost status</button>
@@ -1620,6 +1808,12 @@
           </div>
         </form>
       </dialog>
+
+      <button id="homeFeesButton" class="home-fees-pill" type="button">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 10h19"/></svg>
+        <span data-i18n="Pay school fees">Pay school fees</span>
+        <span aria-hidden="true">›</span>
+      </button>
 
       <section class="card">
         <h2 data-i18n="Create a post">Create a post</h2>
@@ -1693,6 +1887,17 @@
           <span id="storyViewerAuthor" class="story-head-name"></span>
           <span id="storyViewerTime" class="story-head-time"></span>
         </span>
+        <button id="storySoundButton" class="story-head-action sound-muted" type="button" hidden>
+          <svg class="story-sound-on" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4Z" />
+            <path d="M15.8 9.6a3.5 3.5 0 0 1 0 4.8" />
+            <path d="M18.3 7a7 7 0 0 1 0 10" />
+          </svg>
+          <svg class="story-sound-off" viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 9.5h3.5L12 6v12l-4.5-3.5H4Z" />
+            <path d="m16.2 9.6 4.6 4.8m0-4.8-4.6 4.8" />
+          </svg>
+        </button>
         <button id="downloadStoryButton" class="story-head-action" type="button" hidden
                 aria-label="Save this status" title="Save">
           <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -1728,13 +1933,99 @@
   </dialog>
 
   <dialog id="newPasswordDialog" class="story-viewer" aria-labelledby="newPasswordTitle">
-    <h2 id="newPasswordTitle">Choose a new password</h2>
+    <h2 id="newPasswordTitle" data-i18n="Choose a new password">Choose a new password</h2>
+    <p class="muted" data-i18n="You opened the reset link from your email, so this account is signed in while you choose a new password.">You opened the reset link from your email, so this account is signed in while you choose a new password.</p>
     <form id="newPasswordForm">
-      <label for="newPassword">New password (at least 6 characters)</label>
+      <label for="newPassword" data-i18n="New password (at least 6 characters)">New password (at least 6 characters)</label>
       <input id="newPassword" type="password" minlength="6" autocomplete="new-password" required>
-      <button id="saveNewPasswordButton" type="submit">Save password</button>
+      <button id="saveNewPasswordButton" type="submit" data-i18n="Save password">Save password</button>
+      <button id="cancelNewPasswordButton" class="secondary" type="button" data-i18n="Back to log in">Back to log in</button>
       <p id="newPasswordStatus" class="status" role="status"></p>
     </form>
+  </dialog>
+
+  <dialog id="mpesaDialog" class="story-viewer" aria-labelledby="mpesaTitle">
+    <h2 id="mpesaTitle" data-i18n="Support Campus Connect">Support Campus Connect</h2>
+    <p class="muted" data-i18n="Campus Connect stays free for every student. If it helps you, a small M-Pesa gift keeps it running.">Campus Connect stays free for every student. If it helps you, a small M-Pesa gift keeps it running.</p>
+    <p class="mpesa-label" data-i18n="Send money to">Send money to</p>
+    <p class="mpesa-number" id="mpesaNumber">0793 172 970</p>
+    <button id="copyMpesaButton" class="secondary" type="button" data-i18n="Copy the number">Copy the number</button>
+    <p id="mpesaStatus" class="status" role="status"></p>
+    <ol class="mpesa-steps">
+      <li data-i18n="Open the M-Pesa menu on your phone.">Open the M-Pesa menu on your phone.</li>
+      <li data-i18n="Choose Send Money.">Choose Send Money.</li>
+      <li data-i18n="Enter the number above and check the name your phone shows.">Enter the number above and check the name your phone shows.</li>
+      <li data-i18n="Type the amount and your PIN, then confirm.">Type the amount and your PIN, then confirm.</li>
+    </ol>
+    <p class="mpesa-label" data-i18n="From another country: send to M-Pesa">From another country: send to M-Pesa</p>
+    <p class="mpesa-number" id="mpesaInternationalNumber">+254 793 172 970</p>
+    <button id="copyMpesaInternationalButton" class="secondary" type="button" data-i18n="Copy the international number">Copy the international number</button>
+    <p class="muted" data-i18n="Open WorldRemit, Sendwave, Remitly or Wise, choose Kenya and then M-Pesa, and enter that number. The money lands in the same account and the sender pays the fee.">Open WorldRemit, Sendwave, Remitly or Wise, choose Kenya and then M-Pesa, and enter that number. The money lands in the same account and the sender pays the fee.</p>
+    <p class="mpesa-links">
+      <a href="https://www.worldremit.com/en/kenya/mobile/m-pesa" target="_blank" rel="noopener noreferrer">WorldRemit</a>
+      <a href="https://www.sendwave.com/" target="_blank" rel="noopener noreferrer">Sendwave</a>
+      <a href="https://www.remitly.com/" target="_blank" rel="noopener noreferrer">Remitly</a>
+      <a href="https://wise.com/us/send-money/send-money-to-m-pesa" target="_blank" rel="noopener noreferrer">Wise</a>
+    </p>
+    <p class="muted" data-i18n="This is a gift to the developer, not a payment. Campus Connect never sees your PIN or your transaction code.">This is a gift to the developer, not a payment. Campus Connect never sees your PIN or your transaction code.</p>
+    <button id="closeMpesaDialogButton" type="button" data-i18n="Close">Close</button>
+  </dialog>
+
+  <dialog id="feesDialog" class="story-viewer" aria-labelledby="feesTitle">
+    <h2 id="feesTitle" data-i18n="Pay school fees">Pay school fees</h2>
+    <p class="muted" data-i18n="Campus Connect never holds your fees. These are your own school's payment details, saved only on this phone, so you can pay from home or from anywhere in the world.">Campus Connect never holds your fees. These are your own school's payment details, saved only on this phone, so you can pay from home or from anywhere in the world.</p>
+
+    <p class="fees-sub" data-i18n="1. M-Pesa Paybill">1. M-Pesa Paybill</p>
+    <div class="fees-field">
+      <label for="feesPaybill" data-i18n="Paybill number">Paybill number</label>
+      <input id="feesPaybill" type="text" inputmode="numeric" autocomplete="off" spellcheck="false">
+      <button class="fees-copy" type="button" data-fees-copy="feesPaybill" data-i18n="Copy paybill">Copy paybill</button>
+    </div>
+    <div class="fees-field">
+      <label for="feesAccount" data-i18n="Account number (your admission number)">Account number (your admission number)</label>
+      <input id="feesAccount" type="text" autocomplete="off" spellcheck="false">
+      <button class="fees-copy" type="button" data-fees-copy="feesAccount" data-i18n="Copy account number">Copy account number</button>
+    </div>
+    <div class="fees-field">
+      <label for="feesAmount" data-i18n="Amount in shillings (optional)">Amount in shillings (optional)</label>
+      <input id="feesAmount" type="text" inputmode="decimal" autocomplete="off">
+    </div>
+    <ol class="mpesa-steps">
+      <li data-i18n="Dial *234# on your phone, or open the M-Pesa menu.">Dial *234# on your phone, or open the M-Pesa menu.</li>
+      <li data-i18n="Choose Lipa na M-Pesa, then Pay Bill.">Choose Lipa na M-Pesa, then Pay Bill.</li>
+      <li data-i18n="Enter the paybill number, then the account number above.">Enter the paybill number, then the account number above.</li>
+      <li data-i18n="Enter the amount and your PIN, then confirm. The school receives it straight away.">Enter the amount and your PIN, then confirm. The school receives it straight away.</li>
+    </ol>
+
+    <p class="fees-sub" data-i18n="2. Bank account, from any country">2. Bank account, from any country</p>
+    <div class="fees-field">
+      <label for="feesBankName" data-i18n="Bank name and branch">Bank name and branch</label>
+      <input id="feesBankName" type="text" autocomplete="off" spellcheck="false">
+    </div>
+    <div class="fees-field">
+      <label for="feesBankAccount" data-i18n="School bank account number">School bank account number</label>
+      <input id="feesBankAccount" type="text" inputmode="numeric" autocomplete="off" spellcheck="false">
+      <button class="fees-copy" type="button" data-fees-copy="feesBankAccount" data-i18n="Copy bank account number">Copy bank account number</button>
+    </div>
+    <div class="fees-field">
+      <label for="feesBankSwift" data-i18n="SWIFT or BIC code, for senders abroad">SWIFT or BIC code, for senders abroad</label>
+      <input id="feesBankSwift" type="text" autocomplete="off" spellcheck="false">
+      <button class="fees-copy" type="button" data-fees-copy="feesBankSwift" data-i18n="Copy SWIFT code">Copy SWIFT code</button>
+    </div>
+    <p class="muted" data-i18n="Whoever pays from abroad uses their own bank, Wise, Remitly or WorldRemit: choose Kenya, then Bank account, and paste these details. The money goes to the school, never to Campus Connect.">Whoever pays from abroad uses their own bank, Wise, Remitly or WorldRemit: choose Kenya, then Bank account, and paste these details. The money goes to the school, never to Campus Connect.</p>
+    <p class="mpesa-links">
+      <a href="https://wise.com/gb/send-money/send-money-to-kenya" target="_blank" rel="noopener noreferrer">Wise</a>
+      <a href="https://www.remitly.com/" target="_blank" rel="noopener noreferrer">Remitly</a>
+      <a href="https://www.worldremit.com/en/kenya" target="_blank" rel="noopener noreferrer">WorldRemit</a>
+    </p>
+
+    <div class="fees-actions">
+      <button id="saveFeesButton" type="button" data-i18n="Save on this phone">Save on this phone</button>
+      <button id="clearFeesButton" class="secondary" type="button" data-i18n="Clear the details">Clear the details</button>
+    </div>
+    <p id="feesStatus" class="status" role="status"></p>
+    <p class="muted" data-i18n="Check every number against your official fee invoice before you pay. Campus Connect cannot see or change what your school is owed.">Check every number against your official fee invoice before you pay. Campus Connect cannot see or change what your school is owed.</p>
+    <button id="closeFeesDialogButton" type="button" data-i18n="Close">Close</button>
   </dialog>
 
 </body>

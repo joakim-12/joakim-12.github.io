@@ -1,4 +1,4 @@
-const CACHE_NAME = "campus-connect-v34";
+const CACHE_NAME = "campus-connect-v44";
 const MEDIA_CACHE_NAME = "campus-connect-media-v1";
 const MAX_MEDIA_ENTRIES = 240;
 const APP_SHELL = [
