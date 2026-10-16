@@ -352,29 +352,6 @@
       object-fit: contain;
     }
 
-    .story-viewer-actions {
-      display: flex;
-      justify-content: space-between;
-      gap: 8px;
-    }
-
-    .post-header {
-      display: flex;
-      justify-content: space-between;
-      gap: 12px;
-      align-items: center;
-    }
-
-    .post-author {
-      font-weight: bold;
-    }
-
-    .post-content {
-      overflow-wrap: anywhere;
-      line-height: 1.5;
-      white-space: pre-wrap;
-    }
-
     .post-image, .post-video {
       display: block;
       max-width: 100%;
@@ -404,24 +381,6 @@
       cursor: pointer;
     }
 
-    .post-actions {
-      display: flex;
-      gap: 8px;
-      border-top: 1px solid var(--border);
-      padding-top: 12px;
-      margin-top: 12px;
-    }
-
-    .post-actions button {
-      flex: 1;
-    }
-
-    .comment {
-      padding: 8px 0;
-      border-bottom: 1px solid var(--border);
-      overflow-wrap: anywhere;
-    }
-
     .comment-form {
       display: flex;
       gap: 8px;
@@ -435,26 +394,6 @@
 
     .comment-form button {
       white-space: nowrap;
-    }
-
-    .reaction-row {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-      margin-top: 10px;
-    }
-
-    .reaction-button {
-      padding: 7px 10px;
-      border: 1px solid #f1a3a8;
-      background: #fff0f1;
-      color: #d92d3a;
-    }
-
-    .reaction-button[aria-pressed="true"] {
-      border-color: #d92d3a;
-      background: #d92d3a;
-      color: #fff;
     }
 
     #profileAvatarPreview {
@@ -555,29 +494,27 @@
       stroke-linejoin: round;
     }
 
-    /* WhatsApp-green surfaces and rounded controls. */
+    /* Instagram surfaces: white/black page, hairline dividers, blue accent. */
     :root {
-      --blue: #00a884;
-      --background: #f0f2f5;
+      --blue: #0095f6;
+      --background: #fafafa;
       --surface: #ffffff;
-      --text: #111b21;
-      --muted: #667781;
-      --border: #e9edef;
+      --text: #000000;
+      --muted: #737373;
+      --border: #dbdbdb;
     }
 
     body.dark {
-      --blue: #00a884;
-      --background: #0b141a;
-      --surface: #111b21;
-      --text: #e9edef;
-      --muted: #8696a0;
-      --border: #2f3b40;
+      --blue: #0095f6;
+      --background: #000000;
+      --surface: #121212;
+      --text: #ffffff;
+      --muted: #a8a8a8;
+      --border: #262626;
     }
 
     body {
       font-family: Inter, "Segoe UI", Arial, sans-serif;
-      background-image: radial-gradient(rgb(0 168 132 / 5%) .75px, transparent .75px);
-      background-size: 18px 18px;
     }
 
     header {
@@ -601,10 +538,144 @@
     .tabs button { border-radius: 9px; }
     .tabs button.secondary { border-color: transparent; background: transparent; }
     .tabs button:not(.secondary) { box-shadow: 0 2px 6px rgb(28 48 66 / 12%); }
-    .story-preview { border-color: var(--blue); background: #eaf4ff; color: #2582d8; }
-    .story-card { border-radius: 12px; }
-    .story-card:hover { background: color-mix(in srgb, var(--blue) 7%, var(--surface)); }
-    .post-actions { border-top-color: var(--border); }
+    .updates-title { margin: 4px 0 18px; font-size: clamp(26px, 5vw, 32px); font-weight: 800; letter-spacing: -.9px; }
+    .updates-section-head { display: flex; align-items: center; gap: 10px; margin: 0 0 4px; }
+    .updates-section-head h2 { margin: 0; font-size: 18px; font-weight: 700; }
+    .updates-section-head .spacer { flex: 1; }
+    .updates-icon-button { display: grid; width: 40px; height: 40px; padding: 0; place-items: center; border: 0; border-radius: 50%; background: color-mix(in srgb, var(--text) 7%, var(--surface)); color: var(--text); cursor: pointer; }
+    .updates-icon-button:hover { background: color-mix(in srgb, var(--blue) 16%, var(--surface)); }
+    .updates-icon-button svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    /* The Updates screen sits flat on the page, like Instagram. */
+    #stories.card { border: 0; border-radius: 0; box-shadow: none; color: var(--text); }
+    .updates-section-head h2 { font-weight: 600; letter-spacing: -.2px; }
+    #stories .stories-list { gap: 15px; padding: 2px 0 8px; }
+    #stories .story-card { display: grid; width: 78px; flex: 0 0 78px; gap: 6px; place-items: center; padding: 2px 0; border: 0; background: transparent; color: var(--text); cursor: pointer; }
+    #stories .story-card:hover { background: transparent; }
+    .story-ring { position: relative; display: grid; width: 72px; height: 72px; place-items: center; padding: 3px; border-radius: 50%; background: conic-gradient(from 205deg, #f9ce34, #ee2a7b 38%, #6228d7 74%, #f9ce34); }
+    .story-ring.seen { background: var(--border); }
+    .story-thumb { display: grid; width: 100%; height: 100%; place-items: center; overflow: hidden; border: 3px solid var(--surface); border-radius: 50%; background: color-mix(in srgb, var(--text) 10%, var(--surface)); color: var(--text); font-size: 23px; font-weight: 600; }
+    .story-thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .story-add-badge { position: absolute; right: -2px; bottom: 3px; display: grid; width: 22px; height: 22px; place-items: center; border: 2.5px solid var(--surface); border-radius: 50%; background: #0095f6; color: #fff; font-size: 13px; font-weight: 700; line-height: 1; }
+    .story-label { width: 100%; overflow: hidden; color: var(--text); font-size: 12px; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* Instagram-style full-screen status viewer (dark like Instagram). */
+    .story-viewer--full { width: min(420px, 100vw); height: min(100dvh, 880px); max-height: none; margin: auto; padding: 0; border: 0; border-radius: 0; overflow: hidden; background: #000; color: #fff; }
+    @media (min-width: 520px) {
+      .story-viewer--full { border-radius: 12px; }
+    }
+    .story-viewer--full::backdrop { background: rgb(0 0 0 / 82%); }
+    .story-shell { position: relative; width: 100%; height: 100%; overflow: hidden; background: #000; }
+    .story-stage { position: absolute; inset: 0; display: grid; place-items: center; overflow: hidden; }
+    #storyViewer .story-media { width: 100%; height: 100%; max-height: none; margin: 0; border-radius: 0; background: #000; object-fit: contain; }
+    .story-stage-text { display: grid; width: 100%; height: 100%; place-items: center; padding: 66px 22px; background: linear-gradient(150deg, #405de6, #833ab4 42%, #e1306c 72%, #f77737); color: #fff; font-size: clamp(19px, 5.2vw, 25px); font-weight: 700; line-height: 1.35; text-align: center; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .story-empty { padding: 24px; color: rgb(255 255 255 / 74%); font-size: 15px; text-align: center; }
+    .story-caption { position: absolute; right: 0; bottom: 0; left: 0; z-index: 2; max-height: 36%; overflow-y: auto; padding: 26px 14px 16px; background: linear-gradient(transparent, rgb(0 0 0 / 74%)); color: #fff; font-size: 15px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .story-progress { position: absolute; top: 9px; right: 12px; left: 12px; z-index: 4; display: flex; gap: 4px; }
+    .story-bar { position: relative; flex: 1; height: 2px; overflow: hidden; border-radius: 3px; background: rgb(255 255 255 / 32%); }
+    .story-bar > i { position: absolute; inset: 0; display: block; transform: scaleX(0); transform-origin: left; background: #fff; }
+    .story-bar.done > i { transform: scaleX(1); }
+    .story-bar.active > i { animation: story-fill var(--story-duration, 6s) linear forwards; }
+    @keyframes story-fill { to { transform: scaleX(1); } }
+    .story-head { position: absolute; top: 18px; right: 0; left: 0; z-index: 4; display: flex; align-items: center; gap: 10px; padding: 6px 10px 18px; background: linear-gradient(rgb(0 0 0 / 62%), transparent); }
+    .story-head-thumb { display: grid; width: 34px; height: 34px; flex: 0 0 34px; place-items: center; overflow: hidden; border-radius: 50%; background: #262626; color: #fff; font-size: 14px; font-weight: 700; }
+    .story-head-thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .story-head-meta { display: grid; flex: 1; min-width: 0; margin-right: auto; gap: 1px; }
+    .story-head-name { overflow: hidden; font-size: 14px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+    .story-head-time { color: rgb(255 255 255 / 72%); font-size: 12px; }
+    .story-head-action { display: grid; width: 34px; height: 34px; flex: 0 0 34px; padding: 0; place-items: center; border: 0; border-radius: 50%; background: transparent; color: #fff; cursor: pointer; }
+    .story-head-action[hidden] { display: none; }
+    .story-head-action:hover { filter: none; background: rgb(255 255 255 / 14%); }
+    .story-head-action svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .story-close { width: 34px; height: 34px; flex: 0 0 34px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: #fff; font-size: 19px; line-height: 1; cursor: pointer; }
+    .story-close:hover { filter: none; background: rgb(255 255 255 / 14%); }
+    .story-side { position: absolute; top: 76px; bottom: 0; z-index: 3; width: 36%; padding: 0; border: 0; border-radius: 0; background: transparent; cursor: pointer; }
+    .story-side--prev { left: 0; }
+    .story-side--next { right: 0; }
+    .story-side:disabled { display: none; }
+    .story-side-icon { position: absolute; top: 50%; display: grid; width: 34px; height: 34px; place-items: center; transform: translateY(-50%); border-radius: 50%; background: rgb(254 254 254 / 22%); color: #fff; font-size: 20px; line-height: 1; pointer-events: none; }
+    .story-side--prev .story-side-icon { left: 10px; }
+    .story-side--next .story-side-icon { right: 10px; }
+    .story-side:hover .story-side-icon { background: rgb(254 254 254 / 34%); }
+
+    /* ============ FEED — INSTAGRAM POSTS ============ */
+    .feed-shell { padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+    .feed-shell > h2 { padding: 14px 2px 10px; margin: 0; font-size: 12px; font-weight: 600; letter-spacing: .4px; text-transform: uppercase; color: var(--muted); }
+    .feed-shell > #refreshFeedButton, .feed-shell > .status { margin-right: 2px; margin-left: 2px; }
+    .ig-post { padding: 0 0 12px; margin-bottom: 16px; border-bottom: 1px solid var(--border); background: var(--surface); }
+    .ig-post-head { display: flex; align-items: center; gap: 10px; padding: 10px 12px; }
+    .ig-post-avatar { display: grid; width: 34px; height: 34px; flex: 0 0 34px; place-items: center; overflow: hidden; border-radius: 50%; background: color-mix(in srgb, var(--text) 12%, var(--surface)); color: var(--text); font-size: 14px; font-weight: 700; }
+    .ig-post-avatar img { width: 100%; height: 100%; object-fit: cover; }
+    .ig-post-headline { display: grid; flex: 1; min-width: 0; gap: 1px; }
+    .ig-post-author { overflow: hidden; font-size: 14px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+    .ig-post-time { color: var(--muted); font-size: 12px; }
+    .ig-post .post-video-wrap { position: relative; width: 100%; background: color-mix(in srgb, var(--text) 5%, var(--surface)); }
+    .ig-post img.post-image { display: block; width: 100%; max-height: 74vh; margin: 0; border-radius: 0; object-fit: cover; }
+    .ig-post video.post-video { display: block; width: 100%; max-height: 74vh; margin: 0; border-radius: 0; object-fit: contain; background: #000; }
+    .ig-post-bar { display: flex; align-items: center; gap: 14px; padding: 8px 10px 2px; }
+    .ig-icon-button { display: inline-flex; align-items: center; gap: 6px; padding: 4px; border: 0; border-radius: 8px; background: transparent; color: var(--text); font: inherit; cursor: pointer; }
+    .ig-icon-button:hover { filter: none; opacity: .6; }
+    .ig-icon-button:disabled { opacity: .4; cursor: default; }
+    .ig-icon-button svg { width: 24px; height: 24px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+    .ig-like.is-on { color: #ed4956; }
+    .ig-like.is-on svg, .ig-save.is-on svg { fill: currentColor; }
+    .ig-save { margin-left: auto; }
+    .ig-count { font-size: 14px; font-weight: 600; }
+    .ig-post-caption { margin: 4px 14px 0; font-size: 14px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .ig-caption-author { margin-right: 5px; font-weight: 600; }
+    .ig-caption-full { display: none; }
+    .ig-post-caption.open .ig-caption-short, .ig-post-caption.open .ig-more { display: none; }
+    .ig-post-caption.open .ig-caption-full { display: inline; }
+    .ig-more { padding: 0; border: 0; background: none; color: var(--muted); font: inherit; cursor: pointer; }
+    .ig-comments-toggle { margin: 6px 14px 0; padding: 0; border: 0; background: none; color: var(--muted); font-size: 14px; cursor: pointer; }
+    .ig-comments { display: grid; gap: 6px; margin: 6px 14px 0; }
+    .ig-comment { margin: 0; font-size: 14px; line-height: 1.4; overflow-wrap: anywhere; }
+    .ig-comment strong { margin-right: 5px; font-weight: 600; }
+    .ig-comment-form { display: flex; align-items: center; gap: 8px; margin: 10px 14px 0; padding: 8px 0 0; border-top: 0; }
+    .ig-comment-form input { flex: 1; padding: 6px 0; border: 0; background: transparent; font-size: 14px; }
+    .ig-comment-form input:focus { border-color: transparent; outline: none; box-shadow: none; }
+    .ig-send { padding: 6px 2px; border: 0; background: none; color: var(--blue); font-size: 14px; font-weight: 600; cursor: pointer; }
+    .post-menu-dialog { width: min(340px, 92vw); padding: 8px; border: 0; border-radius: 14px; background: var(--surface); color: var(--text); }
+    .post-menu-dialog::backdrop { background: rgb(0 0 0 / 55%); }
+    .post-menu-options { display: grid; }
+    .post-menu-option { padding: 14px 10px; border: 0; border-bottom: 1px solid var(--border); border-radius: 0; background: none; color: var(--text); font-size: 15px; text-align: left; cursor: pointer; }
+    .post-menu-option:hover { filter: none; background: color-mix(in srgb, var(--text) 6%, var(--surface)); }
+    .post-menu-option.danger { color: #ed4956; }
+    .post-menu-cancel { width: 100%; margin-top: 8px; padding: 13px; border: 0; border-radius: 8px; background: color-mix(in srgb, var(--text) 6%, var(--surface)); color: var(--text); font-size: 15px; font-weight: 600; cursor: pointer; }
+    .you-saved-row { display: flex; align-items: center; gap: 6px; border-bottom: 1px solid var(--border); }
+    .you-saved-open { flex: 1; min-width: 0; padding: 13px 2px; border: 0; border-radius: 0; background: none; color: var(--text); font-size: 14px; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+    .you-saved-remove { width: 36px; height: 36px; flex: 0 0 36px; padding: 0; border: 0; border-radius: 50%; background: none; color: var(--muted); font-size: 15px; cursor: pointer; }
+    .you-saved-empty { color: var(--muted); font-size: 14px; }
+    #profile .owner-about { margin: 4px 14px 22px; padding: 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); font-size: 14px; }
+    #profile .owner-about h2 { margin: 0 0 6px; font-size: 16px; }
+    .boost-status { display: block; width: 100%; margin: 8px 0 4px; padding: 12px 14px; border: 0; border-radius: 999px; background: color-mix(in srgb, var(--text) 7%, var(--surface)); color: var(--text); font-size: 15px; font-weight: 600; cursor: pointer; }
+    .boost-status:hover { background: color-mix(in srgb, var(--blue) 14%, var(--surface)); }
+    .boost-status.is-boosted { background: color-mix(in srgb, var(--blue) 22%, var(--surface)); }
+    .story-card.boosted .story-ring { animation: story-boost 2.2s ease-in-out infinite; }
+    @keyframes story-boost {
+      0%, 100% { box-shadow: 0 0 0 0 rgb(0 149 246 / 45%); }
+      50% { box-shadow: 0 0 0 7px rgb(0 149 246 / 0%); }
+    }
+    .updates-divider { height: 1px; margin: 14px 0; background: var(--border); }
+    .explore-pill { padding: 7px 16px; border: 0; border-radius: 999px; background: color-mix(in srgb, var(--text) 8%, var(--surface)); color: var(--text); font-size: 13px; font-weight: 700; cursor: pointer; }
+    .explore-pill:hover { background: color-mix(in srgb, var(--blue) 16%, var(--surface)); }
+    .channels-list { display: grid; }
+    .channel-row { display: grid; grid-template-columns: 46px 1fr auto; gap: 12px; align-items: center; width: 100%; padding: 9px 2px; border: 0; border-bottom: 1px solid var(--border); background: transparent; color: var(--text); text-align: left; text-decoration: none; cursor: pointer; }
+    .channel-row:hover { background: color-mix(in srgb, var(--blue) 6%, var(--surface)); }
+    .channel-avatar { display: grid; width: 46px; height: 46px; place-items: center; overflow: hidden; border-radius: 50%; background: color-mix(in srgb, var(--blue) 18%, var(--surface)); color: var(--text); font-size: 17px; font-weight: 700; }
+    .channel-avatar img { width: 100%; height: 100%; object-fit: cover; }
+    .channel-body { min-width: 0; }
+    .channel-name { display: block; overflow: hidden; font-size: 15px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+    .channel-preview { display: block; overflow: hidden; color: var(--muted); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+    .channel-meta { display: grid; gap: 5px; justify-items: end; }
+    .channel-time { font-size: 12px; font-weight: 600; color: var(--blue); }
+    .channel-time.read { color: var(--muted); font-weight: 400; }
+    .channel-unread { min-width: 20px; padding: 1px 5px; border-radius: 999px; background: #0095f6; color: #fff; font-size: 11px; font-weight: 700; text-align: center; }
+    .channels-empty { padding: 12px 2px; color: var(--muted); font-size: 14px; }
+    .story-form-dialog { width: min(460px, 94vw); padding: 20px; border: 0; border-radius: 16px; background: var(--surface); color: var(--text); }
+    .story-form-dialog::backdrop { background: rgb(0 0 0 / 65%); }
+    .story-form-dialog h3 { margin: 0 0 12px; font-size: 19px; }
+    .story-form-dialog form { margin: 0; }
+    .story-form-actions { display: flex; gap: 10px; justify-content: flex-end; }
     .bottom-nav { background: color-mix(in srgb, var(--surface) 62%, transparent); -webkit-backdrop-filter: blur(22px) saturate(1.8); backdrop-filter: blur(22px) saturate(1.8); }
     .bottom-nav a { transition: background-color .16s ease, color .16s ease, transform .16s ease; }
     .bottom-nav a.active { background: color-mix(in srgb, var(--blue) 12%, var(--surface)); }
@@ -653,11 +724,6 @@
     }
     /* ============ PROFILE ("YOU") TAB — mobile first ============ */
     #appSection:has(#profile:target) > section:not(#profile):not(#adminPanel) {
-      display: none;
-    }
-
-    /* The You tab is a full screen, so the footer card steps out of it. */
-    main:has(#profile:target) > #about {
       display: none;
     }
 
@@ -1065,10 +1131,10 @@
       .you-details { margin-left: auto; margin-right: auto; max-width: 620px; }
     }
   </style>
-  <script type="module" crossorigin src="/assets/main-DOdrY3yY.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/pwa-SJ1x9Wss.js">
-  <link rel="modulepreload" crossorigin href="/assets/index-LrY2BCsq.js">
-  <link rel="modulepreload" crossorigin href="/assets/app-lock-BytF_Qw4.js">
+  <script type="module" crossorigin src="/assets/main-CPqqf99S.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/pwa-DwNy9JWd.js">
+  <link rel="modulepreload" crossorigin href="/assets/index-kyC7gcBI.js">
+  <link rel="modulepreload" crossorigin href="/assets/app-lock-d64C7BqF.js">
 </head>
 
 <body>
@@ -1093,7 +1159,7 @@
           </select>
           <button id="install-app-button" class="secondary" type="button" data-install-app data-i18n="Install app">Install app</button>
           <button class="secondary" type="button" data-share-app data-i18n="Share app">Share app</button>
-          <a href="#about" data-i18n="About">About</a>
+          <a href="/#profile" data-i18n="About">About</a>
           <a href="/#stories" data-destination="updates" data-i18n="Updates">Updates</a>
           <strong data-i18n="Quick access">Quick access</strong>
           <a href="https://www.youtube.com/" target="_blank" rel="noopener noreferrer" data-i18n="YouTube">YouTube</a>
@@ -1312,6 +1378,15 @@
         </div>
 
         <div class="you-group">
+          <h3 data-i18n="University systems">University systems</h3>
+          <a class="you-row" href="/universities.html">
+            <span class="you-row-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2.5 7.5 12 12l9.5-4.5Z"/><path d="M6 10v5.5c0 1.7 2.7 3 6 3s6-1.3 6-3V10"/><path d="M21.5 7.5v6"/></svg></span>
+            <span class="you-row-label" data-i18n="Student portals, ENT and LMS worldwide">Student portals, ENT and LMS worldwide</span>
+            <svg class="you-row-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+          </a>
+        </div>
+
+        <div class="you-group">
           <h3 data-i18n="Account">Account</h3>
           <button class="you-row" type="button" data-you-target="account">
             <span class="you-row-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/></svg></span>
@@ -1346,16 +1421,23 @@
             <span class="you-row-label" data-i18n="Invite a friend">Invite a friend</span>
             <svg class="you-row-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
           </button>
-          <a class="you-row" href="/#about">
-            <span class="you-row-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5M12 8h.01"/></svg></span>
-            <span class="you-row-label" data-i18n="Help and feedback">Help and feedback</span>
+          <button class="you-row" type="button" data-you-target="saved">
+            <span class="you-row-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6.5 3.5h11v17l-5.5-3.9-5.5 3.9Z"/></svg></span>
+            <span class="you-row-label" data-i18n="Saved posts">Saved posts</span>
+            <span class="you-row-value" id="youSavedCount"></span>
             <svg class="you-row-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
-          </a>
+          </button>
           <button id="logoutButton" class="you-row danger hidden" type="button">
             <span class="you-row-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M15 4.5H6v15h9"/><path d="M12 12h9m0 0-3-3m3 3-3 3"/></svg></span>
             <span class="you-row-label" data-i18n="Log out">Log out</span>
           </button>
         </div>
+
+        <section id="you-about" class="card owner-about">
+          <h2 data-i18n="About Campus Connect">About Campus Connect</h2>
+          <p data-i18n="Share updates, find people, chat and call on campus.">Share updates, find people, chat and call on campus.</p>
+          <p class="app-owner-name">Developed by Josh Chimal Akim · BSc Computer Science, Kabarak University</p>
+        </section>
 
         <div id="youAppearanceSheet" class="you-sheet hidden">
           <h3 data-i18n="Appearance">Appearance</h3>
@@ -1376,6 +1458,13 @@
           <button id="copyMyInviteLink" class="secondary" type="button" data-i18n="Copy invite link">Copy invite link</button>
           <button id="shareMyInviteButton" class="secondary" type="button" data-i18n="Share invite link">Share invite link</button>
           <small data-i18n="Anyone with this link can open a chat with you.">Anyone with this link can open a chat with you.</small>
+        </div>
+
+        <div id="youSavedSheet" class="you-sheet hidden">
+          <h3 data-i18n="Saved posts">Saved posts</h3>
+          <div id="youSavedList"></div>
+          <p id="youSavedEmpty" class="you-saved-empty" data-i18n="Tap the bookmark on a post to keep it here.">Tap the bookmark on a post to keep it here.</p>
+          <button id="youSavedClose" class="secondary" type="button" data-i18n="Close">Close</button>
         </div>
 
         <form id="profileForm" class="you-editor hidden">
@@ -1472,20 +1561,65 @@
       </section>
 
       <section id="stories" class="card">
-        <h2 data-i18n="Student status">Student status</h2>
-        <p class="muted" data-i18n="Share a text, photo, or video status. Statuses disappear after 24 hours.">Share a text, photo, or video status. Statuses disappear after 24 hours.</p>
-        <button id="refreshStoriesButton" class="secondary" type="button" data-i18n="Refresh statuses">Refresh statuses</button>
+        <h1 class="updates-title" data-i18n="Updates">Updates</h1>
+
+        <div class="updates-section-head">
+          <h2 data-i18n="Status">Status</h2>
+          <span class="spacer"></span>
+          <button id="refreshStoriesButton" class="updates-icon-button" type="button"
+                  aria-label="Refresh statuses" data-i18n-aria-label="Refresh statuses"
+                  title="Refresh statuses" data-i18n-title="Refresh statuses">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M20 11a8 8 0 1 0-2.3 6.1M20 5.5V11h-5.5" />
+            </svg>
+          </button>
+          <button id="statusCameraButton" class="updates-icon-button" type="button"
+                  aria-label="Add photo status" data-i18n-aria-label="Add photo status"
+                  title="Add photo status" data-i18n-title="Add photo status">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 8.5h3L9 6h6l2 2.5h3v10.5H4z" />
+              <circle cx="12" cy="13.5" r="3.4" />
+            </svg>
+          </button>
+          <button id="statusTextButton" class="updates-icon-button" type="button"
+                  aria-label="Add text status" data-i18n-aria-label="Add text status"
+                  title="Add text status" data-i18n-title="Add text status">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 20h4L19 9l-4-4L4 16z" />
+              <path d="M14.5 5.5 19 10" />
+            </svg>
+          </button>
+        </div>
+
+        <p id="storyStatus" class="status" role="status" aria-live="polite"></p>
+        <div id="storiesList" class="stories-list" aria-label="Student statuses"></div>
+        <button id="boostStatusButton" class="boost-status" type="button" data-i18n="Boost status">Boost status</button>
+
+        <div class="updates-divider"></div>
+
+        <div class="updates-section-head">
+          <h2 data-i18n="Channels">Channels</h2>
+          <span class="spacer"></span>
+          <button id="exploreChannelsButton" class="explore-pill" type="button" data-i18n="Explore">Explore</button>
+        </div>
+        <div id="channelsList" class="channels-list"></div>
+      </section>
+
+      <dialog id="storyFormDialog" class="story-form-dialog" aria-label="Add status"
+              data-i18n-aria-label="Add status">
         <form id="storyForm">
-          <label for="storyText" data-i18n="Your status">Your status</label>
+          <h3 data-i18n="Your status">Your status</h3>
+          <label for="storyText" data-i18n="Write something">Write something</label>
           <textarea id="storyText" maxlength="500" placeholder="What are you up to?" data-i18n-placeholder="What are you up to?"></textarea>
           <label for="storyMedia" data-i18n="Add a photo or video (optional)">Add a photo or video (optional)</label>
           <input id="storyMedia" type="file" accept="image/*,video/*">
           <p class="muted">Videos can be up to 10 minutes and 500 MiB. Photos can be up to 50 MiB.</p>
-          <button id="publishStoryButton" type="submit" data-i18n="Share status">Share status</button>
-          <p id="storyStatus" class="status" role="status" aria-live="polite" data-i18n="Loading statuses...">Loading statuses...</p>
+          <div class="story-form-actions">
+            <button id="storyFormCancel" class="secondary" type="button" data-i18n="Cancel">Cancel</button>
+            <button id="publishStoryButton" type="submit" data-i18n="Share status">Share status</button>
+          </div>
         </form>
-        <div id="storiesList" class="stories-list" aria-label="Student statuses"></div>
-      </section>
+      </dialog>
 
       <section class="card">
         <h2 data-i18n="Create a post">Create a post</h2>
@@ -1508,7 +1642,7 @@
         </form>
       </section>
 
-      <section class="card">
+      <section class="card feed-shell">
         <h2>Student feed</h2>
         <button id="refreshFeedButton" class="secondary" type="button">
           Refresh feed
@@ -1516,12 +1650,6 @@
         <p id="feedStatus" class="status" role="status"></p>
         <div id="feed"></div>
       </section>
-    </section>
-
-    <section id="about" class="card owner-about">
-      <h2>About Campus Connect</h2>
-      <p>Share updates, find people, chat and call on campus.</p>
-      <p class="app-owner-name">Developed by Josh Chimal Akim · BSc Computer Science, Kabarak University</p>
     </section>
 
   </main>
@@ -1548,12 +1676,42 @@
     </a>
   </nav>
 
-  <dialog id="storyViewer" class="story-viewer" aria-label="Student status">
-    <div id="storyViewerContent"></div>
-    <div class="story-viewer-actions">
-      <button id="previousStoryButton" class="secondary" type="button">Previous</button>
-      <button id="closeStoryButton" type="button">Close</button>
-      <button id="nextStoryButton" class="secondary" type="button">Next</button>
+  <dialog id="postMenuDialog" class="post-menu-dialog" aria-label="Post options"
+          data-i18n-aria-label="Post options">
+    <div id="postMenuOptions" class="post-menu-options"></div>
+    <button id="postMenuCancel" class="post-menu-cancel" type="button" data-i18n="Cancel">Cancel</button>
+  </dialog>
+
+  <dialog id="storyViewer" class="story-viewer story-viewer--full" aria-label="Student status"
+          data-i18n-aria-label="Student status">
+    <div class="story-shell">
+      <div id="storyViewerContent" class="story-stage"></div>
+      <div id="storyProgress" class="story-progress" aria-hidden="true"></div>
+      <div class="story-head">
+        <span id="storyViewerAvatar" class="story-head-thumb"></span>
+        <span class="story-head-meta">
+          <span id="storyViewerAuthor" class="story-head-name"></span>
+          <span id="storyViewerTime" class="story-head-time"></span>
+        </span>
+        <button id="downloadStoryButton" class="story-head-action" type="button" hidden
+                aria-label="Save this status" title="Save">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 4v11" />
+            <path d="M7 11l5 5 5-5" />
+            <path d="M5 20h14" />
+          </svg>
+        </button>
+        <button id="closeStoryButton" class="story-close" type="button"
+                aria-label="Close status" data-i18n-aria-label="Close status">✕</button>
+      </div>
+      <button id="previousStoryButton" class="story-side story-side--prev" type="button"
+              aria-label="Previous status" data-i18n-aria-label="Previous status">
+        <span class="story-side-icon">‹</span>
+      </button>
+      <button id="nextStoryButton" class="story-side story-side--next" type="button"
+              aria-label="Next status" data-i18n-aria-label="Next status">
+        <span class="story-side-icon">›</span>
+      </button>
     </div>
   </dialog>
 

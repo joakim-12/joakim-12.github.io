@@ -249,14 +249,46 @@
         .programme-info { margin: 10px 0 0; color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
         .programme-info strong { color: var(--text); }
 
+        .browse-card { margin-top: 10px; }
+        .browse-card[hidden] { display: none; }
+        .browse-list[hidden] { display: none; }
+
+        .browse-row {
+            display: flex;
+            align-items: baseline;
+            gap: 8px;
+            flex-wrap: wrap;
+            padding: 11px 12px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .browse-row:last-child { border-bottom: none; }
+        .browse-row strong { font-size: 14px; }
+        .browse-row .browse-meta { flex-basis: 100%; margin: 0; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+
+        .lecturer-head { display: flex; align-items: center; gap: 10px; }
+
+        .lecturer-avatar {
+            width: 38px;
+            height: 38px;
+            display: grid;
+            place-items: center;
+            border-radius: 50%;
+            background: color-mix(in srgb, var(--primary) 18%, var(--panel));
+            color: var(--primary);
+            font-weight: 800;
+        }
+
+        .browse-empty { padding: 20px; color: var(--muted); text-align: center; font-size: 13px; }
+
         @media (max-width: 540px) {
             .filter-row { grid-template-columns: 1fr 1fr; }
             .filter-row select:first-child { grid-column: 1 / -1; }
             .form-grid.two { grid-template-columns: 1fr; }
         }
     </style>
-  <script type="module" crossorigin src="/assets/classes-KPJJ8vEr.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/pwa-SJ1x9Wss.js">
+  <script type="module" crossorigin src="/assets/classes-pViL1l7V.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/pwa-DwNy9JWd.js">
 </head>
 
 <body>
@@ -321,6 +353,14 @@
         </section>
 
         <section id="timetable" aria-label="Weekly timetable"></section>
+
+        <section id="explore-units-card" class="card" style="margin-top:14px">
+            <h2 data-i18n="Explore units">Explore units</h2>
+            <p class="my-studies-hint" data-i18n="Browse all units available in your programme. See which lecturer teaches each unit, the year, and semester.">Browse all units available in your programme. See which lecturer teaches each unit, the year, and semester.</p>
+            <div id="explore-units-list" class="browse-list"></div>
+            <h3 data-i18n="Lecturers">Lecturers</h3>
+            <div id="explore-lecturers-list" class="browse-list"></div>
+        </section>
 
         <section id="lecturer-panel" class="card lecturer-card" hidden>
             <h2 data-i18n="Lecturer tools">Lecturer tools</h2>

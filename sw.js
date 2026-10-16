@@ -1,17 +1,18 @@
-const CACHE_NAME = "campus-connect-v28";
+const CACHE_NAME = "campus-connect-v34";
 const MEDIA_CACHE_NAME = "campus-connect-media-v1";
 const MAX_MEDIA_ENTRIES = 240;
 const APP_SHELL = [
     "/",
     "/messages.html",
     "/classes.html",
+    "/universities.html",
     "/manifest.json",
     "/icons/icon-192.png",
     "/icons/icon-512.png",
     "/icons/icon-192-maskable.png",
     "/icons/icon-512-maskable.png"
 ];
-const APP_PAGES = new Set(["/", "/messages.html", "/classes.html"]);
+const APP_PAGES = new Set(["/", "/messages.html", "/classes.html", "/universities.html"]);
 
 function isSupabaseMedia(url) {
     return /^https?:$/.test(url.protocol) &&
