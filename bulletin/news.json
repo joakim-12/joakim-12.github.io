@@ -1,0 +1,23 @@
+{
+    "world": [
+        {
+            "note": true,
+            "title": "What this column is for",
+            "body": "News from outside the campus that a student still needs to know: exam bodies, bursaries and scholarships, national holidays, transport, anything that moves a semester. Every item here is written inside Campus Connect by a campus account. Nothing is pulled from the internet, because this app has no server doing that, and an invented headline would be worse than an empty column."
+        }
+    ],
+    "university": [
+        {
+            "note": true,
+            "title": "Your university's own news",
+            "body": "Timetables, fee deadlines, hostel and canteen notices, results, sports, chapel, graduation. A student, lecturer or security account writes an announcement in the box at the bottom of this page, and everyone - including a parent who only has an email account - reads it here. These notes stay until the first real announcement replaces them."
+        }
+    ],
+    "people": [
+        {
+            "note": true,
+            "title": "The people in it",
+            "body": "Student achievements, societies and clubs, lecturers, alumni, and good news from families and friends. If you are a parent or a relative, this is the column that tells you how the campus is doing."
+        }
+    ]
+}

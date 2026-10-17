@@ -610,6 +610,33 @@
     .campus-chip { width: auto; padding: 6px 14px; border: 1px solid color-mix(in srgb, var(--blue) 45%, transparent); border-radius: 999px; background: color-mix(in srgb, var(--blue) 12%, var(--surface)); color: var(--blue); font-size: .82rem; font-weight: 600; }
     .campus-chip.unknown { border-color: rgb(255 179 71 / 55%); background: rgb(255 179 71 / 14%); color: #b26a00; }
     body.dark .campus-chip.unknown { color: #ffcc80; }
+    .bulletin-body { display: grid; gap: 10px; margin-top: 4px; }
+    .bulletin-item { padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: color-mix(in srgb, var(--text) 3%, var(--surface)); }
+    .bulletin-item h3 { margin: 0 0 4px; font-size: 15px; font-weight: 700; }
+    .bulletin-item p { margin: 0; font-size: 14px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .bulletin-meta { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 6px; font-size: 11.5px; font-weight: 700; letter-spacing: .3px; text-transform: uppercase; color: var(--muted); }
+    .bulletin-meta .bulletin-section { color: var(--blue); }
+    .bulletin-link { display: inline-block; margin-top: 6px; font-size: 13px; font-weight: 600; color: var(--blue); text-decoration: none; overflow-wrap: anywhere; }
+    .bulletin-empty { margin: 0; font-size: 13.5px; line-height: 1.5; color: var(--muted); }
+    .bulletin-write { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border); }
+    .bulletin-write h3 { margin: 0 0 8px; font-size: 12.5px; font-weight: 700; letter-spacing: .4px; text-transform: uppercase; color: var(--muted); }
+    .bulletin-write textarea { min-height: 96px; }
+    .bulletin-item.note { border-style: dashed; background: transparent; }
+    .bulletin-item.note h3 { font-size: 14px; color: var(--muted); }
+    /* An account outside the university reads the board and nothing else. */
+    body.bulletin-only #stories,
+    body.bulletin-only #adminPanel,
+    body.bulletin-only #youSetupCard,
+    body.bulletin-only #youStatusButton,
+    body.bulletin-only #youQrButton,
+    body.bulletin-only #youEditButton,
+    body.bulletin-only .campus-only,
+    body.bulletin-only .feed-shell,
+    body.bulletin-only .bottom-nav a:not([data-destination="profile"]) { display: none !important; }
+    /* Other schools sit under their own label: a chip inside the sideways
+       status rail, a rule across the feed. */
+    .campus-other-heading { flex: 0 0 auto; align-self: center; margin: 0 2px; padding: 5px 10px; border-radius: 999px; background: color-mix(in srgb, var(--text) 7%, var(--surface)); color: var(--muted); font-size: .74rem; font-weight: 700; white-space: nowrap; }
+    #feed > .campus-other-heading { width: auto; align-self: auto; margin: 14px 2px 6px; padding: 10px 0 0; border-radius: 0; border-top: 1px solid var(--border); background: none; font-size: .76rem; letter-spacing: .3px; text-transform: uppercase; }
     .ig-post { padding: 0 0 12px; margin-bottom: 16px; border-bottom: 1px solid var(--border); background: var(--surface); }
     .ig-post-head { display: flex; align-items: center; gap: 10px; padding: 10px 12px; }
     .ig-post-avatar { display: grid; width: 34px; height: 34px; flex: 0 0 34px; place-items: center; overflow: hidden; border-radius: 50%; background: color-mix(in srgb, var(--text) 12%, var(--surface)); color: var(--text); font-size: 14px; font-weight: 700; }
@@ -1267,10 +1294,10 @@
       .you-details { margin-left: auto; margin-right: auto; max-width: 620px; }
     }
   </style>
-  <script type="module" crossorigin src="/assets/main-BMX4_T12.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/pwa-CO215olu.js">
-  <link rel="modulepreload" crossorigin href="/assets/staff-verification-Bwr3UXFO.js">
-  <link rel="modulepreload" crossorigin href="/assets/app-lock-CunymHoT.js">
+  <script type="module" crossorigin src="/assets/main-DzcB-mul.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/pwa-DCE6x_qO.js">
+  <link rel="modulepreload" crossorigin href="/assets/staff-verification-S9aoLItT.js">
+  <link rel="modulepreload" crossorigin href="/assets/app-lock-CsrvMc3z.js">
 </head>
 
 <body>
@@ -1425,20 +1452,23 @@
         <label for="registerCourse" data-i18n="University, school, course, or organization (optional)">University, school, course, or organization (optional)</label>
         <input id="registerCourse" type="text" maxlength="100">
 
-        <label for="registerUniversity" data-i18n="Your university or college">Your university or college</label>
-        <input id="registerUniversity" type="text" maxlength="100" list="universityOptions"
-               autocomplete="organization" placeholder="Kabarak University">
-        <datalist id="universityOptions"></datalist>
-        <p class="muted" data-i18n="Members of one university get their own feed. Anyone who has not named a university still sees every school.">Members of one university get their own feed. Anyone who has not named a university still sees every school.</p>
+        <div id="registerCampusFields">
+          <label for="registerUniversity" data-i18n="Your university or college">Your university or college</label>
+          <input id="registerUniversity" type="text" maxlength="100" list="universityOptions"
+                 autocomplete="organization" placeholder="Kabarak University">
+          <datalist id="universityOptions"></datalist>
+          <p class="muted" data-i18n="Your own university comes first in the feed. Anyone who has not named a university sees every school together.">Your own university comes first in the feed. Anyone who has not named a university sees every school together.</p>
+        </div>
 
         <label for="registerRole" data-i18n="I am a">I am a</label>
         <select id="registerRole">
           <option value="student" data-i18n="Student">Student</option>
           <option value="lecturer" data-i18n="Lecturer">Lecturer</option>
           <option value="security" data-i18n="Security staff">Security staff</option>
-          <option value="member" data-i18n="None of these">None of these</option>
+          <option value="member" data-i18n="Parent, relative or friend of a student">Parent, relative or friend of a student</option>
         </select>
-        <p class="muted" data-i18n="Students start immediately. A lecturer has to show a National ID, a staff ID card and the letter of introduction, and an admin has to accept them before the university system opens.">Students start immediately. A lecturer has to show a National ID, a staff ID card and the letter of introduction, and an admin has to accept them before the university system opens.</p>
+        <p class="muted" id="registerRoleHint" data-i18n="Students start immediately. A lecturer has to show a National ID, a staff ID card and the letter of introduction, and an admin has to accept them before the university system opens.">Students start immediately. A lecturer has to show a National ID, a staff ID card and the letter of introduction, and an admin has to accept them before the university system opens.</p>
+        <p class="muted" id="registerMemberNote" hidden data-i18n="An account outside the university signs in with an email address and reads the bulletin: what is happening in the world, at the university and with the people in it. It does not get chats, posts, statuses or classes, and no student can message it.">An account outside the university signs in with an email address and reads the bulletin: what is happening in the world, at the university and with the people in it. It does not get chats, posts, statuses or classes, and no student can message it.</p>
 
         <div id="registerNumberFields">
           <label for="registerNumber" id="registerNumberLabel" data-i18n="Your registration number">Your registration number</label>
@@ -1532,7 +1562,7 @@
 
         <p id="membershipStatus" class="membership-banner" role="status" hidden></p>
 
-        <div class="you-group">
+        <div class="you-group campus-only">
           <h3 data-i18n="Chats and groups">Chats and groups</h3>
           <a class="you-row" href="/messages.html">
             <span class="you-row-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 13.5a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9Z"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M17 5.5a4 4 0 0 1 0 7.6M18.5 20a6 6 0 0 0-2-4.4"/></svg></span>
@@ -1551,7 +1581,7 @@
           </a>
         </div>
 
-        <div class="you-group">
+        <div class="you-group campus-only">
           <h3 data-i18n="University systems">University systems</h3>
           <a class="you-row" href="/universities.html">
             <span class="you-row-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2.5 7.5 12 12l9.5-4.5Z"/><path d="M6 10v5.5c0 1.7 2.7 3 6 3s6-1.3 6-3V10"/><path d="M21.5 7.5v6"/></svg></span>
@@ -1565,7 +1595,7 @@
           </button>
         </div>
 
-        <div class="you-group">
+        <div class="you-group campus-only">
           <h3 data-i18n="Account">Account</h3>
           <button class="you-row" type="button" data-you-target="account">
             <span class="you-row-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/></svg></span>
@@ -1843,7 +1873,30 @@
         <span aria-hidden="true">›</span>
       </button>
 
-      <section class="card">
+      <section id="bulletin" class="card">
+        <h2 data-i18n="Bulletin">Bulletin</h2>
+        <p class="muted" data-i18n="News about the world, the university and the people in it. A campus account writes it, everyone reads it.">News about the world, the university and the people in it. A campus account writes it, everyone reads it.</p>
+        <div id="bulletinBody" class="bulletin-body"></div>
+        <div id="bulletinWrite" class="bulletin-write hidden">
+          <h3 data-i18n="Write an announcement">Write an announcement</h3>
+          <label for="bulletinSection" data-i18n="Which column?">Which column?</label>
+          <select id="bulletinSection">
+            <option value="university" data-i18n="University news">University news</option>
+            <option value="world" data-i18n="World news">World news</option>
+            <option value="people" data-i18n="People news">People news</option>
+          </select>
+          <label for="bulletinTitle" data-i18n="Headline">Headline</label>
+          <input id="bulletinTitle" type="text" maxlength="120" autocomplete="off">
+          <label for="bulletinBodyInput" data-i18n="What happened?">What happened?</label>
+          <textarea id="bulletinBodyInput" maxlength="4000"></textarea>
+          <label for="bulletinLink" data-i18n="Link (optional)">Link (optional)</label>
+          <input id="bulletinLink" type="url" maxlength="400" placeholder="https://">
+          <button id="bulletinPublish" type="button" data-i18n="Publish announcement">Publish announcement</button>
+          <p id="bulletinStatus" class="status" role="status"></p>
+        </div>
+      </section>
+
+      <section class="card campus-only">
         <h2 data-i18n="Create a post">Create a post</h2>
         <form id="postForm">
           <label for="postText" data-i18n="What's happening on campus?">What's happening on campus?</label>

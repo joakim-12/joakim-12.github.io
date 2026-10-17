@@ -1,6 +1,6 @@
--- THIS IS THE FILE TO USE (built 2026-10-16): it is schema.sql + every
+-- THIS IS THE FILE TO USE (built 2026-10-17): it is schema.sql + every
 -- migration, plus message reactions / stars / replies, lecturer credentials,
--- study modes, one number per account and a final check.
+-- study modes, one number per account, the bulletin board and a final check.
 -- It replaces RUN_ONCE.sql, RUN_THIS_IN_SUPABASE.sql, RUN_MESSAGE_MARKS.sql,
 -- RUN_FRIEND_NAMES.sql, RUN_CLASSES_MIN.sql and REPAIR_CHATS.sql.
 -- ===================================================================
@@ -10,7 +10,7 @@
 -- Built 2026-10-14 from schema.sql + all migrations, in order.
 -- ===================================================================
 
--- ==================== PART 1/13: schema.sql ===========================
+-- ==================== PART 1/14: schema.sql ===========================
 -- ============================================================
 -- CAMPUS CONNECT
 -- Social networking database for university students
@@ -1522,7 +1522,7 @@ $$;
 
 NOTIFY pgrst, 'reload schema';
 
--- ================ PART 2/13: migrations/20261011_profile_gender.sql ================
+-- ================ PART 2/14: migrations/20261011_profile_gender.sql ================
 BEGIN;
 
 ALTER TABLE public.profiles
@@ -1544,7 +1544,7 @@ $$;
 
 COMMIT;
 
--- ================ PART 3/13: migrations/20261011_social_access_controls.sql ================
+-- ================ PART 3/14: migrations/20261011_social_access_controls.sql ================
 BEGIN;
 
 CREATE TABLE IF NOT EXISTS public.user_blocks (
@@ -1896,7 +1896,7 @@ CREATE POLICY "Users delete own private social media"
 
 COMMIT;
 
--- ================ PART 4/13: migrations/20261011_student_interactions_and_calls.sql ================
+-- ================ PART 4/14: migrations/20261011_student_interactions_and_calls.sql ================
 BEGIN;
 
 ALTER TABLE public.profiles
@@ -2009,7 +2009,7 @@ $migration$;
 
 COMMIT;
 
--- ================ PART 5/13: migrations/20261012_friendships_attachments_notification_preferences.sql ================
+-- ================ PART 5/14: migrations/20261012_friendships_attachments_notification_preferences.sql ================
 BEGIN;
 
 -- Explicit friend requests are separate from the existing one-way follow graph.
@@ -2197,7 +2197,7 @@ REVOKE ALL ON FUNCTION public.notify_friend_request() FROM PUBLIC, anon, authent
 
 COMMIT;
 
--- ================ PART 6/13: migrations/20261012_respond_to_chat_invitations.sql ================
+-- ================ PART 6/14: migrations/20261012_respond_to_chat_invitations.sql ================
 BEGIN;
 
 -- Let a recipient accept or decline a one-way follow invitation. Accepting
@@ -2304,7 +2304,7 @@ $migration$;
 
 COMMIT;
 
--- ================ PART 7/13: migrations/20261013_find_people.sql ================
+-- ================ PART 7/14: migrations/20261013_find_people.sql ================
 -- ============================================================
 -- STEP 1 / FINDING PEOPLE
 -- Makes members discoverable by default, lets a user claim a unique
@@ -2477,7 +2477,7 @@ SELECT 'everyone_discoverable',
 FROM public.profiles
 WHERE is_discoverable IS DISTINCT FROM TRUE;
 
--- ================ PART 8/13: migrations/20261014_roles_and_admin.sql ================
+-- ================ PART 8/14: migrations/20261014_roles_and_admin.sql ================
 -- ============================================================
 -- CAMPUS CONNECT — ROLES, APPROVAL, AND ADMIN
 -- Kabarak University: Student / Lecturer / Security / Admin.
@@ -2976,7 +2976,7 @@ SELECT 'at_least_one_admin',
        CASE WHEN COUNT(*) > 0 THEN 'ok' ELSE 'NONE YET (run section 9)' END
 FROM public.profiles WHERE role = 'admin';
 
--- ============ PART 9/13: migrations/20261014_message_edit_delete.sql ============
+-- ============ PART 9/14: migrations/20261014_message_edit_delete.sql ============
 -- ============================================================
 -- MESSAGE EDIT + DELETE (run this whole file in Supabase SQL Editor)
 -- Rules enforced inside the database, not just the app:
@@ -3080,7 +3080,7 @@ CREATE TRIGGER protect_message_fields_trigger
     EXECUTE FUNCTION public.protect_message_fields();
 
 
--- ============ PART 10/13: migrations/20261015_programmes_units_classes.sql ============
+-- ============ PART 10/14: migrations/20261015_programmes_units_classes.sql ============
 -- ============================================================
 -- CAMPUS CONNECT — PROGRAMMES, UNITS, AND CLASS TIMETABLES
 -- Kabarak University course system:
@@ -3349,7 +3349,7 @@ INSERT INTO public.programmes (school, name, level, max_year, campus, specializa
     ('School of Pharmacy', 'Bachelor of Pharmacy', 'undergraduate', 5, 'Main', '')
 ON CONFLICT (school, name) DO NOTHING;
 
--- ==================== PART 11/13: friend names (contact_names) ==========
+-- ==================== PART 11/14: friend names (contact_names) ==========
 CREATE TABLE IF NOT EXISTS public.contact_names (
     author_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     peer_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -3495,7 +3495,7 @@ ALTER TABLE public.messages
 
 COMMIT;
 
--- ============ PART 12/13: migrations/20261016_lecturer_credentials.sql ============
+-- ============ PART 12/14: migrations/20261016_lecturer_credentials.sql ============
 -- ============================================================
 -- CAMPUS CONNECT — LECTURER CREDENTIALS, STUDY MODE, STAFF LOG
 -- Kabarak University rules this adds:
@@ -4120,7 +4120,7 @@ GRANT SELECT, INSERT, UPDATE ON public.lecturer_submissions TO authenticated;
 
 NOTIFY pgrst, 'reload schema';
 
--- ============ PART 13/13: migrations/20261016_one_number_one_account.sql ============
+-- ============ PART 13/14: migrations/20261016_one_number_one_account.sql ============
 
 -- ============================================================
 -- CAMPUS CONNECT — ONE NUMBER, ONE ACCOUNT
@@ -4470,6 +4470,94 @@ ALTER TABLE public.admin_action_log
 NOTIFY pgrst, 'reload schema';
 
 
+-- ============ PART 14/14: migrations/20261017_bulletins.sql ============
+
+-- ============================================================
+-- CAMPUS CONNECT — THE BULLETIN BOARD
+-- An account that is not a student (a parent, a guardian, a relative
+-- abroad, a well-wisher) gets information instead of a campus: news
+-- written from inside the app about the world, the university and
+-- the people in it.
+--   * every signed-in account can read the board
+--   * only a campus account may write, and only under its own author_id.
+--     may_use_classes() is exactly that test: an admin, an active
+--     lecturer or security member, or a student whose registration
+--     number is on file
+--   * an author can correct or remove its own item; anyone can report it
+--     by simply telling an admin
+--   * a section is 'world', 'university' or 'people'
+-- Idempotent: safe to run more than once.
+-- ============================================================
+
+
+-- ------------------------------------------------------------
+-- 1. THE BOARD
+-- ------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS public.bulletins (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    author_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    section TEXT NOT NULL DEFAULT 'university'
+        CHECK (section IN ('world', 'university', 'people')),
+    title TEXT NOT NULL CHECK (char_length(BTRIM(title)) BETWEEN 3 AND 120),
+    body TEXT NOT NULL CHECK (char_length(BTRIM(body)) BETWEEN 1 AND 4000),
+    link_url TEXT CHECK (link_url IS NULL OR link_url ~ '^https?://'),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS bulletins_section_created_idx
+    ON public.bulletins (section, created_at DESC);
+
+
+-- ------------------------------------------------------------
+-- 2. KEEP updated_at HONEST
+-- ------------------------------------------------------------
+
+DROP TRIGGER IF EXISTS bulletins_set_updated_at ON public.bulletins;
+CREATE TRIGGER bulletins_set_updated_at
+    BEFORE UPDATE ON public.bulletins
+    FOR EACH ROW
+    EXECUTE FUNCTION public.set_updated_at();
+
+
+-- ------------------------------------------------------------
+-- 3. WHO MAY SEE AND WRITE
+-- ------------------------------------------------------------
+
+ALTER TABLE public.bulletins ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS bulletins_readable ON public.bulletins;
+CREATE POLICY bulletins_readable ON public.bulletins
+    FOR SELECT TO authenticated
+    USING (TRUE);
+
+DROP POLICY IF EXISTS bulletins_campus_write ON public.bulletins;
+CREATE POLICY bulletins_campus_write ON public.bulletins
+    FOR INSERT TO authenticated
+    WITH CHECK (author_id = auth.uid() AND public.may_use_classes());
+
+DROP POLICY IF EXISTS bulletins_author_edit ON public.bulletins;
+CREATE POLICY bulletins_author_edit ON public.bulletins
+    FOR UPDATE TO authenticated
+    USING (author_id = auth.uid())
+    WITH CHECK (author_id = auth.uid());
+
+DROP POLICY IF EXISTS bulletins_author_remove ON public.bulletins;
+CREATE POLICY bulletins_author_remove ON public.bulletins
+    FOR DELETE TO authenticated
+    USING (author_id = auth.uid() OR public.is_admin());
+
+
+-- ------------------------------------------------------------
+-- 4. TELL POSTGREST THE SHAPE CHANGED
+-- ------------------------------------------------------------
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.bulletins TO authenticated;
+
+NOTIFY pgrst, 'reload schema';
+
+
 -- ===================================================================
 -- FINAL CHECK: every row should read ok
 -- ===================================================================
@@ -4486,7 +4574,7 @@ SELECT 'table: ' || t.table_name,
 FROM (VALUES ('user_blocks'), ('user_presence'), ('call_signals'), ('friend_requests'),
              ('message_attachments'), ('notification_preferences'), ('student_registrations'),
              ('contact_names'), ('message_reactions'), ('message_stars'), ('lecturer_submissions'),
-             ('programmes'), ('units'), ('class_sessions')) AS t(table_name)
+             ('programmes'), ('units'), ('class_sessions'), ('bulletins')) AS t(table_name)
 LEFT JOIN information_schema.tables AS tb
        ON tb.table_schema = 'public' AND tb.table_name = t.table_name
 UNION ALL

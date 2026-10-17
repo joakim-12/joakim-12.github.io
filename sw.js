@@ -1,4 +1,4 @@
-const CACHE_NAME = "campus-connect-v47";
+const CACHE_NAME = "campus-connect-v48";
 const MEDIA_CACHE_NAME = "campus-connect-media-v1";
 const MAX_MEDIA_ENTRIES = 240;
 const APP_SHELL = [
@@ -6,6 +6,7 @@ const APP_SHELL = [
     "/messages.html",
     "/classes.html",
     "/universities.html",
+    "/bulletin/news.json",
     "/manifest.json",
     "/icons/icon-192.png",
     "/icons/icon-512.png",
