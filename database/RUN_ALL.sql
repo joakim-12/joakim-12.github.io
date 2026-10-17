@@ -1,7 +1,8 @@
 -- THIS IS THE FILE TO USE (built 2026-10-17): it is schema.sql + every
 -- migration, plus message reactions / stars / replies, lecturer credentials,
 -- study modes, one number per account, the bulletin board, the company directory, the broadcast
--- policies behind the typing indicator, private group chats and a final check.
+-- policies behind the typing indicator, private group chats, the device list
+-- behind push alerts and a final check.
 -- It replaces RUN_ONCE.sql, RUN_THIS_IN_SUPABASE.sql, RUN_MESSAGE_MARKS.sql,
 -- RUN_FRIEND_NAMES.sql, RUN_CLASSES_MIN.sql and REPAIR_CHATS.sql.
 -- ===================================================================
@@ -11,7 +12,7 @@
 -- Built 2026-10-14 from schema.sql + all migrations, in order.
 -- ===================================================================
 
--- ==================== PART 1/17: schema.sql ===========================
+-- ==================== PART 1/18: schema.sql ===========================
 -- ============================================================
 -- CAMPUS CONNECT
 -- Social networking database for university students
@@ -1523,7 +1524,7 @@ $$;
 
 NOTIFY pgrst, 'reload schema';
 
--- ================ PART 2/17: migrations/20261011_profile_gender.sql ================
+-- ================ PART 2/18: migrations/20261011_profile_gender.sql ================
 BEGIN;
 
 ALTER TABLE public.profiles
@@ -1545,7 +1546,7 @@ $$;
 
 COMMIT;
 
--- ================ PART 3/17: migrations/20261011_social_access_controls.sql ================
+-- ================ PART 3/18: migrations/20261011_social_access_controls.sql ================
 BEGIN;
 
 CREATE TABLE IF NOT EXISTS public.user_blocks (
@@ -1897,7 +1898,7 @@ CREATE POLICY "Users delete own private social media"
 
 COMMIT;
 
--- ================ PART 4/17: migrations/20261011_student_interactions_and_calls.sql ================
+-- ================ PART 4/18: migrations/20261011_student_interactions_and_calls.sql ================
 BEGIN;
 
 ALTER TABLE public.profiles
@@ -2010,7 +2011,7 @@ $migration$;
 
 COMMIT;
 
--- ================ PART 5/17: migrations/20261012_friendships_attachments_notification_preferences.sql ================
+-- ================ PART 5/18: migrations/20261012_friendships_attachments_notification_preferences.sql ================
 BEGIN;
 
 -- Explicit friend requests are separate from the existing one-way follow graph.
@@ -2198,7 +2199,7 @@ REVOKE ALL ON FUNCTION public.notify_friend_request() FROM PUBLIC, anon, authent
 
 COMMIT;
 
--- ================ PART 6/17: migrations/20261012_respond_to_chat_invitations.sql ================
+-- ================ PART 6/18: migrations/20261012_respond_to_chat_invitations.sql ================
 BEGIN;
 
 -- Let a recipient accept or decline a one-way follow invitation. Accepting
@@ -2305,7 +2306,7 @@ $migration$;
 
 COMMIT;
 
--- ================ PART 7/17: migrations/20261013_find_people.sql ================
+-- ================ PART 7/18: migrations/20261013_find_people.sql ================
 -- ============================================================
 -- STEP 1 / FINDING PEOPLE
 -- Makes members discoverable by default, lets a user claim a unique
@@ -2478,7 +2479,7 @@ SELECT 'everyone_discoverable',
 FROM public.profiles
 WHERE is_discoverable IS DISTINCT FROM TRUE;
 
--- ================ PART 8/17: migrations/20261014_roles_and_admin.sql ================
+-- ================ PART 8/18: migrations/20261014_roles_and_admin.sql ================
 -- ============================================================
 -- CAMPUS CONNECT — ROLES, APPROVAL, AND ADMIN
 -- Kabarak University: Student / Lecturer / Security / Admin.
@@ -2977,7 +2978,7 @@ SELECT 'at_least_one_admin',
        CASE WHEN COUNT(*) > 0 THEN 'ok' ELSE 'NONE YET (run section 9)' END
 FROM public.profiles WHERE role = 'admin';
 
--- ============ PART 9/17: migrations/20261014_message_edit_delete.sql ============
+-- ============ PART 9/18: migrations/20261014_message_edit_delete.sql ============
 -- ============================================================
 -- MESSAGE EDIT + DELETE (run this whole file in Supabase SQL Editor)
 -- Rules enforced inside the database, not just the app:
@@ -3081,7 +3082,7 @@ CREATE TRIGGER protect_message_fields_trigger
     EXECUTE FUNCTION public.protect_message_fields();
 
 
--- ============ PART 10/17: migrations/20261015_programmes_units_classes.sql ============
+-- ============ PART 10/18: migrations/20261015_programmes_units_classes.sql ============
 -- ============================================================
 -- CAMPUS CONNECT — PROGRAMMES, UNITS, AND CLASS TIMETABLES
 -- Kabarak University course system:
@@ -3350,7 +3351,7 @@ INSERT INTO public.programmes (school, name, level, max_year, campus, specializa
     ('School of Pharmacy', 'Bachelor of Pharmacy', 'undergraduate', 5, 'Main', '')
 ON CONFLICT (school, name) DO NOTHING;
 
--- ==================== PART 11/17: friend names (contact_names) ==========
+-- ==================== PART 11/18: friend names (contact_names) ==========
 CREATE TABLE IF NOT EXISTS public.contact_names (
     author_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     peer_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -3496,7 +3497,7 @@ ALTER TABLE public.messages
 
 COMMIT;
 
--- ============ PART 12/17: migrations/20261016_lecturer_credentials.sql ============
+-- ============ PART 12/18: migrations/20261016_lecturer_credentials.sql ============
 -- ============================================================
 -- CAMPUS CONNECT — LECTURER CREDENTIALS, STUDY MODE, STAFF LOG
 -- Kabarak University rules this adds:
@@ -4121,7 +4122,7 @@ GRANT SELECT, INSERT, UPDATE ON public.lecturer_submissions TO authenticated;
 
 NOTIFY pgrst, 'reload schema';
 
--- ============ PART 13/17: migrations/20261016_one_number_one_account.sql ============
+-- ============ PART 13/18: migrations/20261016_one_number_one_account.sql ============
 
 -- ============================================================
 -- CAMPUS CONNECT — ONE NUMBER, ONE ACCOUNT
@@ -4471,7 +4472,7 @@ ALTER TABLE public.admin_action_log
 NOTIFY pgrst, 'reload schema';
 
 
--- ============ PART 14/17: migrations/20261017_bulletins.sql ============
+-- ============ PART 14/18: migrations/20261017_bulletins.sql ============
 
 -- ============================================================
 -- CAMPUS CONNECT — THE BULLETIN BOARD
@@ -4559,7 +4560,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON public.bulletins TO authenticated;
 NOTIFY pgrst, 'reload schema';
 
 
--- ============ PART 15/17: migrations/20261017_companies.sql ============
+-- ============ PART 15/18: migrations/20261017_companies.sql ============
 
 -- ============================================================
 -- CAMPUS CONNECT — THE COMPANY DIRECTORY
@@ -4723,7 +4724,7 @@ ALTER TABLE public.bulletins
 NOTIFY pgrst, 'reload schema';
 
 
--- ============ PART 16/17: migrations/20261017_realtime_broadcast.sql ============
+-- ============ PART 16/18: migrations/20261017_realtime_broadcast.sql ============
 
 -- PART 16: realtime broadcast for the typing / recording indicators.
 --
@@ -4797,7 +4798,7 @@ $do$;
 NOTIFY pgrst, 'reload schema';
 
 
--- ============ PART 17/17: migrations/20261017_private_groups.sql ============
+-- ============ PART 17/18: migrations/20261017_private_groups.sql ============
 
 -- PART 17: private group chats, the WhatsApp shape.
 --
@@ -5030,6 +5031,110 @@ GRANT EXECUTE ON FUNCTION public.mark_group_read(UUID) TO authenticated;
 NOTIFY pgrst, 'reload schema';
 
 
+-- ============ PART 18/18: migrations/20261017_push_tokens.sql ============
+
+-- PART 18: the device list behind push alerts.
+--
+-- Realtime only reaches a phone that is awake and open. A phone that has been
+-- swiped away from the recents screen needs Firebase Cloud Messaging to wake
+-- it, and FCM needs one registration token per device. The table below is that
+-- list: nothing is stored about the message itself, only which phone belongs to
+-- which student.
+--
+-- A token is close to a key — whoever holds one can make that phone ring. So a
+-- student may only ever read or delete their own rows, and there is no INSERT
+-- policy at all: writing goes through register_device_token, which stamps
+-- auth.uid() itself and therefore cannot be pointed at another account.
+
+CREATE TABLE IF NOT EXISTS public.device_tokens (
+    user_id UUID NOT NULL
+        REFERENCES auth.users(id) ON DELETE CASCADE,
+
+    token TEXT NOT NULL,
+
+    platform TEXT NOT NULL DEFAULT 'android'
+        CHECK (platform IN ('android', 'ios', 'web')),
+
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    PRIMARY KEY (token, user_id)
+);
+
+ALTER TABLE public.device_tokens ENABLE ROW LEVEL SECURITY;
+GRANT SELECT, DELETE ON public.device_tokens TO authenticated;
+
+DROP POLICY IF EXISTS "Owners read their own devices" ON public.device_tokens;
+CREATE POLICY "Owners read their own devices"
+    ON public.device_tokens FOR SELECT TO authenticated
+    USING (user_id = (SELECT auth.uid()));
+
+DROP POLICY IF EXISTS "Owners forget their own devices" ON public.device_tokens;
+CREATE POLICY "Owners forget their own devices"
+    ON public.device_tokens FOR DELETE TO authenticated
+    USING (user_id = (SELECT auth.uid()));
+
+CREATE INDEX IF NOT EXISTS device_tokens_user_idx
+    ON public.device_tokens (user_id);
+
+CREATE OR REPLACE FUNCTION public.register_device_token(
+    p_token TEXT,
+    p_platform TEXT DEFAULT 'android'
+)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    current_user_id UUID := auth.uid();
+    clean_token TEXT := trim(COALESCE(p_token, ''));
+    clean_platform TEXT := CASE
+        WHEN p_platform IN ('android', 'ios', 'web') THEN p_platform
+        ELSE 'android'
+    END;
+BEGIN
+    IF current_user_id IS NULL THEN
+        RAISE EXCEPTION 'You must be signed in to store a device.';
+    END IF;
+    -- An FCM token is a long opaque string. Anything shorter was never a token,
+    -- and storing junk here would only make the phone silently miss alerts.
+    IF char_length(clean_token) NOT BETWEEN 20 AND 600 THEN
+        RAISE EXCEPTION 'That device token does not look real.';
+    END IF;
+
+    INSERT INTO public.device_tokens (user_id, token, platform, updated_at)
+    VALUES (current_user_id, clean_token, clean_platform, NOW())
+    ON CONFLICT (token, user_id)
+    DO UPDATE SET platform = EXCLUDED.platform, updated_at = NOW();
+
+    -- A phone that is never opened again leaves a dead token behind and FCM
+    -- keeps answering with an error for it. Thirty days of silence retires it.
+    DELETE FROM public.device_tokens
+    WHERE device_tokens.user_id = current_user_id
+      AND device_tokens.updated_at < NOW() - INTERVAL '30 days';
+END $$;
+
+-- Signing out has to remove this device from the list, otherwise the next
+-- student to pick up the phone keeps getting somebody else's alerts.
+CREATE OR REPLACE FUNCTION public.forget_device_token(p_token TEXT)
+RETURNS VOID
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    DELETE FROM public.device_tokens
+    WHERE user_id = auth.uid()
+      AND token = trim(COALESCE(p_token, ''));
+$$;
+
+REVOKE ALL ON FUNCTION public.register_device_token(TEXT, TEXT) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.forget_device_token(TEXT) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.register_device_token(TEXT, TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.forget_device_token(TEXT) TO authenticated;
+
+NOTIFY pgrst, 'reload schema';
+
+
 -- ===================================================================
 -- FINAL CHECK: every row should read ok
 -- ===================================================================
@@ -5047,13 +5152,19 @@ FROM (VALUES ('user_blocks'), ('user_presence'), ('call_signals'), ('friend_requ
              ('message_attachments'), ('notification_preferences'), ('student_registrations'),
              ('contact_names'), ('message_reactions'), ('message_stars'), ('lecturer_submissions'),
              ('programmes'), ('units'), ('class_sessions'), ('bulletins'), ('companies'),
-             ('community_reads')) AS t(table_name)
+             ('community_reads'), ('device_tokens')) AS t(table_name)
 LEFT JOIN information_schema.tables AS tb
        ON tb.table_schema = 'public' AND tb.table_name = t.table_name
 UNION ALL
 SELECT 'group function: ' || f.function_name,
        CASE WHEN x.specific_name IS NOT NULL THEN 'ok' ELSE 'MISSING (groups will not work)' END
 FROM (VALUES ('create_group'), ('add_group_members'), ('my_groups'), ('mark_group_read')) AS f(function_name)
+LEFT JOIN information_schema.routines AS x
+       ON x.routine_schema = 'public' AND x.routine_name = f.function_name
+UNION ALL
+SELECT 'push function: ' || f.function_name,
+       CASE WHEN x.specific_name IS NOT NULL THEN 'ok' ELSE 'MISSING (push alerts will not work)' END
+FROM (VALUES ('register_device_token'), ('forget_device_token')) AS f(function_name)
 LEFT JOIN information_schema.routines AS x
        ON x.routine_schema = 'public' AND x.routine_name = f.function_name
 UNION ALL
