@@ -605,6 +605,11 @@
     .feed-shell { padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
     .feed-shell > h2 { padding: 14px 2px 10px; margin: 0; font-size: 12px; font-weight: 600; letter-spacing: .4px; text-transform: uppercase; color: var(--muted); }
     .feed-shell > #refreshFeedButton, .feed-shell > .status { margin-right: 2px; margin-left: 2px; }
+    /* The campus zone is one chip wide: it says what you are looking at, and one tap flips it. */
+    .campus-zone { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 2px 10px; }
+    .campus-chip { width: auto; padding: 6px 14px; border: 1px solid color-mix(in srgb, var(--blue) 45%, transparent); border-radius: 999px; background: color-mix(in srgb, var(--blue) 12%, var(--surface)); color: var(--blue); font-size: .82rem; font-weight: 600; }
+    .campus-chip.unknown { border-color: rgb(255 179 71 / 55%); background: rgb(255 179 71 / 14%); color: #b26a00; }
+    body.dark .campus-chip.unknown { color: #ffcc80; }
     .ig-post { padding: 0 0 12px; margin-bottom: 16px; border-bottom: 1px solid var(--border); background: var(--surface); }
     .ig-post-head { display: flex; align-items: center; gap: 10px; padding: 10px 12px; }
     .ig-post-avatar { display: grid; width: 34px; height: 34px; flex: 0 0 34px; place-items: center; overflow: hidden; border-radius: 50%; background: color-mix(in srgb, var(--text) 12%, var(--surface)); color: var(--text); font-size: 14px; font-weight: 700; }
@@ -1262,10 +1267,10 @@
       .you-details { margin-left: auto; margin-right: auto; max-width: 620px; }
     }
   </style>
-  <script type="module" crossorigin src="/assets/main-Bnk5m-kG.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/pwa-fmeqvY48.js">
-  <link rel="modulepreload" crossorigin href="/assets/staff-verification-ChJMk-cc.js">
-  <link rel="modulepreload" crossorigin href="/assets/app-lock-cHpTaERc.js">
+  <script type="module" crossorigin src="/assets/main-BMX4_T12.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/pwa-CO215olu.js">
+  <link rel="modulepreload" crossorigin href="/assets/staff-verification-Bwr3UXFO.js">
+  <link rel="modulepreload" crossorigin href="/assets/app-lock-CunymHoT.js">
 </head>
 
 <body>
@@ -1288,6 +1293,19 @@
             <option value="fr">Français</option>
             <option value="sw">Kiswahili</option>
             <option value="es">Español</option>
+            <option value="ki">Gĩkũyũ</option>
+            <option value="luo">Dholuo</option>
+            <option value="kln">Kalenjin</option>
+            <option value="luy">Luhya</option>
+            <option value="ar">العربية</option>
+            <option value="ha">Hausa</option>
+            <option value="yo">Yorùbá</option>
+            <option value="zu">isiZulu</option>
+            <option value="am">አማርኛ</option>
+            <option value="zh">中文</option>
+            <option value="hi">हिन्दी</option>
+            <option value="pt">Português</option>
+            <option value="ru">Русский</option>
           </select>
           <button id="install-app-button" class="secondary" type="button" data-install-app data-i18n="Install app">Install app</button>
           <button class="secondary" type="button" data-share-app data-i18n="Share app">Share app</button>
@@ -1406,6 +1424,12 @@
 
         <label for="registerCourse" data-i18n="University, school, course, or organization (optional)">University, school, course, or organization (optional)</label>
         <input id="registerCourse" type="text" maxlength="100">
+
+        <label for="registerUniversity" data-i18n="Your university or college">Your university or college</label>
+        <input id="registerUniversity" type="text" maxlength="100" list="universityOptions"
+               autocomplete="organization" placeholder="Kabarak University">
+        <datalist id="universityOptions"></datalist>
+        <p class="muted" data-i18n="Members of one university get their own feed. Anyone who has not named a university still sees every school.">Members of one university get their own feed. Anyone who has not named a university still sees every school.</p>
 
         <label for="registerRole" data-i18n="I am a">I am a</label>
         <select id="registerRole">
@@ -1842,6 +1866,7 @@
 
       <section class="card feed-shell">
         <h2>Student feed</h2>
+        <p class="campus-zone"><button id="campusScopeButton" class="campus-chip" type="button"></button></p>
         <button id="refreshFeedButton" class="secondary" type="button">
           Refresh feed
         </button>
