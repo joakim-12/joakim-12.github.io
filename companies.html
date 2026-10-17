@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#075b57">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="campus connect">
+    <meta name="description" content="Search companies around the world and put your own profile under the one you work for.">
+    <link rel="icon" type="image/png" href="/icons/icon-192.png">
+    <link rel="apple-touch-icon" href="/icons/icon-192.png">
+    <link rel="manifest" href="/manifest.json">
+    <title>Companies | campus connect</title>
+    <style>
+        :root {
+            color-scheme: light;
+            --page: #f0f2f5;
+            --panel: #fff;
+            --text: #111b21;
+            --muted: #667781;
+            --border: #e9edef;
+            --primary: #00a884;
+            --input: #f0f2f5;
+        }
+
+        body.dark-mode {
+            color-scheme: dark;
+            --page: #0b141a;
+            --panel: #111b21;
+            --text: #e9edef;
+            --muted: #8696a0;
+            --border: #2f3b40;
+            --primary: #00a884;
+            --input: #2a3942;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            padding-bottom: calc(28px + env(safe-area-inset-bottom, 0px));
+            background: var(--page);
+            color: var(--text);
+            font-family: "Segoe UI", system-ui, -apple-system, Arial, sans-serif;
+        }
+
+        a { color: inherit; }
+
+        .uni-topbar {
+            position: sticky;
+            top: 0;
+            z-index: 5;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            background: var(--primary);
+            color: #fff;
+        }
+
+        .uni-topbar h1 { flex: 1; margin: 0; font-size: 17px; }
+        .uni-topbar a, .uni-topbar button { color: #fff; font-size: 14px; }
+        .uni-topbar .back { display: grid; width: 34px; height: 34px; place-items: center; border-radius: 50%; background: rgb(255 255 255 / 16%); text-decoration: none; font-size: 18px; }
+        .text-button { padding: 7px 12px; border: 0; border-radius: 999px; background: rgb(255 255 255 / 16%); font: inherit; cursor: pointer; }
+
+        .wrap { max-width: 780px; margin: 0 auto; padding: 14px 12px 0; }
+
+        .page-title { margin: 6px 0 2px; font-size: clamp(24px, 5vw, 30px); font-weight: 800; letter-spacing: -.7px; }
+        .page-sub { margin: 0 0 14px; color: var(--muted); font-size: 14px; }
+
+        .search-bar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 0 0 12px;
+            padding: 10px 16px;
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            background: var(--panel);
+        }
+
+        .search-bar svg { width: 18px; height: 18px; fill: none; stroke: var(--muted); stroke-width: 2; flex: 0 0 auto; }
+        .search-bar input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text); font: inherit; font-size: 15px; }
+
+        .panel { margin: 0 0 14px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 14px; background: var(--panel); }
+        .panel summary { font-weight: 700; cursor: pointer; }
+        .panel label { display: block; margin: 10px 0 4px; font-size: 13px; color: var(--muted); }
+        .panel input, .panel select {
+            width: 100%;
+            padding: 9px 11px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            background: var(--input);
+            color: var(--text);
+            font: inherit;
+            font-size: 14px;
+        }
+        .panel button[type="submit"] {
+            margin-top: 12px;
+            padding: 9px 16px;
+            border: 0;
+            border-radius: 999px;
+            background: var(--primary);
+            color: #04150f;
+            font: inherit;
+            font-weight: 700;
+            cursor: pointer;
+        }
+        .panel p { margin: 10px 0 0; color: var(--muted); font-size: 12.5px; line-height: 1.5; }
+
+        .mine { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .mine strong { font-size: 16px; }
+        .mine select { width: auto; }
+        .mine button {
+            padding: 8px 14px;
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            background: color-mix(in srgb, var(--text) 4%, var(--panel));
+            color: var(--text);
+            font: inherit;
+            font-size: 13.5px;
+            cursor: pointer;
+        }
+        .mine button.primary { border: 0; background: var(--primary); color: #04150f; font-weight: 700; }
+
+        .section-title { margin: 18px 0 8px; font-size: 13px; font-weight: 700; letter-spacing: .06em; color: var(--muted); text-transform: uppercase; }
+
+        .uni-card { margin: 0 0 10px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 14px; background: var(--panel); }
+        .uni-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+        .uni-name { margin: 0; font-size: 17px; font-weight: 700; }
+        .uni-meta { color: var(--muted); font-size: 13px; }
+        .uni-links { display: grid; gap: 8px; margin-top: 12px; }
+        .uni-link { display: flex; align-items: center; gap: 10px; padding: 9px 11px; border: 1px solid var(--border); border-radius: 11px; background: color-mix(in srgb, var(--text) 3%, var(--panel)); font-size: 14px; text-decoration: none; }
+        .uni-link:hover { border-color: var(--primary); }
+        .uni-link .label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .uni-link .host { color: var(--muted); font-size: 12px; }
+        .kind-chip { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px; border-radius: 999px; font-size: 11.5px; font-weight: 700; letter-spacing: .02em; white-space: nowrap; }
+        .kind-site { background: color-mix(in srgb, var(--primary) 16%, var(--panel)); color: #046c56; }
+        .kind-people { background: color-mix(in srgb, #2582d8 16%, var(--panel)); color: #1668b3; }
+        .uni-card button {
+            margin-top: 10px;
+            padding: 8px 14px;
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            background: color-mix(in srgb, var(--text) 4%, var(--panel));
+            color: var(--text);
+            font: inherit;
+            font-size: 13.5px;
+            cursor: pointer;
+        }
+        .uni-card button.claimed { border-color: var(--primary); color: #046c56; font-weight: 700; }
+        .uni-note { margin: 10px 0 0; color: var(--muted); font-size: 12.5px; line-height: 1.5; }
+        .state { padding: 18px 4px; color: var(--muted); font-size: 14px; text-align: center; }
+        .status { margin: 10px 0 0; font-size: 13px; }
+        .status.error { color: #d12c2c; }
+        .status.success { color: #046c56; }
+        .footnote { margin: 18px 0 8px; color: var(--muted); font-size: 12.5px; line-height: 1.6; }
+        [hidden] { display: none !important; }
+    </style>
+  <script type="module" crossorigin src="/assets/companies-CKE0T26w.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/pwa-Ccxtr8u7.js">
+  <link rel="modulepreload" crossorigin href="/assets/profile-identity-D1l10qFQ.js">
+  <link rel="modulepreload" crossorigin href="/assets/company-directory-DOACsc8r.js">
+</head>
+
+<body>
+    <header class="uni-topbar">
+        <a class="back" href="/#profile" aria-label="Back" data-i18n-aria-label="Back">←</a>
+        <h1 data-i18n="Companies">Companies</h1>
+        <div class="topbar-actions">
+            <button class="text-button" type="button" id="theme-toggle">🌙 Night Mode</button>
+        </div>
+    </header>
+
+    <main class="wrap">
+        <h2 class="page-title" data-i18n="Companies of the world">Companies of the world</h2>
+        <p class="page-sub" data-i18n="Name the company you work for and its people come before everyone else in your feed.">
+            Name the company you work for and its people come before everyone else in your feed.
+        </p>
+
+        <div id="mine-panel" class="panel" hidden>
+            <div class="mine">
+                <span data-i18n="You work for">You work for</span>
+                <strong id="mine-name">—</strong>
+                <label class="sr" for="mine-role" hidden>Role</label>
+                <select id="mine-role">
+                    <option value="director" data-i18n="Director or owner">Director or owner</option>
+                    <option value="staff" data-i18n="Staff">Staff</option>
+                </select>
+                <button class="primary" type="button" id="mine-save" data-i18n="Keep it">Keep it</button>
+                <button type="button" id="mine-clear" data-i18n="Leave this company">Leave this company</button>
+            </div>
+            <p data-i18n="A company account keeps the name it signed up with. Changing it here changes the zone your feed leads with.">
+                A company account keeps the name it signed up with. Changing it here changes the zone your feed leads with.
+            </p>
+        </div>
+
+        <div class="search-bar">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.6-3.6" /></svg>
+            <input id="company-search" type="search" autocomplete="off"
+                   placeholder="Search any company, country or trade…" data-i18n-placeholder="Search any company, country or trade…">
+        </div>
+
+        <div id="list-heading" class="section-title" data-i18n="Companies in the list">Companies in the list</div>
+        <div id="company-results"></div>
+
+        <details class="panel" id="add-panel">
+            <summary data-i18n="Add a company that is missing">Add a company that is missing</summary>
+            <form id="add-form">
+                <label for="add-name" data-i18n="Company name">Company name</label>
+                <input id="add-name" type="text" maxlength="120" autocomplete="off" required>
+                <label for="add-country" data-i18n="Country">Country</label>
+                <input id="add-country" type="text" maxlength="80" autocomplete="off">
+                <label for="add-city" data-i18n="City">City</label>
+                <input id="add-city" type="text" maxlength="80" autocomplete="off">
+                <label for="add-industry" data-i18n="What it does">What it does</label>
+                <input id="add-industry" type="text" maxlength="80" autocomplete="off">
+                <label for="add-website" data-i18n="Website (optional)">Website (optional)</label>
+                <input id="add-website" type="text" maxlength="200" autocomplete="off" placeholder="https://">
+                <button type="submit" data-i18n="Add it to the list">Add it to the list</button>
+                <p data-i18n="Only the name is needed. An admin is the one who can correct or remove a row afterwards, so write it exactly as the company writes it itself.">
+                    Only the name is needed. An admin is the one who can correct or remove a row afterwards, so write it exactly as the company writes it itself.
+                </p>
+            </form>
+            <p id="add-status" class="status" role="status"></p>
+        </details>
+
+        <p id="page-status" class="state"></p>
+
+        <p class="footnote" data-i18n="The list is kept in your own database and starts empty: nobody is invented into it. Anyone signed in can add a company, and only an admin can change or delete one. Always check the address bar before you type a password.">
+            The list is kept in your own database and starts empty: nobody is invented into it. Anyone signed in can add a
+            company, and only an admin can change or delete one. Always check the address bar before you type a password.
+        </p>
+    </main>
+
+</body>
+
+</html>

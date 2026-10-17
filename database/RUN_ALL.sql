@@ -1,6 +1,6 @@
 -- THIS IS THE FILE TO USE (built 2026-10-17): it is schema.sql + every
 -- migration, plus message reactions / stars / replies, lecturer credentials,
--- study modes, one number per account, the bulletin board and a final check.
+-- study modes, one number per account, the bulletin board, the company directory and a final check.
 -- It replaces RUN_ONCE.sql, RUN_THIS_IN_SUPABASE.sql, RUN_MESSAGE_MARKS.sql,
 -- RUN_FRIEND_NAMES.sql, RUN_CLASSES_MIN.sql and REPAIR_CHATS.sql.
 -- ===================================================================
@@ -10,7 +10,7 @@
 -- Built 2026-10-14 from schema.sql + all migrations, in order.
 -- ===================================================================
 
--- ==================== PART 1/14: schema.sql ===========================
+-- ==================== PART 1/15: schema.sql ===========================
 -- ============================================================
 -- CAMPUS CONNECT
 -- Social networking database for university students
@@ -1522,7 +1522,7 @@ $$;
 
 NOTIFY pgrst, 'reload schema';
 
--- ================ PART 2/14: migrations/20261011_profile_gender.sql ================
+-- ================ PART 2/15: migrations/20261011_profile_gender.sql ================
 BEGIN;
 
 ALTER TABLE public.profiles
@@ -1544,7 +1544,7 @@ $$;
 
 COMMIT;
 
--- ================ PART 3/14: migrations/20261011_social_access_controls.sql ================
+-- ================ PART 3/15: migrations/20261011_social_access_controls.sql ================
 BEGIN;
 
 CREATE TABLE IF NOT EXISTS public.user_blocks (
@@ -1896,7 +1896,7 @@ CREATE POLICY "Users delete own private social media"
 
 COMMIT;
 
--- ================ PART 4/14: migrations/20261011_student_interactions_and_calls.sql ================
+-- ================ PART 4/15: migrations/20261011_student_interactions_and_calls.sql ================
 BEGIN;
 
 ALTER TABLE public.profiles
@@ -2009,7 +2009,7 @@ $migration$;
 
 COMMIT;
 
--- ================ PART 5/14: migrations/20261012_friendships_attachments_notification_preferences.sql ================
+-- ================ PART 5/15: migrations/20261012_friendships_attachments_notification_preferences.sql ================
 BEGIN;
 
 -- Explicit friend requests are separate from the existing one-way follow graph.
@@ -2197,7 +2197,7 @@ REVOKE ALL ON FUNCTION public.notify_friend_request() FROM PUBLIC, anon, authent
 
 COMMIT;
 
--- ================ PART 6/14: migrations/20261012_respond_to_chat_invitations.sql ================
+-- ================ PART 6/15: migrations/20261012_respond_to_chat_invitations.sql ================
 BEGIN;
 
 -- Let a recipient accept or decline a one-way follow invitation. Accepting
@@ -2304,7 +2304,7 @@ $migration$;
 
 COMMIT;
 
--- ================ PART 7/14: migrations/20261013_find_people.sql ================
+-- ================ PART 7/15: migrations/20261013_find_people.sql ================
 -- ============================================================
 -- STEP 1 / FINDING PEOPLE
 -- Makes members discoverable by default, lets a user claim a unique
@@ -2477,7 +2477,7 @@ SELECT 'everyone_discoverable',
 FROM public.profiles
 WHERE is_discoverable IS DISTINCT FROM TRUE;
 
--- ================ PART 8/14: migrations/20261014_roles_and_admin.sql ================
+-- ================ PART 8/15: migrations/20261014_roles_and_admin.sql ================
 -- ============================================================
 -- CAMPUS CONNECT — ROLES, APPROVAL, AND ADMIN
 -- Kabarak University: Student / Lecturer / Security / Admin.
@@ -2976,7 +2976,7 @@ SELECT 'at_least_one_admin',
        CASE WHEN COUNT(*) > 0 THEN 'ok' ELSE 'NONE YET (run section 9)' END
 FROM public.profiles WHERE role = 'admin';
 
--- ============ PART 9/14: migrations/20261014_message_edit_delete.sql ============
+-- ============ PART 9/15: migrations/20261014_message_edit_delete.sql ============
 -- ============================================================
 -- MESSAGE EDIT + DELETE (run this whole file in Supabase SQL Editor)
 -- Rules enforced inside the database, not just the app:
@@ -3080,7 +3080,7 @@ CREATE TRIGGER protect_message_fields_trigger
     EXECUTE FUNCTION public.protect_message_fields();
 
 
--- ============ PART 10/14: migrations/20261015_programmes_units_classes.sql ============
+-- ============ PART 10/15: migrations/20261015_programmes_units_classes.sql ============
 -- ============================================================
 -- CAMPUS CONNECT — PROGRAMMES, UNITS, AND CLASS TIMETABLES
 -- Kabarak University course system:
@@ -3349,7 +3349,7 @@ INSERT INTO public.programmes (school, name, level, max_year, campus, specializa
     ('School of Pharmacy', 'Bachelor of Pharmacy', 'undergraduate', 5, 'Main', '')
 ON CONFLICT (school, name) DO NOTHING;
 
--- ==================== PART 11/14: friend names (contact_names) ==========
+-- ==================== PART 11/15: friend names (contact_names) ==========
 CREATE TABLE IF NOT EXISTS public.contact_names (
     author_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     peer_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -3495,7 +3495,7 @@ ALTER TABLE public.messages
 
 COMMIT;
 
--- ============ PART 12/14: migrations/20261016_lecturer_credentials.sql ============
+-- ============ PART 12/15: migrations/20261016_lecturer_credentials.sql ============
 -- ============================================================
 -- CAMPUS CONNECT — LECTURER CREDENTIALS, STUDY MODE, STAFF LOG
 -- Kabarak University rules this adds:
@@ -4120,7 +4120,7 @@ GRANT SELECT, INSERT, UPDATE ON public.lecturer_submissions TO authenticated;
 
 NOTIFY pgrst, 'reload schema';
 
--- ============ PART 13/14: migrations/20261016_one_number_one_account.sql ============
+-- ============ PART 13/15: migrations/20261016_one_number_one_account.sql ============
 
 -- ============================================================
 -- CAMPUS CONNECT — ONE NUMBER, ONE ACCOUNT
@@ -4470,7 +4470,7 @@ ALTER TABLE public.admin_action_log
 NOTIFY pgrst, 'reload schema';
 
 
--- ============ PART 14/14: migrations/20261017_bulletins.sql ============
+-- ============ PART 14/15: migrations/20261017_bulletins.sql ============
 
 -- ============================================================
 -- CAMPUS CONNECT — THE BULLETIN BOARD
@@ -4558,6 +4558,170 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON public.bulletins TO authenticated;
 NOTIFY pgrst, 'reload schema';
 
 
+-- ============ PART 15/15: migrations/20261017_companies.sql ============
+
+-- ============================================================
+-- CAMPUS CONNECT — THE COMPANY DIRECTORY
+-- A university is not the only place a person belongs. A director,
+-- a manager or an employee of any company in the world registers with
+-- the company's name, and the app then leads their feed with the people
+-- they work with, exactly the way a campus zone leads a student with
+-- their own school.
+--   * the directory is world-wide: name, country, city, industry, website
+--   * every signed-in account may read it and search it
+--   * any signed-in account may ADD a company that is missing, and the row
+--     remembers who added it
+--   * only an admin may correct or remove a company, so one person's
+--     typing cannot rename everybody's employer
+--   * a member claims a company by writing its name on their own profile
+--     (profiles.company). The name is kept as text, not as a foreign key,
+--     for the same reason profiles.university is: a person must be able to
+--     say where they belong before the directory happens to hold them.
+--   * an account that carries a company may also write announcements, so a
+--     company board is not locked behind a campus
+-- Idempotent: safe to run more than once.
+-- ============================================================
+
+
+-- ------------------------------------------------------------
+-- 1. THE DIRECTORY
+-- ------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS public.companies (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name TEXT NOT NULL CHECK (char_length(BTRIM(name)) BETWEEN 2 AND 120),
+    name_key TEXT GENERATED ALWAYS AS (LOWER(BTRIM(name))) STORED,
+    country TEXT CHECK (country IS NULL OR char_length(BTRIM(country)) <= 80),
+    city TEXT CHECK (city IS NULL OR char_length(BTRIM(city)) <= 80),
+    industry TEXT CHECK (industry IS NULL OR char_length(BTRIM(industry)) <= 80),
+    website TEXT CHECK (website IS NULL OR website ~ '^https?://'),
+    note TEXT CHECK (note IS NULL OR char_length(BTRIM(note)) <= 400),
+    added_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT companies_name_key_unique UNIQUE (name_key)
+);
+
+CREATE INDEX IF NOT EXISTS companies_country_idx
+    ON public.companies (LOWER(BTRIM(country)));
+
+CREATE INDEX IF NOT EXISTS companies_industry_idx
+    ON public.companies (LOWER(BTRIM(industry)));
+
+
+-- ------------------------------------------------------------
+-- 2. KEEP updated_at HONEST
+-- ------------------------------------------------------------
+
+DROP TRIGGER IF EXISTS companies_set_updated_at ON public.companies;
+CREATE TRIGGER companies_set_updated_at
+    BEFORE UPDATE ON public.companies
+    FOR EACH ROW
+    EXECUTE FUNCTION public.set_updated_at();
+
+
+-- ------------------------------------------------------------
+-- 3. WHO MAY SEE AND WRITE
+-- Reading is for every signed-in account: a directory of companies is
+-- public information and a parent may look up where their child works.
+-- Adding is open to everyone because a company missing from the list is
+-- a company that cannot be claimed. Correcting is not.
+-- ------------------------------------------------------------
+
+ALTER TABLE public.companies ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS companies_readable ON public.companies;
+CREATE POLICY companies_readable ON public.companies
+    FOR SELECT TO authenticated
+    USING (TRUE);
+
+DROP POLICY IF EXISTS companies_anyone_may_add ON public.companies;
+CREATE POLICY companies_anyone_may_add ON public.companies
+    FOR INSERT TO authenticated
+    WITH CHECK (added_by = auth.uid());
+
+DROP POLICY IF EXISTS companies_admin_edit ON public.companies;
+CREATE POLICY companies_admin_edit ON public.companies
+    FOR UPDATE TO authenticated
+    USING (public.is_admin())
+    WITH CHECK (public.is_admin());
+
+DROP POLICY IF EXISTS companies_admin_remove ON public.companies;
+CREATE POLICY companies_admin_remove ON public.companies
+    FOR DELETE TO authenticated
+    USING (public.is_admin());
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.companies TO authenticated;
+
+
+-- ------------------------------------------------------------
+-- 4. WHICH COMPANY A MEMBER BELONGS TO
+-- Two plain columns, so an account that has never mentioned a company is
+-- simply blank rather than broken, and the feed treats a blank as
+-- "has not answered" instead of "works somewhere else".
+-- ------------------------------------------------------------
+
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS company TEXT;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS company_role TEXT;
+
+COMMENT ON COLUMN public.profiles.company IS
+    'The company this member claims, spelled as it is in public.companies.';
+COMMENT ON COLUMN public.profiles.company_role IS
+    'director, staff or member - what they do there, nothing else.';
+
+CREATE INDEX IF NOT EXISTS profiles_company_idx
+    ON public.profiles (LOWER(BTRIM(company)));
+
+
+-- ------------------------------------------------------------
+-- 5. A COMPANY ACCOUNT MAY WRITE ANNOUNCEMENTS
+-- The bulletin board itself (PART 14) only lets a campus account write.
+-- A director who is not a student has nothing to say on a campus board,
+-- so a second, separate policy opens the same table to a member who
+-- carries a company. Postgres treats these two INSERT policies as
+-- alternatives, so adding one takes nothing away from the other.
+-- ------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.is_company_member()
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT COALESCE((
+        SELECT BTRIM(COALESCE(p.company, '')) <> ''
+        FROM public.profiles AS p
+        WHERE p.id = auth.uid()
+    ), FALSE);
+$$;
+
+REVOKE ALL ON FUNCTION public.is_company_member() FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.is_company_member() TO authenticated;
+
+DROP POLICY IF EXISTS bulletins_company_write ON public.bulletins;
+CREATE POLICY bulletins_company_write ON public.bulletins
+    FOR INSERT TO authenticated
+    WITH CHECK (author_id = auth.uid() AND public.is_company_member());
+
+-- The board sorts into columns. A company writes into one of its own.
+-- This is the constraint Postgres named by itself when the column was
+-- created, so dropping it by that name is the whole edit.
+ALTER TABLE public.bulletins
+    DROP CONSTRAINT IF EXISTS bulletins_section_check;
+ALTER TABLE public.bulletins
+    ADD CONSTRAINT bulletins_section_check CHECK (
+        section IN ('world', 'university', 'people', 'company')
+    );
+
+
+-- ------------------------------------------------------------
+-- 6. TELL POSTGREST THE SHAPE CHANGED
+-- ------------------------------------------------------------
+
+NOTIFY pgrst, 'reload schema';
+
+
 -- ===================================================================
 -- FINAL CHECK: every row should read ok
 -- ===================================================================
@@ -4574,7 +4738,7 @@ SELECT 'table: ' || t.table_name,
 FROM (VALUES ('user_blocks'), ('user_presence'), ('call_signals'), ('friend_requests'),
              ('message_attachments'), ('notification_preferences'), ('student_registrations'),
              ('contact_names'), ('message_reactions'), ('message_stars'), ('lecturer_submissions'),
-             ('programmes'), ('units'), ('class_sessions'), ('bulletins')) AS t(table_name)
+             ('programmes'), ('units'), ('class_sessions'), ('bulletins'), ('companies')) AS t(table_name)
 LEFT JOIN information_schema.tables AS tb
        ON tb.table_schema = 'public' AND tb.table_name = t.table_name
 UNION ALL
@@ -4587,7 +4751,7 @@ UNION ALL
 SELECT 'column: profiles.' || c.column_name,
        CASE WHEN x.column_name IS NOT NULL THEN 'ok' ELSE 'MISSING' END
 FROM (VALUES ('role'), ('verification_status'), ('is_discoverable'), ('university'),
-               ('staff_id_number'), ('employment_status'), ('study_mode'), ('lecturer_since')) AS c(column_name)
+               ('staff_id_number'), ('employment_status'), ('study_mode'), ('lecturer_since'), ('company'), ('company_role')) AS c(column_name)
 LEFT JOIN information_schema.columns AS x
        ON x.table_schema = 'public' AND x.table_name = 'profiles' AND x.column_name = c.column_name
 ORDER BY check_name;

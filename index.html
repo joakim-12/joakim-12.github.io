@@ -1294,10 +1294,12 @@
       .you-details { margin-left: auto; margin-right: auto; max-width: 620px; }
     }
   </style>
-  <script type="module" crossorigin src="/assets/main-DzcB-mul.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/pwa-DCE6x_qO.js">
-  <link rel="modulepreload" crossorigin href="/assets/staff-verification-S9aoLItT.js">
-  <link rel="modulepreload" crossorigin href="/assets/app-lock-CsrvMc3z.js">
+  <script type="module" crossorigin src="/assets/main-Cqew3Mod.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/pwa-Ccxtr8u7.js">
+  <link rel="modulepreload" crossorigin href="/assets/profile-identity-D1l10qFQ.js">
+  <link rel="modulepreload" crossorigin href="/assets/app-lock-C0EE3A-i.js">
+  <link rel="modulepreload" crossorigin href="/assets/company-directory-DOACsc8r.js">
+  <link rel="modulepreload" crossorigin href="/assets/staff-verification-B7hazs2Q.js">
 </head>
 
 <body>
@@ -1460,11 +1462,25 @@
           <p class="muted" data-i18n="Your own university comes first in the feed. Anyone who has not named a university sees every school together.">Your own university comes first in the feed. Anyone who has not named a university sees every school together.</p>
         </div>
 
+        <div id="registerCompanyFields" hidden>
+          <label for="registerCompany" data-i18n="Your company">Your company</label>
+          <input id="registerCompany" type="text" maxlength="120" autocomplete="organization"
+                 placeholder="Company name" data-i18n-placeholder="Company name" required>
+          <label for="registerCompanyRole" data-i18n="Your role there">Your role there</label>
+          <select id="registerCompanyRole">
+            <option value="director" data-i18n="Director or owner">Director or owner</option>
+            <option value="staff" data-i18n="Staff">Staff</option>
+          </select>
+          <p class="muted" data-i18n="Write the name as it appears on its letterhead. Once you are signed in, the companies page can match it to the list or add it there.">Write the name as it appears on its letterhead. Once you are signed in, the companies page can match it to the list or add it there.</p>
+          <p class="muted" data-i18n="A company signs in with an email address. It gets its own zone in the feed and may write announcements about its company, but it does not get classes.">A company signs in with an email address. It gets its own zone in the feed and may write announcements about its company, but it does not get classes.</p>
+        </div>
+
         <label for="registerRole" data-i18n="I am a">I am a</label>
         <select id="registerRole">
           <option value="student" data-i18n="Student">Student</option>
           <option value="lecturer" data-i18n="Lecturer">Lecturer</option>
           <option value="security" data-i18n="Security staff">Security staff</option>
+          <option value="company" data-i18n="A company: its director or staff">A company: its director or staff</option>
           <option value="member" data-i18n="Parent, relative or friend of a student">Parent, relative or friend of a student</option>
         </select>
         <p class="muted" id="registerRoleHint" data-i18n="Students start immediately. A lecturer has to show a National ID, a staff ID card and the letter of introduction, and an admin has to accept them before the university system opens.">Students start immediately. A lecturer has to show a National ID, a staff ID card and the letter of introduction, and an admin has to accept them before the university system opens.</p>
@@ -1586,6 +1602,11 @@
           <a class="you-row" href="/universities.html">
             <span class="you-row-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2.5 7.5 12 12l9.5-4.5Z"/><path d="M6 10v5.5c0 1.7 2.7 3 6 3s6-1.3 6-3V10"/><path d="M21.5 7.5v6"/></svg></span>
             <span class="you-row-label" data-i18n="Student portals, ENT and LMS worldwide">Student portals, ENT and LMS worldwide</span>
+            <svg class="you-row-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+          </a>
+          <a class="you-row" href="/companies.html">
+            <span class="you-row-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 21V5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v16"/><path d="M15 10h3a2 2 0 0 1 2 2v9"/><path d="M8 7h4M8 11h4M8 15h4M3 21h18"/></svg></span>
+            <span class="you-row-label" data-i18n="Companies of the world">Companies of the world</span>
             <svg class="you-row-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
           </a>
           <button class="you-row" type="button" data-you-target="fees">
@@ -1735,6 +1756,16 @@
             <label for="profileUniversity" data-i18n="University">University</label>
             <input id="profileUniversity" type="text" maxlength="120" placeholder="Kabarak University" data-i18n-placeholder="Kabarak University">
             <small data-i18n="This decides which classes and announcements reach you.">This decides which classes and announcements reach you.</small>
+            <label for="profileCompany" data-i18n="Company">Company</label>
+            <input id="profileCompany" type="text" maxlength="120" list="companyOptions" autocomplete="off" placeholder="Where you work" data-i18n-placeholder="Where you work">
+            <datalist id="companyOptions"></datalist>
+            <label for="profileCompanyRole" data-i18n="Your role at that company">Your role at that company</label>
+            <select id="profileCompanyRole">
+              <option value="" data-i18n="Not stated">Not stated</option>
+              <option value="director" data-i18n="Director or owner">Director or owner</option>
+              <option value="staff" data-i18n="Staff">Staff</option>
+            </select>
+            <small data-i18n="People from the same company come first in your feed. A company missing from the list can be added on the companies page.">People from the same company come first in your feed. A company missing from the list can be added on the companies page.</small>
             <label for="profileRegistration" data-i18n="Registration number (optional)">Registration number (optional)</label>
             <input id="profileRegistration" type="text" maxlength="32" spellcheck="false" autocomplete="off" pattern="[A-Za-z0-9][-./ A-Za-z0-9]{2,31}">
             <small id="registrationHint" data-i18n="Only you and an app admin can read this. It lets a found ID be matched back to you, and nobody can browse a list of these numbers.">Only you and an app admin can read this. It lets a found ID be matched back to you, and nobody can browse a list of these numbers.</small>
@@ -1875,7 +1906,7 @@
 
       <section id="bulletin" class="card">
         <h2 data-i18n="Bulletin">Bulletin</h2>
-        <p class="muted" data-i18n="News about the world, the university and the people in it. A campus account writes it, everyone reads it.">News about the world, the university and the people in it. A campus account writes it, everyone reads it.</p>
+        <p class="muted" data-i18n="News about the world, the university, the people and the companies in it. A campus or company account writes it, everyone reads it.">News about the world, the university, the people and the companies in it. A campus or company account writes it, everyone reads it.</p>
         <div id="bulletinBody" class="bulletin-body"></div>
         <div id="bulletinWrite" class="bulletin-write hidden">
           <h3 data-i18n="Write an announcement">Write an announcement</h3>
@@ -1884,6 +1915,7 @@
             <option value="university" data-i18n="University news">University news</option>
             <option value="world" data-i18n="World news">World news</option>
             <option value="people" data-i18n="People news">People news</option>
+            <option value="company" data-i18n="Company news">Company news</option>
           </select>
           <label for="bulletinTitle" data-i18n="Headline">Headline</label>
           <input id="bulletinTitle" type="text" maxlength="120" autocomplete="off">
