@@ -1304,6 +1304,75 @@
             font-size: 12px;
         }
 
+        /* ---- Group chats ---------------------------------------------- */
+        .conversation.group-chat .avatar {
+            background: var(--primary);
+            color: #fff;
+            font-size: 19px;
+        }
+
+        .message-sender {
+            margin: 0 0 3px 4px;
+            color: var(--primary);
+            font-size: 12.5px;
+            font-weight: 700;
+            cursor: pointer;
+        }
+
+        .member-check {
+            margin-left: auto;
+            color: var(--primary);
+            font-size: 18px;
+            font-weight: 800;
+        }
+
+        .group-info-name {
+            margin: 6px 0 0;
+            font-size: 17px;
+            font-weight: 700;
+        }
+
+        .group-info-admin {
+            margin-top: 12px;
+            padding-top: 10px;
+            border-top: 1px solid var(--border);
+        }
+
+        .group-info-members {
+            display: grid;
+            gap: 2px;
+            margin-bottom: 14px;
+        }
+
+        .group-role-tag {
+            color: var(--muted);
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: .06em;
+            text-transform: uppercase;
+        }
+
+        .remove-member-button {
+            margin-left: auto;
+            padding: 4px 10px;
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            background: none;
+            color: var(--muted);
+            font: inherit;
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        .danger-action {
+            color: #e5383b;
+        }
+
+        #chat-name.is-group,
+        #chat-status.is-group {
+            cursor: pointer;
+        }
+
         .az-index {
             display: flex;
             flex-wrap: wrap;
@@ -3233,12 +3302,12 @@
             }
         }
     </style>
-  <script type="module" crossorigin src="/assets/messages-DmO5KUB5.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/pwa-DY9SDJvT.js">
-  <link rel="modulepreload" crossorigin href="/assets/profile-identity-xs7nBM-G.js">
-  <link rel="modulepreload" crossorigin href="/assets/staff-verification-DCX_Llgm.js">
+  <script type="module" crossorigin src="/assets/messages-fvPZvAxf.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/pwa-MyqTBhPe.js">
+  <link rel="modulepreload" crossorigin href="/assets/profile-identity-T64u4sc-.js">
+  <link rel="modulepreload" crossorigin href="/assets/staff-verification-BTs9He2p.js">
   <link rel="modulepreload" crossorigin href="/assets/voice-player-BnOeYz-V.js">
-  <link rel="modulepreload" crossorigin href="/assets/app-lock-CPkFxrE1.js">
+  <link rel="modulepreload" crossorigin href="/assets/app-lock-EbDnjEtk.js">
   <link rel="modulepreload" crossorigin href="/assets/member-view-CKKBednP.js">
 </head>
 
@@ -3274,6 +3343,14 @@
                             <svg viewBox="0 0 24 24" aria-hidden="true">
                                 <path d="M4 8.4h3.1l1.4-2.2h6.6l1.4 2.2H20V19H4z" />
                                 <circle cx="12" cy="13.4" r="3.3" />
+                            </svg>
+                        </button>
+                        <button id="chat-group-button" class="icon-round" type="button" aria-label="New group"
+                            data-i18n-aria-label="New group" title="New group" data-i18n-title="New group">
+                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                                <circle cx="9" cy="8.4" r="3.2" />
+                                <path d="M3.6 19a5.6 5.6 0 0 1 10.8 0" />
+                                <path d="M16.4 6.2v4.4M14.2 8.4h4.4" />
                             </svg>
                         </button>
                         <button id="chat-new-button" class="icon-round" type="button" aria-label="New chat"
@@ -3864,6 +3941,60 @@
         </div>
         <p id="new-chat-result" class="dial-result" role="status"></p>
         <div id="new-chat-body" class="new-chat-body" aria-live="polite"></div>
+    </dialog>
+    <dialog id="group-create-dialog" class="sheet-dialog group-create-dialog"
+        aria-labelledby="group-create-title">
+        <div class="new-chat-head">
+            <h3 id="group-create-title" data-i18n="New group">New group</h3>
+            <button id="group-create-close" class="icon-button" type="button" aria-label="Close"
+                data-i18n-aria-label="Close">×</button>
+        </div>
+        <label class="sheet-field" for="group-name-field">
+            <span data-i18n="Group name">Group name</span>
+            <input id="group-name-field" type="text" maxlength="80" autocomplete="off" placeholder="Kabarak CS 2027"
+                data-i18n-placeholder="Kabarak CS 2027">
+        </label>
+        <input id="group-member-search" class="dial-display" type="search" autocomplete="off"
+            placeholder="Search people to add" aria-label="Search people to add"
+            data-i18n-aria-label="Search people to add" data-i18n-placeholder="Search people to add">
+        <p id="group-picked" class="dial-result" role="status"></p>
+        <div id="group-member-body" class="new-chat-body" aria-live="polite"></div>
+        <div class="dial-row">
+            <button id="group-create-cancel" class="secondary-action" type="button"
+                data-i18n="Cancel">Cancel</button>
+            <button id="group-create-save" class="primary-action" type="button" disabled
+                data-i18n="Create group">Create group</button>
+        </div>
+    </dialog>
+    <dialog id="group-info-dialog" class="sheet-dialog group-info-dialog" aria-labelledby="group-info-title">
+        <div class="new-chat-head">
+            <h3 id="group-info-title" data-i18n="Group info">Group info</h3>
+            <button id="group-info-close" class="icon-button" type="button" aria-label="Close"
+                data-i18n-aria-label="Close">×</button>
+        </div>
+        <p id="group-info-name" class="group-info-name">Group</p>
+        <p id="group-info-count" class="dial-result" role="status"></p>
+        <div id="group-info-admin" class="group-info-admin">
+            <label class="sheet-field" for="group-info-name-field">
+                <span data-i18n="Group name">Group name</span>
+                <input id="group-info-name-field" type="text" maxlength="80" autocomplete="off">
+            </label>
+            <div class="dial-row">
+                <button id="group-info-rename" class="secondary-action" type="button"
+                    data-i18n="Save name">Save name</button>
+                <button id="group-info-add" class="secondary-action" type="button"
+                    data-i18n="Add people">Add people</button>
+            </div>
+        </div>
+        <p class="calls-section-title" data-i18n="Members">Members</p>
+        <div id="group-info-members" class="group-info-members" aria-live="polite"></div>
+        <div class="dial-row">
+            <button id="group-info-leave" class="secondary-action danger-action" type="button"
+                data-i18n="Leave group">Leave group</button>
+            <button id="group-info-delete" class="secondary-action danger-action hidden" type="button"
+                data-i18n="Delete group">Delete group</button>
+        </div>
+        <p id="group-info-notice" class="dial-result" role="status"></p>
     </dialog>
     <nav class="bottom-nav" aria-label="Main navigation" hidden>
         <a class="bottom-nav-link" href="/#stories" data-destination="updates">

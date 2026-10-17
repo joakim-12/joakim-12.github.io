@@ -1,7 +1,7 @@
 -- THIS IS THE FILE TO USE (built 2026-10-17): it is schema.sql + every
 -- migration, plus message reactions / stars / replies, lecturer credentials,
 -- study modes, one number per account, the bulletin board, the company directory, the broadcast
--- policies behind the typing indicator and a final check.
+-- policies behind the typing indicator, private group chats and a final check.
 -- It replaces RUN_ONCE.sql, RUN_THIS_IN_SUPABASE.sql, RUN_MESSAGE_MARKS.sql,
 -- RUN_FRIEND_NAMES.sql, RUN_CLASSES_MIN.sql and REPAIR_CHATS.sql.
 -- ===================================================================
@@ -11,7 +11,7 @@
 -- Built 2026-10-14 from schema.sql + all migrations, in order.
 -- ===================================================================
 
--- ==================== PART 1/16: schema.sql ===========================
+-- ==================== PART 1/17: schema.sql ===========================
 -- ============================================================
 -- CAMPUS CONNECT
 -- Social networking database for university students
@@ -1523,7 +1523,7 @@ $$;
 
 NOTIFY pgrst, 'reload schema';
 
--- ================ PART 2/16: migrations/20261011_profile_gender.sql ================
+-- ================ PART 2/17: migrations/20261011_profile_gender.sql ================
 BEGIN;
 
 ALTER TABLE public.profiles
@@ -1545,7 +1545,7 @@ $$;
 
 COMMIT;
 
--- ================ PART 3/16: migrations/20261011_social_access_controls.sql ================
+-- ================ PART 3/17: migrations/20261011_social_access_controls.sql ================
 BEGIN;
 
 CREATE TABLE IF NOT EXISTS public.user_blocks (
@@ -1897,7 +1897,7 @@ CREATE POLICY "Users delete own private social media"
 
 COMMIT;
 
--- ================ PART 4/16: migrations/20261011_student_interactions_and_calls.sql ================
+-- ================ PART 4/17: migrations/20261011_student_interactions_and_calls.sql ================
 BEGIN;
 
 ALTER TABLE public.profiles
@@ -2010,7 +2010,7 @@ $migration$;
 
 COMMIT;
 
--- ================ PART 5/16: migrations/20261012_friendships_attachments_notification_preferences.sql ================
+-- ================ PART 5/17: migrations/20261012_friendships_attachments_notification_preferences.sql ================
 BEGIN;
 
 -- Explicit friend requests are separate from the existing one-way follow graph.
@@ -2198,7 +2198,7 @@ REVOKE ALL ON FUNCTION public.notify_friend_request() FROM PUBLIC, anon, authent
 
 COMMIT;
 
--- ================ PART 6/16: migrations/20261012_respond_to_chat_invitations.sql ================
+-- ================ PART 6/17: migrations/20261012_respond_to_chat_invitations.sql ================
 BEGIN;
 
 -- Let a recipient accept or decline a one-way follow invitation. Accepting
@@ -2305,7 +2305,7 @@ $migration$;
 
 COMMIT;
 
--- ================ PART 7/16: migrations/20261013_find_people.sql ================
+-- ================ PART 7/17: migrations/20261013_find_people.sql ================
 -- ============================================================
 -- STEP 1 / FINDING PEOPLE
 -- Makes members discoverable by default, lets a user claim a unique
@@ -2478,7 +2478,7 @@ SELECT 'everyone_discoverable',
 FROM public.profiles
 WHERE is_discoverable IS DISTINCT FROM TRUE;
 
--- ================ PART 8/16: migrations/20261014_roles_and_admin.sql ================
+-- ================ PART 8/17: migrations/20261014_roles_and_admin.sql ================
 -- ============================================================
 -- CAMPUS CONNECT — ROLES, APPROVAL, AND ADMIN
 -- Kabarak University: Student / Lecturer / Security / Admin.
@@ -2977,7 +2977,7 @@ SELECT 'at_least_one_admin',
        CASE WHEN COUNT(*) > 0 THEN 'ok' ELSE 'NONE YET (run section 9)' END
 FROM public.profiles WHERE role = 'admin';
 
--- ============ PART 9/16: migrations/20261014_message_edit_delete.sql ============
+-- ============ PART 9/17: migrations/20261014_message_edit_delete.sql ============
 -- ============================================================
 -- MESSAGE EDIT + DELETE (run this whole file in Supabase SQL Editor)
 -- Rules enforced inside the database, not just the app:
@@ -3081,7 +3081,7 @@ CREATE TRIGGER protect_message_fields_trigger
     EXECUTE FUNCTION public.protect_message_fields();
 
 
--- ============ PART 10/16: migrations/20261015_programmes_units_classes.sql ============
+-- ============ PART 10/17: migrations/20261015_programmes_units_classes.sql ============
 -- ============================================================
 -- CAMPUS CONNECT — PROGRAMMES, UNITS, AND CLASS TIMETABLES
 -- Kabarak University course system:
@@ -3350,7 +3350,7 @@ INSERT INTO public.programmes (school, name, level, max_year, campus, specializa
     ('School of Pharmacy', 'Bachelor of Pharmacy', 'undergraduate', 5, 'Main', '')
 ON CONFLICT (school, name) DO NOTHING;
 
--- ==================== PART 11/16: friend names (contact_names) ==========
+-- ==================== PART 11/17: friend names (contact_names) ==========
 CREATE TABLE IF NOT EXISTS public.contact_names (
     author_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     peer_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -3496,7 +3496,7 @@ ALTER TABLE public.messages
 
 COMMIT;
 
--- ============ PART 12/16: migrations/20261016_lecturer_credentials.sql ============
+-- ============ PART 12/17: migrations/20261016_lecturer_credentials.sql ============
 -- ============================================================
 -- CAMPUS CONNECT — LECTURER CREDENTIALS, STUDY MODE, STAFF LOG
 -- Kabarak University rules this adds:
@@ -4121,7 +4121,7 @@ GRANT SELECT, INSERT, UPDATE ON public.lecturer_submissions TO authenticated;
 
 NOTIFY pgrst, 'reload schema';
 
--- ============ PART 13/16: migrations/20261016_one_number_one_account.sql ============
+-- ============ PART 13/17: migrations/20261016_one_number_one_account.sql ============
 
 -- ============================================================
 -- CAMPUS CONNECT — ONE NUMBER, ONE ACCOUNT
@@ -4471,7 +4471,7 @@ ALTER TABLE public.admin_action_log
 NOTIFY pgrst, 'reload schema';
 
 
--- ============ PART 14/16: migrations/20261017_bulletins.sql ============
+-- ============ PART 14/17: migrations/20261017_bulletins.sql ============
 
 -- ============================================================
 -- CAMPUS CONNECT — THE BULLETIN BOARD
@@ -4559,7 +4559,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON public.bulletins TO authenticated;
 NOTIFY pgrst, 'reload schema';
 
 
--- ============ PART 15/16: migrations/20261017_companies.sql ============
+-- ============ PART 15/17: migrations/20261017_companies.sql ============
 
 -- ============================================================
 -- CAMPUS CONNECT — THE COMPANY DIRECTORY
@@ -4723,7 +4723,7 @@ ALTER TABLE public.bulletins
 NOTIFY pgrst, 'reload schema';
 
 
--- ============ PART 16/16: migrations/20261017_realtime_broadcast.sql ============
+-- ============ PART 16/17: migrations/20261017_realtime_broadcast.sql ============
 
 -- PART 16: realtime broadcast for the typing / recording indicators.
 --
@@ -4797,6 +4797,239 @@ $do$;
 NOTIFY pgrst, 'reload schema';
 
 
+-- ============ PART 17/17: migrations/20261017_private_groups.sql ============
+
+-- PART 17: private group chats, the WhatsApp shape.
+--
+-- The community tables already exist, but everything they made was public: the
+-- is_public default was TRUE and the only way to put a person in a group was
+-- for that person to walk in themselves. A group you make with four friends is
+-- the other shape — nobody can see its name, its members or its messages
+-- unless you are in it. So this part flips the default, adds a function that
+-- creates a group with a chosen list of people, and a function that hands the
+-- chat list everything it needs in one call.
+--
+-- A member row for someone else still cannot be inserted through the plain
+-- policies (they only let you add yourself), which is why the adding runs
+-- inside SECURITY DEFINER functions that check the role first.
+
+ALTER TABLE public.communities
+    ALTER COLUMN is_public SET DEFAULT FALSE;
+
+CREATE TABLE IF NOT EXISTS public.community_reads (
+    community_id UUID NOT NULL REFERENCES public.communities(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    last_read_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (community_id, user_id)
+);
+
+ALTER TABLE public.community_reads ENABLE ROW LEVEL SECURITY;
+GRANT SELECT, INSERT, UPDATE ON public.community_reads TO authenticated;
+
+DROP POLICY IF EXISTS "Members own their own read marker"
+    ON public.community_reads;
+CREATE POLICY "Members own their own read marker"
+    ON public.community_reads FOR ALL TO authenticated
+    USING (user_id = (SELECT auth.uid()))
+    WITH CHECK (user_id = (SELECT auth.uid()));
+
+CREATE INDEX IF NOT EXISTS community_reads_user_idx
+    ON public.community_reads (user_id, last_read_at DESC);
+
+CREATE OR REPLACE FUNCTION public.create_group(
+    p_name TEXT,
+    p_member_ids UUID[] DEFAULT ARRAY[]::UUID[]
+)
+RETURNS UUID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    new_community_id UUID;
+    current_user_id UUID := auth.uid();
+BEGIN
+    IF current_user_id IS NULL THEN
+        RAISE EXCEPTION 'You must be signed in to create a group.';
+    END IF;
+    IF char_length(trim(COALESCE(p_name, ''))) NOT BETWEEN 3 AND 80 THEN
+        RAISE EXCEPTION 'Group names must be between 3 and 80 characters.';
+    END IF;
+    IF COALESCE(array_length(p_member_ids, 1), 0) > 200 THEN
+        RAISE EXCEPTION 'A group takes at most 200 people at a time.';
+    END IF;
+
+    INSERT INTO public.communities (owner_id, name, description, kind, is_public)
+    VALUES (current_user_id, trim(p_name), '', 'group', FALSE)
+    RETURNING id INTO new_community_id;
+
+    INSERT INTO public.community_members (community_id, user_id, role)
+    VALUES (new_community_id, current_user_id, 'owner')
+    ON CONFLICT (community_id, user_id) DO NOTHING;
+
+    /* Only a real account can be pulled in, and a block on either side keeps
+       the person out: nobody ends up in a group with someone they blocked. */
+    INSERT INTO public.community_members (community_id, user_id, role)
+    SELECT new_community_id, candidate.user_id, 'member'
+    FROM unnest(COALESCE(p_member_ids, ARRAY[]::UUID[])) AS candidate(user_id)
+    WHERE candidate.user_id <> current_user_id
+      AND EXISTS (
+          SELECT 1
+          FROM public.profiles AS profile
+          WHERE profile.id = candidate.user_id
+      )
+      AND NOT EXISTS (
+          SELECT 1
+          FROM public.user_blocks AS blocker
+          WHERE (blocker.blocker_id = current_user_id AND blocker.blocked_id = candidate.user_id)
+             OR (blocker.blocker_id = candidate.user_id AND blocker.blocked_id = current_user_id)
+      )
+    ON CONFLICT (community_id, user_id) DO NOTHING;
+
+    RETURN new_community_id;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.add_group_members(
+    p_community_id UUID,
+    p_user_ids UUID[]
+)
+RETURNS INT
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    current_user_id UUID := auth.uid();
+    total_members INT;
+BEGIN
+    IF current_user_id IS NULL THEN
+        RAISE EXCEPTION 'You must be signed in to add people.';
+    END IF;
+    IF NOT public.can_manage_community(p_community_id) THEN
+        RAISE EXCEPTION 'Only the owner or an admin can add people to this group.';
+    END IF;
+    IF COALESCE(array_length(p_user_ids, 1), 0) > 200 THEN
+        RAISE EXCEPTION 'A group takes at most 200 people at a time.';
+    END IF;
+
+    INSERT INTO public.community_members (community_id, user_id, role)
+    SELECT p_community_id, candidate.user_id, 'member'
+    FROM unnest(COALESCE(p_user_ids, ARRAY[]::UUID[])) AS candidate(user_id)
+    WHERE candidate.user_id <> current_user_id
+      AND EXISTS (
+          SELECT 1
+          FROM public.profiles AS profile
+          WHERE profile.id = candidate.user_id
+      )
+      AND NOT EXISTS (
+          SELECT 1
+          FROM public.user_blocks AS blocker
+          WHERE (blocker.blocker_id = current_user_id AND blocker.blocked_id = candidate.user_id)
+             OR (blocker.blocker_id = candidate.user_id AND blocker.blocked_id = current_user_id)
+      )
+    ON CONFLICT (community_id, user_id) DO NOTHING;
+
+    SELECT count(*) INTO total_members
+    FROM public.community_members AS member
+    WHERE member.community_id = p_community_id;
+
+    RETURN total_members;
+END;
+$$;
+
+/* One call paints the whole chat list: every group I am in with who made it,
+   how many are inside, the last message and how many I have not read. Reading
+   it through the plain tables would take four round trips per group. */
+CREATE OR REPLACE FUNCTION public.my_groups()
+RETURNS TABLE (
+    id UUID,
+    name TEXT,
+    description TEXT,
+    owner_id UUID,
+    my_role TEXT,
+    member_count BIGINT,
+    last_message_at TIMESTAMPTZ,
+    last_sender_id UUID,
+    last_content TEXT,
+    last_media_url TEXT,
+    unread_count BIGINT
+)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT community.id,
+           community.name,
+           community.description,
+           community.owner_id,
+           membership.role,
+           counter.member_count,
+           latest.created_at,
+           latest.sender_id,
+           latest.content,
+           latest.media_url,
+           COALESCE(unread.unread_count, 0)
+    FROM public.community_members AS membership
+    JOIN public.communities AS community
+        ON community.id = membership.community_id
+    CROSS JOIN LATERAL (
+        SELECT count(*) AS member_count
+        FROM public.community_members AS every_member
+        WHERE every_member.community_id = community.id
+    ) AS counter
+    LEFT JOIN public.community_reads AS marker
+        ON marker.community_id = community.id
+       AND marker.user_id = membership.user_id
+    LEFT JOIN LATERAL (
+        SELECT message.created_at,
+               message.sender_id,
+               message.content,
+               message.media_url
+        FROM public.community_messages AS message
+        WHERE message.community_id = community.id
+        ORDER BY message.created_at DESC
+        LIMIT 1
+    ) AS latest ON TRUE
+    LEFT JOIN LATERAL (
+        SELECT count(*) AS unread_count
+        FROM public.community_messages AS message
+        WHERE message.community_id = community.id
+          AND message.sender_id <> membership.user_id
+          AND message.created_at >
+              COALESCE(marker.last_read_at, 'epoch'::TIMESTAMPTZ)
+    ) AS unread ON TRUE
+    WHERE membership.user_id = (SELECT auth.uid())
+      AND community.kind = 'group';
+$$;
+
+CREATE OR REPLACE FUNCTION public.mark_group_read(p_community_id UUID)
+RETURNS VOID
+LANGUAGE sql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    INSERT INTO public.community_reads (community_id, user_id, last_read_at)
+    VALUES (p_community_id, (SELECT auth.uid()), NOW())
+    ON CONFLICT (community_id, user_id)
+    DO UPDATE SET last_read_at =
+        GREATEST(community_reads.last_read_at, EXCLUDED.last_read_at);
+$$;
+
+REVOKE ALL ON FUNCTION public.create_group(TEXT, UUID[]) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.add_group_members(UUID, UUID[]) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.my_groups() FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.mark_group_read(UUID) FROM PUBLIC, anon;
+
+GRANT EXECUTE ON FUNCTION public.create_group(TEXT, UUID[]) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.add_group_members(UUID, UUID[]) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.my_groups() TO authenticated;
+GRANT EXECUTE ON FUNCTION public.mark_group_read(UUID) TO authenticated;
+
+NOTIFY pgrst, 'reload schema';
+
+
 -- ===================================================================
 -- FINAL CHECK: every row should read ok
 -- ===================================================================
@@ -4813,9 +5046,16 @@ SELECT 'table: ' || t.table_name,
 FROM (VALUES ('user_blocks'), ('user_presence'), ('call_signals'), ('friend_requests'),
              ('message_attachments'), ('notification_preferences'), ('student_registrations'),
              ('contact_names'), ('message_reactions'), ('message_stars'), ('lecturer_submissions'),
-             ('programmes'), ('units'), ('class_sessions'), ('bulletins'), ('companies')) AS t(table_name)
+             ('programmes'), ('units'), ('class_sessions'), ('bulletins'), ('companies'),
+             ('community_reads')) AS t(table_name)
 LEFT JOIN information_schema.tables AS tb
        ON tb.table_schema = 'public' AND tb.table_name = t.table_name
+UNION ALL
+SELECT 'group function: ' || f.function_name,
+       CASE WHEN x.specific_name IS NOT NULL THEN 'ok' ELSE 'MISSING (groups will not work)' END
+FROM (VALUES ('create_group'), ('add_group_members'), ('my_groups'), ('mark_group_read')) AS f(function_name)
+LEFT JOIN information_schema.routines AS x
+       ON x.routine_schema = 'public' AND x.routine_name = f.function_name
 UNION ALL
 SELECT 'column: messages.' || c.column_name,
        CASE WHEN x.column_name IS NOT NULL THEN 'ok' ELSE 'MISSING' END
