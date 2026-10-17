@@ -16,28 +16,36 @@
     <style>
         :root {
             color-scheme: light;
-            --page: #efeae2;
-            --panel: #fff;
-            --text: #111b21;
-            --muted: #667781;
-            --border: #e9edef;
-            --primary: #00a884;
-            --received: #ffffff;
-            --sent: #d9fdd3;
-            --input: #f0f2f5;
+            /* Sky and Sand, sampled from his mock-up: the thread must not read
+               as a green chat app. */
+            --page: #f9f8f2;
+            --panel: #ffffff;
+            --text: #12232b;
+            --muted: #647d8a;
+            --border: #e7dfd1;
+            --primary: #0a7ea4;
+            --received: #ede8de;
+            --sent: #36bcf8;
+            --sent-text: #08252f;
+            --blush: #fda5a5;
+            --blush-text: #3a1512;
+            --input: #f1eee6;
         }
 
         body.dark-mode {
             color-scheme: dark;
-            --page: #0b141a;
-            --panel: #111b21;
-            --text: #e9edef;
-            --muted: #8696a0;
-            --border: #2f3b40;
-            --primary: #00a884;
-            --received: #202c33;
-            --sent: #005c4b;
-            --input: #2a3942;
+            --page: #07131b;
+            --panel: #11242f;
+            --text: #def1fb;
+            --muted: #8fa9b6;
+            --border: #1b3341;
+            --primary: #35bee0;
+            --received: #11242f;
+            --sent: #00b4d5;
+            --sent-text: #04222b;
+            --blush: #fda5a5;
+            --blush-text: #3a1512;
+            --input: #1b3341;
         }
 
         * {
@@ -732,8 +740,8 @@
             flex: 0 0 auto;
             padding: 3px 7px;
             border-radius: 20px;
-            background: var(--primary);
-            color: #fff;
+            background: var(--blush);
+            color: var(--blush-text);
             font-size: 10px;
         }
 
@@ -822,7 +830,7 @@
             padding: 12px 18px;
             border: none;
             border-radius: 12px;
-            background: var(--accent, #00a884);
+            background: var(--accent, #0a7ea4);
             color: #fff;
             font-weight: 600;
             cursor: pointer;
@@ -1523,7 +1531,7 @@
         }
 
         .incoming-actions .accept-call {
-            background: #00a884;
+            background: #0a9ed0;
             color: #fff;
         }
 
@@ -2158,9 +2166,9 @@
         }
 
         .attach-icon.doc { background: #6c5ce7; }
-        .attach-icon.photo { background: #00a884; }
+        .attach-icon.photo { background: var(--primary); }
         .attach-icon.camera { background: #e17076; }
-        .attach-icon.location { background: #00a884; }
+        .attach-icon.location { background: var(--primary); }
         .attach-icon.contact { background: #0084ff; }
 
         .compose-field {
@@ -2640,29 +2648,36 @@
             text-align: center;
         }
 
-        /* WhatsApp-green conversation palette. */
+        /* Sky and Sand conversation palette — same values as :root, restated
+           here because this block is the one the chat panel is tuned against. */
         :root {
-            --page: #efeae2;
+            --page: #f9f8f2;
             --panel: #ffffff;
-            --text: #111b21;
-            --muted: #667781;
-            --border: #e9edef;
-            --primary: #00a884;
-            --received: #ffffff;
-            --sent: #d9fdd3;
-            --input: #f0f2f5;
+            --text: #12232b;
+            --muted: #647d8a;
+            --border: #e7dfd1;
+            --primary: #0a7ea4;
+            --received: #ede8de;
+            --sent: #36bcf8;
+            --sent-text: #08252f;
+            --blush: #fda5a5;
+            --blush-text: #3a1512;
+            --input: #f1eee6;
         }
 
         body.dark-mode {
-            --page: #0b141a;
-            --panel: #111b21;
-            --text: #e9edef;
-            --muted: #8696a0;
-            --border: #2f3b40;
-            --primary: #00a884;
-            --received: #202c33;
-            --sent: #005c4b;
-            --input: #2a3942;
+            --page: #07131b;
+            --panel: #11242f;
+            --text: #def1fb;
+            --muted: #8fa9b6;
+            --border: #1b3341;
+            --primary: #35bee0;
+            --received: #11242f;
+            --sent: #00b4d5;
+            --sent-text: #04222b;
+            --blush: #fda5a5;
+            --blush-text: #3a1512;
+            --input: #1b3341;
         }
 
         body {
@@ -2844,8 +2859,8 @@
         .conversation-list .unread {
             padding: 2px 8px;
             border-radius: 999px;
-            background: var(--primary);
-            color: #fff;
+            background: var(--blush);
+            color: var(--blush-text);
             font-size: 12px;
             font-weight: 700;
         }
@@ -2921,18 +2936,13 @@
 
         .message.sent .bubble {
             border-bottom-right-radius: 5px;
-            background: #d9fdd3;
-            color: #182b20;
+            background: var(--sent);
+            color: var(--sent-text);
         }
 
         .message.received .bubble {
             border-bottom-left-radius: 5px;
-            background: var(--panel);
-        }
-
-        body.dark-mode .message.sent .bubble {
-            background: #075e54;
-            color: #f2f7fb;
+            background: var(--received);
         }
 
         .message-time {
