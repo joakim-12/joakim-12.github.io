@@ -1,6 +1,7 @@
 -- THIS IS THE FILE TO USE (built 2026-10-17): it is schema.sql + every
 -- migration, plus message reactions / stars / replies, lecturer credentials,
--- study modes, one number per account, the bulletin board, the company directory and a final check.
+-- study modes, one number per account, the bulletin board, the company directory, the broadcast
+-- policies behind the typing indicator and a final check.
 -- It replaces RUN_ONCE.sql, RUN_THIS_IN_SUPABASE.sql, RUN_MESSAGE_MARKS.sql,
 -- RUN_FRIEND_NAMES.sql, RUN_CLASSES_MIN.sql and REPAIR_CHATS.sql.
 -- ===================================================================
@@ -10,7 +11,7 @@
 -- Built 2026-10-14 from schema.sql + all migrations, in order.
 -- ===================================================================
 
--- ==================== PART 1/15: schema.sql ===========================
+-- ==================== PART 1/16: schema.sql ===========================
 -- ============================================================
 -- CAMPUS CONNECT
 -- Social networking database for university students
@@ -1522,7 +1523,7 @@ $$;
 
 NOTIFY pgrst, 'reload schema';
 
--- ================ PART 2/15: migrations/20261011_profile_gender.sql ================
+-- ================ PART 2/16: migrations/20261011_profile_gender.sql ================
 BEGIN;
 
 ALTER TABLE public.profiles
@@ -1544,7 +1545,7 @@ $$;
 
 COMMIT;
 
--- ================ PART 3/15: migrations/20261011_social_access_controls.sql ================
+-- ================ PART 3/16: migrations/20261011_social_access_controls.sql ================
 BEGIN;
 
 CREATE TABLE IF NOT EXISTS public.user_blocks (
@@ -1896,7 +1897,7 @@ CREATE POLICY "Users delete own private social media"
 
 COMMIT;
 
--- ================ PART 4/15: migrations/20261011_student_interactions_and_calls.sql ================
+-- ================ PART 4/16: migrations/20261011_student_interactions_and_calls.sql ================
 BEGIN;
 
 ALTER TABLE public.profiles
@@ -2009,7 +2010,7 @@ $migration$;
 
 COMMIT;
 
--- ================ PART 5/15: migrations/20261012_friendships_attachments_notification_preferences.sql ================
+-- ================ PART 5/16: migrations/20261012_friendships_attachments_notification_preferences.sql ================
 BEGIN;
 
 -- Explicit friend requests are separate from the existing one-way follow graph.
@@ -2197,7 +2198,7 @@ REVOKE ALL ON FUNCTION public.notify_friend_request() FROM PUBLIC, anon, authent
 
 COMMIT;
 
--- ================ PART 6/15: migrations/20261012_respond_to_chat_invitations.sql ================
+-- ================ PART 6/16: migrations/20261012_respond_to_chat_invitations.sql ================
 BEGIN;
 
 -- Let a recipient accept or decline a one-way follow invitation. Accepting
@@ -2304,7 +2305,7 @@ $migration$;
 
 COMMIT;
 
--- ================ PART 7/15: migrations/20261013_find_people.sql ================
+-- ================ PART 7/16: migrations/20261013_find_people.sql ================
 -- ============================================================
 -- STEP 1 / FINDING PEOPLE
 -- Makes members discoverable by default, lets a user claim a unique
@@ -2477,7 +2478,7 @@ SELECT 'everyone_discoverable',
 FROM public.profiles
 WHERE is_discoverable IS DISTINCT FROM TRUE;
 
--- ================ PART 8/15: migrations/20261014_roles_and_admin.sql ================
+-- ================ PART 8/16: migrations/20261014_roles_and_admin.sql ================
 -- ============================================================
 -- CAMPUS CONNECT — ROLES, APPROVAL, AND ADMIN
 -- Kabarak University: Student / Lecturer / Security / Admin.
@@ -2976,7 +2977,7 @@ SELECT 'at_least_one_admin',
        CASE WHEN COUNT(*) > 0 THEN 'ok' ELSE 'NONE YET (run section 9)' END
 FROM public.profiles WHERE role = 'admin';
 
--- ============ PART 9/15: migrations/20261014_message_edit_delete.sql ============
+-- ============ PART 9/16: migrations/20261014_message_edit_delete.sql ============
 -- ============================================================
 -- MESSAGE EDIT + DELETE (run this whole file in Supabase SQL Editor)
 -- Rules enforced inside the database, not just the app:
@@ -3080,7 +3081,7 @@ CREATE TRIGGER protect_message_fields_trigger
     EXECUTE FUNCTION public.protect_message_fields();
 
 
--- ============ PART 10/15: migrations/20261015_programmes_units_classes.sql ============
+-- ============ PART 10/16: migrations/20261015_programmes_units_classes.sql ============
 -- ============================================================
 -- CAMPUS CONNECT — PROGRAMMES, UNITS, AND CLASS TIMETABLES
 -- Kabarak University course system:
@@ -3349,7 +3350,7 @@ INSERT INTO public.programmes (school, name, level, max_year, campus, specializa
     ('School of Pharmacy', 'Bachelor of Pharmacy', 'undergraduate', 5, 'Main', '')
 ON CONFLICT (school, name) DO NOTHING;
 
--- ==================== PART 11/15: friend names (contact_names) ==========
+-- ==================== PART 11/16: friend names (contact_names) ==========
 CREATE TABLE IF NOT EXISTS public.contact_names (
     author_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     peer_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -3495,7 +3496,7 @@ ALTER TABLE public.messages
 
 COMMIT;
 
--- ============ PART 12/15: migrations/20261016_lecturer_credentials.sql ============
+-- ============ PART 12/16: migrations/20261016_lecturer_credentials.sql ============
 -- ============================================================
 -- CAMPUS CONNECT — LECTURER CREDENTIALS, STUDY MODE, STAFF LOG
 -- Kabarak University rules this adds:
@@ -4120,7 +4121,7 @@ GRANT SELECT, INSERT, UPDATE ON public.lecturer_submissions TO authenticated;
 
 NOTIFY pgrst, 'reload schema';
 
--- ============ PART 13/15: migrations/20261016_one_number_one_account.sql ============
+-- ============ PART 13/16: migrations/20261016_one_number_one_account.sql ============
 
 -- ============================================================
 -- CAMPUS CONNECT — ONE NUMBER, ONE ACCOUNT
@@ -4470,7 +4471,7 @@ ALTER TABLE public.admin_action_log
 NOTIFY pgrst, 'reload schema';
 
 
--- ============ PART 14/15: migrations/20261017_bulletins.sql ============
+-- ============ PART 14/16: migrations/20261017_bulletins.sql ============
 
 -- ============================================================
 -- CAMPUS CONNECT — THE BULLETIN BOARD
@@ -4558,7 +4559,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON public.bulletins TO authenticated;
 NOTIFY pgrst, 'reload schema';
 
 
--- ============ PART 15/15: migrations/20261017_companies.sql ============
+-- ============ PART 15/16: migrations/20261017_companies.sql ============
 
 -- ============================================================
 -- CAMPUS CONNECT — THE COMPANY DIRECTORY
@@ -4718,6 +4719,80 @@ ALTER TABLE public.bulletins
 -- ------------------------------------------------------------
 -- 6. TELL POSTGREST THE SHAPE CHANGED
 -- ------------------------------------------------------------
+
+NOTIFY pgrst, 'reload schema';
+
+
+-- ============ PART 16/16: migrations/20261017_realtime_broadcast.sql ============
+
+-- PART 16: realtime broadcast for the typing / recording indicators.
+--
+-- "typing…" and "recording a voice message…" are never stored: they ride as
+-- realtime broadcast frames, so there is no table to build here. Supabase
+-- decides who may send and receive those frames with row-level security on its
+-- internal realtime.messages table, and a project that was never given a policy
+-- drops the frames quietly. Two policies fix that: signed-in users only, and
+-- only on the chat-activity-* channels this app opens.
+--
+-- Everything is wrapped so a project that lacks the table, the column or the
+-- grant prints a notice instead of aborting the rest of the paste.
+
+DO $do$
+DECLARE
+    channel_column text;
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.tables
+        WHERE table_schema = 'realtime' AND table_name = 'messages'
+    ) THEN
+        RAISE NOTICE 'realtime.messages is missing: typing indicators will not appear.';
+        RETURN;
+    END IF;
+
+    SELECT c.column_name INTO channel_column
+    FROM information_schema.columns AS c
+    WHERE c.table_schema = 'realtime'
+      AND c.table_name = 'messages'
+      AND c.column_name IN ('channel_name', 'topic')
+    ORDER BY array_position(ARRAY['channel_name', 'topic'], c.column_name)
+    LIMIT 1;
+
+    IF channel_column IS NULL THEN
+        RAISE NOTICE 'realtime.messages has no channel column: typing indicators will not appear.';
+        RETURN;
+    END IF;
+
+    -- realtime.messages belongs to Supabase itself, so the role running this may
+    -- not be allowed to policy it. That must not stop the rest of the paste.
+    BEGIN
+        DROP POLICY IF EXISTS chat_activity_broadcast_read ON realtime.messages;
+        EXECUTE format(
+            'CREATE POLICY chat_activity_broadcast_read ON realtime.messages
+                 FOR SELECT TO authenticated USING (%I LIKE ''chat-activity-%%'')',
+            channel_column
+        );
+
+        DROP POLICY IF EXISTS chat_activity_broadcast_write ON realtime.messages;
+        EXECUTE format(
+            'CREATE POLICY chat_activity_broadcast_write ON realtime.messages
+                 FOR INSERT TO authenticated WITH CHECK (%I LIKE ''chat-activity-%%'')',
+            channel_column
+        );
+
+        RAISE NOTICE 'Broadcast policies created on realtime.messages using %.', channel_column;
+    EXCEPTION WHEN OTHERS THEN
+        RAISE NOTICE 'Could not add the broadcast policies: %. The typing indicator may stay silent.', SQLERRM;
+    END;
+END
+$do$;
+
+DO $do$
+BEGIN
+    GRANT SELECT, INSERT ON realtime.messages TO authenticated;
+EXCEPTION WHEN OTHERS THEN
+    RAISE NOTICE 'Could not re-grant realtime.messages (already granted, or not permitted): %', SQLERRM;
+END
+$do$;
 
 NOTIFY pgrst, 'reload schema';
 
