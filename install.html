@@ -84,26 +84,30 @@
 
     <section class="card" data-lang="zh">
         <h2>🍎 iPhone 安装方法（无需电脑 / 无需商店）</h2>
+        <p class="meta">必须用 <b>Safari</b>。如果这个链接是在 WhatsApp 或微信里打开的，那里没有“添加到主屏幕”这个按钮：先点右上角 <b>···</b> → <b>在浏览器中打开</b>，或长按链接复制网址，再打开 Safari 粘贴。</p>
         <ol>
-            <li>用 <b>Safari</b> 打开 <b>https://joakim-12.github.io</b>。</li>
+            <li>用 <b>Safari</b> 打开 <b class="site-host">https://campus-connect-qticqalyo1y.qoder.website</b>，先<b>登录一次</b>（登录会被记住，下次不用重登）。</li>
             <li>点页面下方的 <b>分享按钮</b>（方框 + 向上箭头 ↑）。</li>
             <li>向下滚动，点 <b>“添加到主屏幕”</b>。</li>
-            <li>确认名称为 <b>Campus Connect</b>，点 <b>“添加”</b>。</li>
-            <li>主屏幕会出现 🎓 图标，点开即是<b>全屏 App</b>（没有浏览器地址栏），自动离线缓存、下次打开更快。</li>
+            <li>名称会显示为 <b>campus connect</b>（你可以改成想要的名字），点 <b>“添加”</b>。</li>
+            <li>主屏幕会出现 🎓 图标，点开即是<b>全屏 App</b>（没有浏览器地址栏），断网也能读到已缓存的聊天。</li>
+            <li><b>以后不用重装</b>：我更新网站后，你下次打开图标就自动是最新版；已经装过的同学也会自己升级。</li>
         </ol>
-        <p class="meta">iPhone 的 PWA 限制：浏览器内核仍是 WebKit，个别原生功能（如来电铃声）以网页能力为准；数据与 Android、网页版完全互通。</p>
+        <p class="meta">实话实说的限制：① App <b>关掉之后不会响</b>——后台推送还没接通（安卓版也一样），要收到消息得先打开过它；② 个别功能取决于 iPhone 的网页引擎，比如通话要用 Safari 允许麦克风；③ iOS 16.4 以下的手机不支持网页通知。数据与 Android、网页版完全互通，一个账号到处能用。</p>
     </section>
 
     <section class="card" data-lang="en">
         <h2>🍎 Install on iPhone (no computer, no store)</h2>
+        <p class="meta">It has to be <b>Safari</b>. If you opened this link inside WhatsApp or WeChat, that browser has no “Add to Home Screen” button: tap <b>···</b> → <b>Open in browser</b>, or long-press the link to copy it and paste it into Safari.</p>
         <ol>
-            <li>Open <b>https://joakim-12.github.io</b> in <b>Safari</b>.</li>
-            <li>Tap the <b>Share button</b> (box with an up arrow ↑) in the toolbar.</li>
+            <li>Open <b class="site-host">https://campus-connect-qticqalyo1y.qoder.website</b> in <b>Safari</b> and <b>sign in once</b> — it remembers you next time.</li>
+            <li>Tap the <b>Share button</b> (box with an up arrow ↑) at the bottom of the page.</li>
             <li>Scroll down and tap <b>“Add to Home Screen”</b>.</li>
-            <li>Confirm the name <b>Campus Connect</b> and tap <b>Add</b>.</li>
-            <li>A 🎓 icon appears on your Home Screen — it opens as a <b>full-screen app</b> with no browser bar.</li>
+            <li>The name shows as <b>campus connect</b> (rename it if you like) — tap <b>Add</b>.</li>
+            <li>A 🎓 icon appears on your Home Screen — it opens as a <b>full-screen app</b> with no browser bar, and your saved chats still read without network.</li>
+            <li><b>No reinstalling later</b>: when I update the site, the icon opens the new version by itself.</li>
         </ol>
-        <p class="meta">Data is shared between iPhone, Android and the web version — one account works everywhere.</p>
+        <p class="meta">Honest limits: ① it does <b>not ring while closed</b> — background push is not connected yet (same on Android), so open it to catch up; ② a few features depend on the iPhone web engine — a call needs Safari to allow the microphone; ③ iPhones on iOS 16.4 or older get no web notifications at all. One account works across iPhone, Android and the website.</p>
     </section>
 
     <section class="card" data-lang="zh">
@@ -154,6 +158,7 @@
         document.querySelectorAll('.lang-toggle button').forEach(b => b.classList.remove('active'));
         button.classList.add('active');
     }
+    document.querySelectorAll('.site-host').forEach(el => { el.textContent = location.origin; });
 </script>
 </body>
 </html>

@@ -1,6 +1,12 @@
-const CACHE_NAME = "campus-connect-v51.1";
+const CACHE_NAME = "campus-connect-v61";
 const MEDIA_CACHE_NAME = "campus-connect-media-v1";
 const MAX_MEDIA_ENTRIES = 240;
+
+/* Inside the APK the pages, scripts and icons are already baked into the app
+   bundle, so caching them here would only risk serving a stale build after an
+   overwrite install. The Capacitor asset host is always localhost with no port;
+   a dev or preview server on localhost always has one. */
+const IS_APK = self.location.hostname === "localhost" && !self.location.port;
 const APP_SHELL = [
     "/",
     "/messages.html",
@@ -57,7 +63,7 @@ async function cacheMedia(event, request, url) {
 self.addEventListener("install", (event) => {
     event.waitUntil(
         caches.open(CACHE_NAME)
-            .then((cache) => cache.addAll(APP_SHELL))
+            .then((cache) => IS_APK ? null : cache.addAll(APP_SHELL))
             .then(() => self.skipWaiting())
     );
 });
@@ -67,7 +73,11 @@ self.addEventListener("activate", (event) => {
         caches.keys()
             .then((keys) => Promise.all(
                 keys
-                    .filter((key) => key.startsWith("campus-connect-") && key !== CACHE_NAME)
+                    .filter((key) => key.startsWith("campus-connect-")
+                        && key !== CACHE_NAME
+                        // The downloaded statuses and chat media outlive a build,
+                        // so a version bump must not throw them away.
+                        && key !== MEDIA_CACHE_NAME)
                     .map((key) => caches.delete(key))
             ))
             .then(() => self.clients.claim())
@@ -87,6 +97,9 @@ self.addEventListener("fetch", (event) => {
         event.respondWith(cacheMedia(event, request, url));
         return;
     }
+
+    // Everything else inside the APK is read straight from the app bundle.
+    if (IS_APK) return;
 
     if (url.origin !== self.location.origin) return;
 

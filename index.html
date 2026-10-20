@@ -648,7 +648,8 @@
     .ig-post img.post-image { display: block; width: 100%; max-height: 74vh; margin: 0; border-radius: 0; object-fit: cover; }
     .ig-post video.post-video { display: block; width: 100%; max-height: 74vh; margin: 0; border-radius: 0; object-fit: contain; background: #000; }
     .post-voice-wrap, .voice-swap { width: 100%; padding: 16px 12px; background: color-mix(in srgb, var(--text) 4%, var(--surface)); }
-    .voice-swap { display: flex; }
+    .voice-swap { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+    .voice-note { color: var(--muted); font-size: 11px; text-align: center; }
     .story-voice { display: grid; min-height: 180px; padding: 26px 16px; place-items: center; }
     .voice-audio { display: none; }
     .voice-player { display: flex; width: min(320px, 100%); flex-direction: column; gap: 3px; margin: 0 auto; }
@@ -1294,12 +1295,13 @@
       .you-details { margin-left: auto; margin-right: auto; max-width: 620px; }
     }
   </style>
-  <script type="module" crossorigin src="/assets/main-DdpjT5KU.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/pwa-aBwfaQCD.js">
-  <link rel="modulepreload" crossorigin href="/assets/profile-identity-rcHzNdHw.js">
-  <link rel="modulepreload" crossorigin href="/assets/app-lock-sGGrtAsw.js">
-  <link rel="modulepreload" crossorigin href="/assets/company-directory-_hfLD4f6.js">
-  <link rel="modulepreload" crossorigin href="/assets/staff-verification-CcWKMn5I.js">
+  <script type="module" crossorigin src="/assets/main-DgCH-HNR.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/pwa-BxV_M1rA.js">
+  <link rel="modulepreload" crossorigin href="/assets/offline-banner-BZg6ZPvo.js">
+  <link rel="modulepreload" crossorigin href="/assets/offline-chat-BeK80jGk.js">
+  <link rel="modulepreload" crossorigin href="/assets/offline-store-C3sY6Srk.js">
+  <link rel="modulepreload" crossorigin href="/assets/company-directory-WBCM3i8I.js">
+  <link rel="modulepreload" crossorigin href="/assets/staff-verification-Bm1mG1sO.js">
 </head>
 
 <body>
@@ -1373,7 +1375,7 @@
         <select id="loginMethod">
           <option value="email-password" data-i18n="Email and password">Email and password</option>
           <option value="email-link" data-i18n="Email sign-in link">Email sign-in link</option>
-          <option value="phone" data-i18n="Phone number and SMS code">Phone number and SMS code</option>
+          <option value="phone" data-i18n="Phone number">Phone number</option>
         </select>
 
         <div id="emailLoginFields">
@@ -1407,22 +1409,12 @@
           <button id="resendConfirmationButton" type="button" data-i18n="Resend confirmation email">Resend confirmation email</button>
         </p>
       </form>
-      <form id="phoneLoginVerifyForm" class="hidden">
-        <h3 data-i18n="Verify your phone">Verify your phone</h3>
-        <p data-i18n="Enter the SMS verification code sent to your phone.">Enter the SMS verification code sent to your phone.</p>
-        <label for="phoneLoginCode" data-i18n="SMS verification code">SMS verification code</label>
-        <input id="phoneLoginCode" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="8" required>
-        <button type="submit" data-i18n="Verify and log in">Verify and log in</button>
-        <button id="resendPhoneLoginCode" class="secondary" type="button" data-i18n="Resend SMS code">Resend SMS code</button>
-        <p id="phoneLoginStatus" class="status" role="status"></p>
-      </form>
-
       <form id="registerForm" class="hidden">
         <h3 data-i18n="Create your account">Create your account</h3>
         <label for="registerMethod" data-i18n="Registration method">Registration method</label>
         <select id="registerMethod">
           <option value="email" data-i18n="Email and password">Email and password</option>
-          <option value="phone" data-i18n="Phone number and SMS code">Phone number and SMS code</option>
+          <option value="phone" data-i18n="Phone number">Phone number</option>
         </select>
 
         <label for="registerName" data-i18n="Full name">Full name</label>
@@ -1457,9 +1449,9 @@
         <div id="registerCampusFields">
           <label for="registerUniversity" data-i18n="Your university or college">Your university or college</label>
           <input id="registerUniversity" type="text" maxlength="100" list="universityOptions"
-                 autocomplete="organization" placeholder="Kabarak University">
+                 autocomplete="organization" placeholder="Kabarak University" required>
           <datalist id="universityOptions"></datalist>
-          <p class="muted" data-i18n="Your own university comes first in the feed. Anyone who has not named a university sees every school together.">Your own university comes first in the feed. Anyone who has not named a university sees every school together.</p>
+          <p class="muted" data-i18n="Your university is required: it is the key to your own school's notices, classes and people. Other schools stay readable underneath.">Your university is required: it is the key to your own school's notices, classes and people. Other schools stay readable underneath.</p>
         </div>
 
         <div id="registerCompanyFields" hidden>
@@ -1520,15 +1512,6 @@
 
         <button type="submit" data-i18n="Create account">Create account</button>
         <p id="registerStatus" class="status" role="status"></p>
-      </form>
-      <form id="phoneRegistrationVerifyForm" class="hidden">
-        <h3 data-i18n="Verify your phone">Verify your phone</h3>
-        <p data-i18n="Enter the SMS verification code sent to your phone.">Enter the SMS verification code sent to your phone.</p>
-        <label for="phoneRegistrationCode" data-i18n="SMS verification code">SMS verification code</label>
-        <input id="phoneRegistrationCode" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="8" required>
-        <button type="submit" data-i18n="Verify and create account">Verify and create account</button>
-        <button id="resendPhoneRegistrationCode" class="secondary" type="button" data-i18n="Resend SMS code">Resend SMS code</button>
-        <p id="phoneRegistrationStatus" class="status" role="status"></p>
       </form>
     </section>
 

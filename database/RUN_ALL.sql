@@ -2,7 +2,9 @@
 -- migration, plus message reactions / stars / replies, lecturer credentials,
 -- study modes, one number per account, the bulletin board, the company directory, the broadcast
 -- policies behind the typing indicator, private group chats, the device list
--- behind push alerts and a final check.
+-- behind push alerts, the campus identity rules (one school per member, one
+-- person per staff account), the per-chat archive / mute / lock / label flags,
+-- the phone number that lets a classmate dial you, and a final check.
 -- It replaces RUN_ONCE.sql, RUN_THIS_IN_SUPABASE.sql, RUN_MESSAGE_MARKS.sql,
 -- RUN_FRIEND_NAMES.sql, RUN_CLASSES_MIN.sql and REPAIR_CHATS.sql.
 -- ===================================================================
@@ -12,7 +14,7 @@
 -- Built 2026-10-14 from schema.sql + all migrations, in order.
 -- ===================================================================
 
--- ==================== PART 1/18: schema.sql ===========================
+-- ==================== PART 1/21: schema.sql ===========================
 -- ============================================================
 -- CAMPUS CONNECT
 -- Social networking database for university students
@@ -1524,7 +1526,7 @@ $$;
 
 NOTIFY pgrst, 'reload schema';
 
--- ================ PART 2/18: migrations/20261011_profile_gender.sql ================
+-- ================ PART 2/21: migrations/20261011_profile_gender.sql ================
 BEGIN;
 
 ALTER TABLE public.profiles
@@ -1546,7 +1548,7 @@ $$;
 
 COMMIT;
 
--- ================ PART 3/18: migrations/20261011_social_access_controls.sql ================
+-- ================ PART 3/21: migrations/20261011_social_access_controls.sql ================
 BEGIN;
 
 CREATE TABLE IF NOT EXISTS public.user_blocks (
@@ -1898,7 +1900,7 @@ CREATE POLICY "Users delete own private social media"
 
 COMMIT;
 
--- ================ PART 4/18: migrations/20261011_student_interactions_and_calls.sql ================
+-- ================ PART 4/21: migrations/20261011_student_interactions_and_calls.sql ================
 BEGIN;
 
 ALTER TABLE public.profiles
@@ -2011,7 +2013,7 @@ $migration$;
 
 COMMIT;
 
--- ================ PART 5/18: migrations/20261012_friendships_attachments_notification_preferences.sql ================
+-- ================ PART 5/21: migrations/20261012_friendships_attachments_notification_preferences.sql ================
 BEGIN;
 
 -- Explicit friend requests are separate from the existing one-way follow graph.
@@ -2199,7 +2201,7 @@ REVOKE ALL ON FUNCTION public.notify_friend_request() FROM PUBLIC, anon, authent
 
 COMMIT;
 
--- ================ PART 6/18: migrations/20261012_respond_to_chat_invitations.sql ================
+-- ================ PART 6/21: migrations/20261012_respond_to_chat_invitations.sql ================
 BEGIN;
 
 -- Let a recipient accept or decline a one-way follow invitation. Accepting
@@ -2306,7 +2308,7 @@ $migration$;
 
 COMMIT;
 
--- ================ PART 7/18: migrations/20261013_find_people.sql ================
+-- ================ PART 7/21: migrations/20261013_find_people.sql ================
 -- ============================================================
 -- STEP 1 / FINDING PEOPLE
 -- Makes members discoverable by default, lets a user claim a unique
@@ -2479,7 +2481,7 @@ SELECT 'everyone_discoverable',
 FROM public.profiles
 WHERE is_discoverable IS DISTINCT FROM TRUE;
 
--- ================ PART 8/18: migrations/20261014_roles_and_admin.sql ================
+-- ================ PART 8/21: migrations/20261014_roles_and_admin.sql ================
 -- ============================================================
 -- CAMPUS CONNECT — ROLES, APPROVAL, AND ADMIN
 -- Kabarak University: Student / Lecturer / Security / Admin.
@@ -2978,7 +2980,7 @@ SELECT 'at_least_one_admin',
        CASE WHEN COUNT(*) > 0 THEN 'ok' ELSE 'NONE YET (run section 9)' END
 FROM public.profiles WHERE role = 'admin';
 
--- ============ PART 9/18: migrations/20261014_message_edit_delete.sql ============
+-- ============ PART 9/21: migrations/20261014_message_edit_delete.sql ============
 -- ============================================================
 -- MESSAGE EDIT + DELETE (run this whole file in Supabase SQL Editor)
 -- Rules enforced inside the database, not just the app:
@@ -3082,7 +3084,7 @@ CREATE TRIGGER protect_message_fields_trigger
     EXECUTE FUNCTION public.protect_message_fields();
 
 
--- ============ PART 10/18: migrations/20261015_programmes_units_classes.sql ============
+-- ============ PART 10/21: migrations/20261015_programmes_units_classes.sql ============
 -- ============================================================
 -- CAMPUS CONNECT — PROGRAMMES, UNITS, AND CLASS TIMETABLES
 -- Kabarak University course system:
@@ -3351,7 +3353,7 @@ INSERT INTO public.programmes (school, name, level, max_year, campus, specializa
     ('School of Pharmacy', 'Bachelor of Pharmacy', 'undergraduate', 5, 'Main', '')
 ON CONFLICT (school, name) DO NOTHING;
 
--- ==================== PART 11/18: friend names (contact_names) ==========
+-- ==================== PART 11/21: friend names (contact_names) ==========
 CREATE TABLE IF NOT EXISTS public.contact_names (
     author_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     peer_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -3497,7 +3499,7 @@ ALTER TABLE public.messages
 
 COMMIT;
 
--- ============ PART 12/18: migrations/20261016_lecturer_credentials.sql ============
+-- ============ PART 12/21: migrations/20261016_lecturer_credentials.sql ============
 -- ============================================================
 -- CAMPUS CONNECT — LECTURER CREDENTIALS, STUDY MODE, STAFF LOG
 -- Kabarak University rules this adds:
@@ -4122,7 +4124,7 @@ GRANT SELECT, INSERT, UPDATE ON public.lecturer_submissions TO authenticated;
 
 NOTIFY pgrst, 'reload schema';
 
--- ============ PART 13/18: migrations/20261016_one_number_one_account.sql ============
+-- ============ PART 13/21: migrations/20261016_one_number_one_account.sql ============
 
 -- ============================================================
 -- CAMPUS CONNECT — ONE NUMBER, ONE ACCOUNT
@@ -4472,7 +4474,7 @@ ALTER TABLE public.admin_action_log
 NOTIFY pgrst, 'reload schema';
 
 
--- ============ PART 14/18: migrations/20261017_bulletins.sql ============
+-- ============ PART 14/21: migrations/20261017_bulletins.sql ============
 
 -- ============================================================
 -- CAMPUS CONNECT — THE BULLETIN BOARD
@@ -4560,7 +4562,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON public.bulletins TO authenticated;
 NOTIFY pgrst, 'reload schema';
 
 
--- ============ PART 15/18: migrations/20261017_companies.sql ============
+-- ============ PART 15/21: migrations/20261017_companies.sql ============
 
 -- ============================================================
 -- CAMPUS CONNECT — THE COMPANY DIRECTORY
@@ -4724,7 +4726,7 @@ ALTER TABLE public.bulletins
 NOTIFY pgrst, 'reload schema';
 
 
--- ============ PART 16/18: migrations/20261017_realtime_broadcast.sql ============
+-- ============ PART 16/21: migrations/20261017_realtime_broadcast.sql ============
 
 -- PART 16: realtime broadcast for the typing / recording indicators.
 --
@@ -4798,7 +4800,7 @@ $do$;
 NOTIFY pgrst, 'reload schema';
 
 
--- ============ PART 17/18: migrations/20261017_private_groups.sql ============
+-- ============ PART 17/21: migrations/20261017_private_groups.sql ============
 
 -- PART 17: private group chats, the WhatsApp shape.
 --
@@ -5031,7 +5033,7 @@ GRANT EXECUTE ON FUNCTION public.mark_group_read(UUID) TO authenticated;
 NOTIFY pgrst, 'reload schema';
 
 
--- ============ PART 18/18: migrations/20261017_push_tokens.sql ============
+-- ============ PART 18/21: migrations/20261017_push_tokens.sql ============
 
 -- PART 18: the device list behind push alerts.
 --
@@ -5135,7 +5137,1004 @@ GRANT EXECUTE ON FUNCTION public.forget_device_token(TEXT) TO authenticated;
 NOTIFY pgrst, 'reload schema';
 
 
--- ===================================================================
+-- ============ PART 19/21: migrations/20261018_campus_identity.sql ============
+
+-- ============================================================
+-- CAMPUS CONNECT — ONE PERSON, ONE SCHOOL, HIS OWN PROGRAMME
+-- Part 19 of the setup. Idempotent: safe to run more than once.
+--
+-- The school rules this adds:
+--   * a campus account says which university it belongs to while it is
+--     being created, because the notices, the class lists and the people
+--     zone are all hung off that one name
+--   * a student, lecturer or staff account never loses its university
+--     again; only an admin moves a member between schools
+--   * one National ID card is approved for one staff account, so the same
+--     person cannot verify twice with two email addresses
+--   * an admin can correct the school or the programme a member chose
+--   * a lecturer chooses his own programme himself and it stays his;
+--     every lecturer still has exactly the same lecturer tasks
+--
+-- Depends on the roles part (is_admin), the programmes part (programmes,
+-- profiles.programme_id) and the lecturer credentials part (normalize_id_number,
+-- lecturer_submissions). That is why the one-shot file is pasted whole.
+-- ============================================================
+
+
+-- ------------------------------------------------------------
+-- 1. A CAMPUS ACCOUNT NAMES ITS UNIVERSITY WHILE IT IS BORN
+-- The same trigger that creates the profile row now also reads the school
+-- out of the sign-up data. A blank school aborts the insert, so no account
+-- exists at all — which is what "the system refuses" means.
+-- ------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.handle_new_auth_user()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    username_base TEXT;
+    candidate_username TEXT;
+    attempt INTEGER;
+    metadata JSONB;
+    account_kind TEXT;
+    claimed_number TEXT;
+    claimed_card TEXT;
+    claimed_university TEXT;
+    clash_name TEXT;
+BEGIN
+    metadata := COALESCE(NEW.raw_user_meta_data, '{}'::JSONB);
+    account_kind := LOWER(BTRIM(COALESCE(metadata->>'account_kind', '')));
+    claimed_number := public.normalize_id_number(metadata->>'registration_number');
+    claimed_card := public.normalize_id_number(metadata->>'staff_id_number');
+    claimed_university := LEFT(BTRIM(COALESCE(metadata->>'university', '')), 100);
+
+    -- Whatever an older app version sends, the number is only ever
+    -- claimed once, and a member never has one.
+    IF account_kind = 'member' THEN
+        claimed_number := '';
+        claimed_card := '';
+    END IF;
+
+    -- A company and a parent belong to no campus, so they are not asked.
+    IF account_kind IN ('student', 'lecturer', 'security') AND claimed_university = '' THEN
+        RAISE EXCEPTION 'Name the university or college you belong to before this account can be created.'
+            USING ERRCODE = '22023';
+    END IF;
+
+    username_base := LOWER(
+        REGEXP_REPLACE(
+            COALESCE(
+                metadata->>'username',
+                SPLIT_PART(COALESCE(NEW.email, NEW.phone, 'student'), '@', 1)
+            ),
+            '[^a-zA-Z0-9_]',
+            '',
+            'g'
+        )
+    );
+    username_base := LEFT(username_base, 20);
+    IF char_length(username_base) < 3 THEN
+        username_base := 'student';
+    END IF;
+
+    FOR attempt IN 0..5 LOOP
+        candidate_username := CASE
+            WHEN attempt = 0 THEN username_base
+            ELSE LEFT(username_base, 19) || '_' || LEFT(NEW.id::TEXT, 8) ||
+                 CASE WHEN attempt > 1 THEN '_' || (attempt - 1)::TEXT ELSE '' END
+        END;
+
+        BEGIN
+            INSERT INTO public.profiles (
+                id,
+                username,
+                full_name,
+                course,
+                role,
+                staff_id_number
+            )
+            VALUES (
+                NEW.id,
+                candidate_username,
+                LEFT(COALESCE(metadata->>'full_name', 'Member'), 100),
+                LEFT(COALESCE(metadata->>'course', ''), 120),
+                CASE WHEN account_kind = 'member' THEN 'member' ELSE 'student' END,
+                CASE WHEN account_kind IN ('lecturer', 'security') THEN claimed_card ELSE '' END
+            )
+            ON CONFLICT (id) DO NOTHING;
+            EXIT;
+        EXCEPTION WHEN unique_violation THEN
+            GET STACKED DIAGNOSTICS clash_name = CONSTRAINT_NAME;
+            IF clash_name = 'profiles_staff_id_key' THEN
+                RAISE EXCEPTION 'That staff ID card already belongs to another account. Nobody can register twice with one card.'
+                    USING ERRCODE = '23505';
+            END IF;
+            IF attempt = 5 THEN
+                RAISE;
+            END IF;
+        END;
+    END LOOP;
+
+    IF account_kind = 'student' OR account_kind = '' THEN
+        IF claimed_number <> '' THEN
+            BEGIN
+                INSERT INTO public.student_registrations (user_id, registration_number)
+                VALUES (NEW.id, claimed_number);
+            EXCEPTION WHEN unique_violation THEN
+                RAISE EXCEPTION 'That registration number is already known to the university system. Check it, or ask an admin. Even two people with the same name cannot share one number.'
+                    USING ERRCODE = '23505';
+            END;
+        END IF;
+    END IF;
+
+    IF account_kind = 'lecturer' AND claimed_card = '' THEN
+        RAISE EXCEPTION 'A lecturer registers with the number on their staff ID card.'
+            USING ERRCODE = '22023';
+    END IF;
+
+    -- The school the member named is written next to the profile. The
+    -- column comes from the roles part; a database that has not reached
+    -- it yet keeps the answer on the account instead of losing the signup.
+    IF claimed_university <> '' THEN
+        BEGIN
+            UPDATE public.profiles
+               SET university = claimed_university
+             WHERE id = NEW.id;
+        EXCEPTION WHEN undefined_column THEN
+            RAISE NOTICE 'profiles.university is not here yet, so % stays on the account alone.', claimed_university;
+        END;
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.handle_new_auth_user() FROM PUBLIC, anon, authenticated;
+
+
+-- ------------------------------------------------------------
+-- 2. A CAMPUS ACCOUNT NEVER LOSES ITS UNIVERSITY
+-- The app writes the whole profile row on every save, so a field cleared
+-- by accident would silently drop a member out of his own zone. An admin
+-- may still move a member between schools.
+-- ------------------------------------------------------------
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'profiles' AND column_name = 'university'
+    ) THEN
+        RAISE NOTICE 'profiles.university is missing, so rule 2 is skipped until the roles part runs.';
+        RETURN;
+    END IF;
+
+    CREATE OR REPLACE FUNCTION public.enforce_profile_campus_identity()
+    RETURNS TRIGGER
+    LANGUAGE plpgsql
+    VOLATILE
+    SET search_path = ''
+    AS $fn$
+    BEGIN
+        -- to_jsonb() is used for the company on purpose: a company account
+        -- has no campus and must never be stopped by this rule, including
+        -- on a database where the companies part has not run.
+        IF NEW.role IN ('student', 'lecturer', 'security')
+           AND COALESCE(NULLIF(BTRIM(COALESCE((to_jsonb(NEW) ->> 'company'), '')), ''), '') = ''
+           AND NULLIF(BTRIM(COALESCE(NEW.university, '')), '') IS NULL
+           AND NOT public.is_admin()
+        THEN
+            RAISE EXCEPTION 'A student, lecturer or staff account always belongs to a university. Ask an admin to move it to another school.'
+                USING ERRCODE = '22023';
+        END IF;
+        RETURN NEW;
+    END;
+    $fn$;
+
+    REVOKE ALL ON FUNCTION public.enforce_profile_campus_identity() FROM PUBLIC, anon, authenticated;
+
+    DROP TRIGGER IF EXISTS profiles_enforce_campus_identity ON public.profiles;
+    CREATE TRIGGER profiles_enforce_campus_identity
+        BEFORE UPDATE OF university, role ON public.profiles
+        FOR EACH ROW EXECUTE FUNCTION public.enforce_profile_campus_identity();
+END;
+$$;
+
+
+-- ------------------------------------------------------------
+-- 3. ONE NATIONAL ID CARD, ONE APPROVED STAFF ACCOUNT
+-- A lecturer is verified with his National ID. Without this rule the same
+-- person could be approved on a second account under a second email
+-- address. Re-sending one's own documents stays allowed: only a DIFFERENT
+-- account is refused.
+-- ------------------------------------------------------------
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'lecturer_submissions'
+          AND column_name = 'national_id_number'
+    ) THEN
+        RAISE NOTICE 'lecturer_submissions.national_id_number is missing, so rule 3 is skipped until the credentials part runs.';
+        RETURN;
+    END IF;
+
+    CREATE OR REPLACE FUNCTION public.enforce_one_person_one_staff_account()
+    RETURNS TRIGGER
+    LANGUAGE plpgsql
+    VOLATILE
+    SECURITY DEFINER
+    SET search_path = ''
+    AS $fn$
+    DECLARE
+        other UUID;
+    BEGIN
+        IF COALESCE(NEW.status, '') <> 'approved' THEN
+            RETURN NEW;
+        END IF;
+        IF NULLIF(BTRIM(COALESCE(NEW.national_id_number, '')), '') IS NULL THEN
+            RETURN NEW;
+        END IF;
+
+        SELECT submission.user_id INTO other
+          FROM public.lecturer_submissions AS submission
+         WHERE LOWER(BTRIM(submission.national_id_number)) = LOWER(BTRIM(NEW.national_id_number))
+           AND submission.status = 'approved'
+           AND submission.user_id <> NEW.user_id
+         LIMIT 1;
+
+        IF other IS NOT NULL THEN
+            RAISE EXCEPTION 'That National ID is already approved on another account. One person gets one staff account.'
+                USING ERRCODE = '23505';
+        END IF;
+
+        RETURN NEW;
+    END;
+    $fn$;
+
+    REVOKE ALL ON FUNCTION public.enforce_one_person_one_staff_account() FROM PUBLIC, anon, authenticated;
+
+    DROP TRIGGER IF EXISTS lecturer_submissions_one_person ON public.lecturer_submissions;
+    CREATE TRIGGER lecturer_submissions_one_person
+        BEFORE INSERT OR UPDATE OF status, national_id_number ON public.lecturer_submissions
+        FOR EACH ROW EXECUTE FUNCTION public.enforce_one_person_one_staff_account();
+END;
+$$;
+
+
+-- ------------------------------------------------------------
+-- 4. WHAT THE SCHOOL (AN ADMIN) MAY CORRECT
+-- A member picks his own school and, if he teaches, his own programme.
+-- When he gets it wrong, only an admin can move him.
+-- ------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.set_member_university(
+    p_user UUID,
+    p_university TEXT
+)
+RETURNS TEXT
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    cleaned TEXT := LEFT(BTRIM(COALESCE(p_university, '')), 100);
+BEGIN
+    IF NOT public.is_admin() THEN
+        RAISE EXCEPTION 'Only an admin can change which school a member belongs to.'
+            USING ERRCODE = '42501';
+    END IF;
+    IF cleaned = '' THEN
+        RAISE EXCEPTION 'A member has to be moved to a named school, not away from one.'
+            USING ERRCODE = '22023';
+    END IF;
+
+    UPDATE public.profiles
+       SET university = cleaned
+     WHERE id = p_user;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'That member has no profile row.'
+            USING ERRCODE = 'P0002';
+    END IF;
+
+    RETURN cleaned;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.set_member_programme(
+    p_user UUID,
+    p_programme_id UUID
+)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    IF NOT public.is_admin() THEN
+        RAISE EXCEPTION 'Only an admin can move a member to another programme.'
+            USING ERRCODE = '42501';
+    END IF;
+
+    -- A programme that the school has not published cannot be given out.
+    IF p_programme_id IS NOT NULL AND NOT EXISTS (
+        SELECT 1 FROM public.programmes WHERE id = p_programme_id
+    ) THEN
+        RAISE EXCEPTION 'That programme is not in the school catalogue.'
+            USING ERRCODE = '22023';
+    END IF;
+
+    UPDATE public.profiles
+       SET programme_id = p_programme_id
+     WHERE id = p_user;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'That member has no profile row.'
+            USING ERRCODE = 'P0002';
+    END IF;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.set_member_university(UUID, TEXT) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.set_member_programme(UUID, UUID) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.set_member_university(UUID, TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.set_member_programme(UUID, UUID) TO authenticated;
+ALTER FUNCTION public.set_member_university(UUID, TEXT) OWNER TO postgres;
+ALTER FUNCTION public.set_member_programme(UUID, UUID) OWNER TO postgres;
+
+
+-- ------------------------------------------------------------
+-- 5. TELL POSTGREST THE SHAPE CHANGED
+-- ------------------------------------------------------------
+
+NOTIFY pgrst, 'reload schema';
+
+
+-- ------------------------------------------------------------
+-- 6. WHAT SHOULD COME BACK
+-- Every row reads 'ok' when this part is in place.
+-- ------------------------------------------------------------
+
+SELECT
+    'programme rpc' AS check,
+    CASE WHEN EXISTS (
+        SELECT 1 FROM pg_catalog.pg_proc
+        WHERE proname = 'set_member_programme'
+          AND pronamespace = 'public'::regnamespace
+    ) THEN 'ok' ELSE 'MISSING' END AS result
+UNION ALL
+SELECT 'university rpc',
+    CASE WHEN EXISTS (
+        SELECT 1 FROM pg_catalog.pg_proc
+        WHERE proname = 'set_member_university'
+          AND pronamespace = 'public'::regnamespace
+    ) THEN 'ok' ELSE 'MISSING' END
+UNION ALL
+SELECT 'signup guard',
+    CASE WHEN pg_catalog.pg_get_functiondef(
+        (SELECT oid FROM pg_catalog.pg_proc
+          WHERE proname = 'handle_new_auth_user'
+            AND pronamespace = 'public'::regnamespace)
+    ) LIKE '%claimed_university%' THEN 'ok' ELSE 'MISSING' END
+UNION ALL
+SELECT 'one person trigger',
+    CASE WHEN EXISTS (
+        SELECT 1 FROM pg_catalog.pg_trigger AS trigger_row
+          JOIN pg_catalog.pg_class AS table_class ON table_class.oid = trigger_row.tgrelid
+         WHERE trigger_row.tgname = 'lecturer_submissions_one_person'
+           AND table_class.relname = 'lecturer_submissions'
+           AND trigger_row.tgdropped = FALSE
+    ) THEN 'ok' ELSE 'MISSING' END;
+
+
+-- ============ PART 20/21: migrations/20261019_chat_organize.sql ============
+
+-- ============================================================
+-- CAMPUS CONNECT — CHATS YOU ARCHIVE, MUTE, LOCK OR LABEL
+-- Part 20 of the setup. Idempotent: safe to run more than once.
+--
+-- The chat list already knows who a member blocked and who they starred.
+-- This adds the four things a student expects to set on one conversation
+-- after pressing it for a moment, the way WhatsApp does:
+--   * archived  - the chat leaves the main list but nothing is lost; it
+--                 waits under its own heading until it is unarchived
+--   * muted     - the phone stays quiet when that person or group writes,
+--                 while the messages still arrive and still read as unread
+--   * locked    - the phone must recognise this member (fingerprint, face
+--                 or the code they set) before that chat opens
+--   * chat_list - a short label, so "Squad" or "Class units" can hold the
+--                 chats a member wants together
+--   * theme     - the colour set chosen for that conversation ("preset:plum"
+--                 or "color:#7a3cff"); empty means the built-in palette, so
+--                 the app's default look is never stored as a preference
+--   * cleared_at- everything older than this instant is gone from this
+--                 member's view of the chat. The other person keeps their
+--                 copy, exactly as WhatsApp's Clear chat behaves
+--   * hidden_at - the chat also leaves the list until that person writes
+--                 again, which is what Delete chat means here
+--
+-- Nothing in this table destroys a message. Both timestamps only ever say
+-- "do not show this member what happened before this moment", so a chat
+-- cleared by mistake can be brought back by an admin who knows the number.
+--
+-- One row per (member, conversation). A conversation is either a person or
+-- a group, so peer_id deliberately carries NO foreign key: the same column
+-- holds a profile id and a community id, and a group can be deleted out
+-- from under a chat without taking the member's mute setting with it.
+--
+-- Nobody but the owner ever reads or writes these flags. They are not
+-- visible to the other person, so muting or archiving a chat cannot tip
+-- them off, and an admin reviewing accounts has no reason to see them.
+--
+-- The app works without this part: until it is run, the same four settings
+-- are kept on the phone itself. Running it upgrades them to follow the
+-- member onto any device they sign in from.
+-- ============================================================
+
+
+-- ------------------------------------------------------------
+-- 1. ONE ROW PER MEMBER PER CONVERSATION
+-- ------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS public.conversation_settings (
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    peer_id UUID NOT NULL,
+    archived BOOLEAN NOT NULL DEFAULT FALSE,
+    muted BOOLEAN NOT NULL DEFAULT FALSE,
+    locked BOOLEAN NOT NULL DEFAULT FALSE,
+    chat_list TEXT,
+    theme TEXT,
+    cleared_at TIMESTAMPTZ,
+    hidden_at TIMESTAMPTZ,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (user_id, peer_id),
+    CONSTRAINT conversation_settings_list_length
+        CHECK (chat_list IS NULL OR char_length(BTRIM(chat_list)) BETWEEN 1 AND 40),
+    CONSTRAINT conversation_settings_theme_length
+        CHECK (theme IS NULL OR char_length(BTRIM(theme)) <= 40)
+);
+
+/* An older copy of this part may already have been pasted without the two
+   timestamps or the colour choice, and CREATE TABLE IF NOT EXISTS would then
+   have skipped them. */
+ALTER TABLE public.conversation_settings
+    ADD COLUMN IF NOT EXISTS cleared_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS hidden_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS theme TEXT;
+
+CREATE INDEX IF NOT EXISTS conversation_settings_user_idx
+    ON public.conversation_settings (user_id);
+
+CREATE INDEX IF NOT EXISTS conversation_settings_archived_idx
+    ON public.conversation_settings (user_id) WHERE archived;
+
+
+-- ------------------------------------------------------------
+-- 2. KEEP updated_at HONEST
+-- ------------------------------------------------------------
+
+DROP TRIGGER IF EXISTS conversation_settings_set_updated_at
+    ON public.conversation_settings;
+CREATE TRIGGER conversation_settings_set_updated_at
+    BEFORE UPDATE ON public.conversation_settings
+    FOR EACH ROW
+    EXECUTE FUNCTION public.set_updated_at();
+
+
+-- ------------------------------------------------------------
+-- 3. ONLY THE OWNER, ALWAYS
+-- Four separate policies rather than one permissive catch-all, so a
+-- member can change a flag but cannot move a row onto somebody else's
+-- account: the WITH CHECK side is what stops that.
+-- ------------------------------------------------------------
+
+ALTER TABLE public.conversation_settings ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS conversation_settings_owner_read ON public.conversation_settings;
+CREATE POLICY conversation_settings_owner_read ON public.conversation_settings
+    FOR SELECT TO authenticated
+    USING (user_id = auth.uid());
+
+DROP POLICY IF EXISTS conversation_settings_owner_add ON public.conversation_settings;
+CREATE POLICY conversation_settings_owner_add ON public.conversation_settings
+    FOR INSERT TO authenticated
+    WITH CHECK (user_id = auth.uid());
+
+DROP POLICY IF EXISTS conversation_settings_owner_change ON public.conversation_settings;
+CREATE POLICY conversation_settings_owner_change ON public.conversation_settings
+    FOR UPDATE TO authenticated
+    USING (user_id = auth.uid())
+    WITH CHECK (user_id = auth.uid());
+
+DROP POLICY IF EXISTS conversation_settings_owner_remove ON public.conversation_settings;
+CREATE POLICY conversation_settings_owner_remove ON public.conversation_settings
+    FOR DELETE TO authenticated
+    USING (user_id = auth.uid());
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.conversation_settings TO authenticated;
+REVOKE ALL ON public.conversation_settings FROM anon;
+
+
+NOTIFY pgrst, 'reload schema';
+
+
+-- ============ PART 21/21: migrations/20261020_phone_identity.sql ============
+-- ============================================================
+-- PART 21: A PHONE NUMBER IS AN ADDRESS
+-- Campus Connect now lets a student, a lecturer or a security guard join with
+-- the number on their SIM card alone. Two things have to be true at once: the
+-- app must be able to find the account behind a number, and the number must
+-- stay off the profile card of anybody who did not choose to show it. So the
+-- digits get a column of their own, which the privacy mask never reads, and
+-- the only door to that column is one function that answers one number with
+-- one member.
+--
+-- Safe to run more than once: every statement is IF NOT EXISTS,
+-- CREATE OR REPLACE, or an idempotent ALTER/GRANT.
+-- Run this file AFTER database/schema.sql and AFTER every earlier part.
+-- ============================================================
+
+
+-- ------------------------------------------------------------
+-- 1. THE SHAPE OF A NUMBER
+-- One rule for the whole app: digits only, and a local 07XX XXX XXX is the
+-- same subscriber as 2547XX XXX XXX. IMMUTABLE because an index expression
+-- and a trigger both demand that.
+-- ------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.normalize_phone_digits(p_value TEXT)
+RETURNS TEXT
+LANGUAGE sql
+IMMUTABLE
+SET search_path = ''
+AS $$
+    SELECT CASE
+        WHEN char_length(b.trimmed) = 10 AND b.trimmed LIKE '0%'
+            THEN '254' || RIGHT(b.trimmed, 9)
+        ELSE b.trimmed
+    END
+    FROM (
+        SELECT REGEXP_REPLACE(COALESCE(p_value, ''), '[^0-9]', '', 'g') AS trimmed
+    ) AS b;
+$$;
+
+REVOKE ALL ON FUNCTION public.normalize_phone_digits(TEXT) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.normalize_phone_digits(TEXT) TO authenticated;
+
+
+-- ------------------------------------------------------------
+-- 2. A COLUMN THE PRIVACY MASK NEVER READS
+-- contact_phone is what a member shows on his card; phone_digits is what the
+-- school uses to route a message or a call to him. Only the second one is
+-- kept when the member stops showing the first, and the check lets nothing
+-- but a real number reach it.
+-- ------------------------------------------------------------
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'profiles'
+          AND column_name = 'phone_digits'
+    ) THEN
+        ALTER TABLE public.profiles
+            ADD COLUMN phone_digits TEXT NOT NULL DEFAULT '';
+    END IF;
+END;
+$$;
+
+ALTER TABLE public.profiles
+    DROP CONSTRAINT IF EXISTS profiles_phone_digits_shape_check;
+ALTER TABLE public.profiles
+    ADD CONSTRAINT profiles_phone_digits_shape_check
+    CHECK (phone_digits = '' OR phone_digits ~ '^[0-9]{7,15}$');
+
+
+-- ------------------------------------------------------------
+-- 3. CATCH THE NUMBER BEFORE THE CARD HIDES IT
+-- The sharing trigger used to blank a number the moment its owner stopped
+-- showing it, which quietly deleted his address from the whole school. The
+-- digits are now copied out of the way first, so hiding a number on a card
+-- costs nothing but the display.
+-- ------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.enforce_profile_contact_sharing()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+DECLARE
+    captured TEXT;
+BEGIN
+    IF BTRIM(COALESCE(NEW.contact_phone, '')) <> '' THEN
+        captured := public.normalize_phone_digits(NEW.contact_phone);
+        IF captured ~ '^[0-9]{7,15}$' THEN
+            NEW.phone_digits := captured;
+        END IF;
+    END IF;
+    IF NOT NEW.share_email THEN
+        NEW.contact_email := '';
+    END IF;
+    IF NOT NEW.share_phone THEN
+        NEW.contact_phone := '';
+    END IF;
+    RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.enforce_profile_contact_sharing() FROM PUBLIC, anon, authenticated;
+
+
+-- ------------------------------------------------------------
+-- 4. GIVE BACK THE NUMBERS THE OLD MASK ALREADY ATE
+-- Everyone who ever ticked "show my contact phone" still has the number on
+-- the card, so those digits are copied across once. A number two accounts
+-- both claim is left alone rather than given to one of them, so the next
+-- step can still promise one number, one account.
+-- ------------------------------------------------------------
+
+UPDATE public.profiles AS profile
+   SET phone_digits = public.normalize_phone_digits(profile.contact_phone)
+  FROM (
+        SELECT public.normalize_phone_digits(card.contact_phone) AS digits
+        FROM public.profiles AS card
+        WHERE BTRIM(COALESCE(card.contact_phone, '')) <> ''
+        GROUP BY 1
+        HAVING COUNT(*) = 1
+     ) AS single
+ WHERE profile.phone_digits = ''
+   AND public.normalize_phone_digits(profile.contact_phone) = single.digits
+   AND single.digits ~ '^[0-9]{7,15}$';
+
+
+-- ------------------------------------------------------------
+-- 5. ONE NUMBER, ONE ACCOUNT
+-- The same guarantee the registration number already has: nobody can open a
+-- second account on a number somebody else claimed. Both indexes only look
+-- at rows that actually carry a number, so an older member with none stays
+-- out of the way.
+-- ------------------------------------------------------------
+
+DO $$
+BEGIN
+    BEGIN
+        CREATE UNIQUE INDEX profiles_phone_digits_key
+            ON public.profiles (phone_digits)
+            WHERE phone_digits <> '';
+    EXCEPTION WHEN unique_violation THEN
+        -- Two accounts already hold one number, so the promise cannot be made
+        -- over that pair. A plain index still answers the search, and the
+        -- notice says which pair an admin has to separate.
+        RAISE NOTICE 'Two accounts already share one phone number, so the one-number rule is not enforced yet. Check: %',
+            (SELECT string_agg(digits, ', ') FROM (
+                SELECT phone_digits AS digits FROM public.profiles
+                WHERE phone_digits <> ''
+                GROUP BY phone_digits HAVING COUNT(*) > 1
+            ) AS clashes);
+        CREATE INDEX IF NOT EXISTS profiles_phone_digits_key
+            ON public.profiles (phone_digits)
+            WHERE phone_digits <> '';
+    END;
+END;
+$$;
+
+CREATE INDEX IF NOT EXISTS profiles_phone_digits_search_idx
+    ON public.profiles USING GIN (phone_digits gin_trgm_ops)
+    WHERE phone_digits <> '';
+
+-- The tail index is what makes "you dialled 07…, the account is stored as
+-- 2547…" a cheap lookup instead of a scan of every member.
+CREATE INDEX IF NOT EXISTS profiles_phone_digits_tail_idx
+    ON public.profiles (RIGHT(phone_digits, 9))
+    WHERE phone_digits <> '';
+
+
+-- ------------------------------------------------------------
+-- 6. THE ONE DOOR: ASK FOR A MEMBER BY NUMBER
+-- SECURITY DEFINER, so it can read the column the policies keep to
+-- themselves, but it hands back no more than the profile page would have
+-- shown anyway: the card of a member the caller may already see, with the
+-- number left off unless its owner shows it. A caller has to give at least
+-- seven digits, an exact match beats a last-nine match, and a blocked pair
+-- answers nothing at all.
+-- ------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.find_member_by_phone(p_phone TEXT)
+RETURNS TABLE (
+    id UUID,
+    username TEXT,
+    full_name TEXT,
+    gender TEXT,
+    course TEXT,
+    bio TEXT,
+    avatar_url TEXT,
+    contact_email TEXT,
+    contact_phone TEXT,
+    share_email BOOLEAN,
+    share_phone BOOLEAN,
+    is_discoverable BOOLEAN,
+    university TEXT,
+    role TEXT,
+    verification_status TEXT,
+    employment_status TEXT,
+    study_mode TEXT
+)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT profile.id,
+           profile.username,
+           profile.full_name,
+           profile.gender,
+           profile.course,
+           profile.bio,
+           profile.avatar_url,
+           profile.contact_email,
+           profile.contact_phone,
+           profile.share_email,
+           profile.share_phone,
+           profile.is_discoverable,
+           profile.university,
+           profile.role,
+           profile.verification_status,
+           profile.employment_status,
+           profile.study_mode
+    FROM public.profiles AS profile
+    WHERE (SELECT auth.uid()) IS NOT NULL
+      AND char_length(public.normalize_phone_digits(p_phone)) >= 7
+      AND profile.phone_digits <> ''
+      AND profile.id <> (SELECT auth.uid())
+      AND NOT public.is_blocked_between((SELECT auth.uid()), profile.id)
+      AND (
+            profile.is_discoverable
+            OR public.are_mutual_connections((SELECT auth.uid()), profile.id)
+            OR EXISTS (
+                SELECT 1
+                FROM public.messages AS chat
+                WHERE (chat.sender_id = (SELECT auth.uid()) AND chat.receiver_id = profile.id)
+                   OR (chat.receiver_id = (SELECT auth.uid()) AND chat.sender_id = profile.id)
+            )
+          )
+      AND (
+            profile.phone_digits = public.normalize_phone_digits(p_phone)
+            OR RIGHT(profile.phone_digits, 9) = RIGHT(public.normalize_phone_digits(p_phone), 9)
+          )
+    ORDER BY (profile.phone_digits = public.normalize_phone_digits(p_phone)) DESC,
+             profile.id
+    LIMIT 5;
+$$;
+
+REVOKE ALL ON FUNCTION public.find_member_by_phone(TEXT) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.find_member_by_phone(TEXT) TO authenticated;
+
+
+-- ------------------------------------------------------------
+-- 7. AN ACCOUNT BORN FROM A NUMBER KEEPS IT
+-- The number is claimed while the account is still being made, so a phone
+-- that loses its connection halfway through a sign-up never leaves a member
+-- with an address nobody can dial. The check runs before anything is
+-- written, so a refused sign-up leaves no half a profile behind either.
+-- ------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.handle_new_auth_user()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    username_base TEXT;
+    candidate_username TEXT;
+    attempt INTEGER;
+    metadata JSONB;
+    account_kind TEXT;
+    claimed_number TEXT;
+    claimed_card TEXT;
+    claimed_university TEXT;
+    claimed_phone TEXT;
+    clash_name TEXT;
+BEGIN
+    metadata := COALESCE(NEW.raw_user_meta_data, '{}'::JSONB);
+    account_kind := LOWER(BTRIM(COALESCE(metadata->>'account_kind', '')));
+    claimed_number := public.normalize_id_number(metadata->>'registration_number');
+    claimed_card := public.normalize_id_number(metadata->>'staff_id_number');
+    claimed_university := LEFT(BTRIM(COALESCE(metadata->>'university', '')), 100);
+    claimed_phone := public.normalize_phone_digits(metadata->>'phone');
+    IF claimed_phone ~ '^[0-9]{7,15}$' IS NOT TRUE THEN
+        claimed_phone := '';
+    END IF;
+
+    -- Whatever an older app version sends, the number is only ever
+    -- claimed once, and a member never has one.
+    IF account_kind = 'member' THEN
+        claimed_number := '';
+        claimed_card := '';
+    END IF;
+
+    -- A company and a parent belong to no campus, so they are not asked.
+    IF account_kind IN ('student', 'lecturer', 'security') AND claimed_university = '' THEN
+        RAISE EXCEPTION 'Name the university or college you belong to before this account can be created.'
+            USING ERRCODE = '22023';
+    END IF;
+
+    IF claimed_phone <> '' AND EXISTS (
+        SELECT 1 FROM public.profiles AS taken
+        WHERE taken.phone_digits = claimed_phone
+    ) THEN
+        RAISE EXCEPTION 'That phone number already has a Campus Connect account. Log in with it, or ask an admin.'
+            USING ERRCODE = '23505';
+    END IF;
+
+    username_base := LOWER(
+        REGEXP_REPLACE(
+            COALESCE(
+                metadata->>'username',
+                SPLIT_PART(COALESCE(NEW.email, NEW.phone, 'student'), '@', 1)
+            ),
+            '[^a-zA-Z0-9_]',
+            '',
+            'g'
+        )
+    );
+    username_base := LEFT(username_base, 20);
+    IF char_length(username_base) < 3 THEN
+        username_base := 'student';
+    END IF;
+
+    FOR attempt IN 0..5 LOOP
+        candidate_username := CASE
+            WHEN attempt = 0 THEN username_base
+            ELSE LEFT(username_base, 19) || '_' || LEFT(NEW.id::TEXT, 8) ||
+                 CASE WHEN attempt > 1 THEN '_' || (attempt - 1)::TEXT ELSE '' END
+        END;
+
+        BEGIN
+            INSERT INTO public.profiles (
+                id,
+                username,
+                full_name,
+                course,
+                role,
+                staff_id_number,
+                phone_digits
+            )
+            VALUES (
+                NEW.id,
+                candidate_username,
+                LEFT(COALESCE(metadata->>'full_name', 'Member'), 100),
+                LEFT(COALESCE(metadata->>'course', ''), 120),
+                CASE WHEN account_kind = 'member' THEN 'member' ELSE 'student' END,
+                CASE WHEN account_kind IN ('lecturer', 'security') THEN claimed_card ELSE '' END,
+                claimed_phone
+            )
+            ON CONFLICT (id) DO NOTHING;
+            EXIT;
+        EXCEPTION WHEN unique_violation THEN
+            GET STACKED DIAGNOSTICS clash_name = CONSTRAINT_NAME;
+            IF clash_name = 'profiles_staff_id_key' THEN
+                RAISE EXCEPTION 'That staff ID card already belongs to another account. Nobody can register twice with one card.'
+                    USING ERRCODE = '23505';
+            END IF;
+            IF clash_name = 'profiles_phone_digits_key' THEN
+                RAISE EXCEPTION 'That phone number already has a Campus Connect account. Log in with it, or ask an admin.'
+                    USING ERRCODE = '23505';
+            END IF;
+            IF attempt = 5 THEN
+                RAISE;
+            END IF;
+        END;
+    END LOOP;
+
+    IF account_kind = 'student' OR account_kind = '' THEN
+        IF claimed_number <> '' THEN
+            BEGIN
+                INSERT INTO public.student_registrations (user_id, registration_number)
+                VALUES (NEW.id, claimed_number);
+            EXCEPTION WHEN unique_violation THEN
+                RAISE EXCEPTION 'That registration number is already known to the university system. Check it, or ask an admin. Even two people with the same name cannot share one number.'
+                    USING ERRCODE = '23505';
+            END;
+        END IF;
+    END IF;
+
+    IF account_kind = 'lecturer' AND claimed_card = '' THEN
+        RAISE EXCEPTION 'A lecturer registers with the number on their staff ID card.'
+            USING ERRCODE = '22023';
+    END IF;
+
+    -- The school the member named is written next to the profile. The
+    -- column comes from the roles part; a database that has not reached
+    -- it yet keeps the answer on the account instead of losing the signup.
+    IF claimed_university <> '' THEN
+        BEGIN
+            UPDATE public.profiles
+               SET university = claimed_university
+             WHERE id = NEW.id;
+        EXCEPTION WHEN undefined_column THEN
+            RAISE NOTICE 'profiles.university is not here yet, so % stays on the account alone.', claimed_university;
+        END;
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.handle_new_auth_user() FROM PUBLIC, anon, authenticated;
+
+
+-- ------------------------------------------------------------
+-- 8. THE SAME ANSWER FOR A NUMBER ADDED AFTER THE ACCOUNT
+-- A member who joins with an email and only later writes his number on his
+-- profile is found the same way: the trigger in step 3 copies the digits out
+-- of whatever the app saves, so there is nothing else to run. The number
+-- itself stays on the card only as long as its owner shows it.
+-- ------------------------------------------------------------
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_trigger
+        WHERE tgname = 'profiles_enforce_contact_sharing'
+          AND tgrelid = 'public.profiles'::REGCLASS
+          AND NOT tgisinternal
+    ) THEN
+        CREATE TRIGGER profiles_enforce_contact_sharing
+            BEFORE INSERT OR UPDATE
+            ON public.profiles
+            FOR EACH ROW
+            EXECUTE FUNCTION public.enforce_profile_contact_sharing();
+    END IF;
+END;
+$$;
+
+
+-- ------------------------------------------------------------
+-- 9. TELL POSTGREST THE SHAPE CHANGED
+-- ------------------------------------------------------------
+
+NOTIFY pgrst, 'reload schema';
+
+
+-- ------------------------------------------------------------
+-- 10. WHAT SHOULD COME BACK
+-- Expected: three rows, all result = 'ok'.
+-- ------------------------------------------------------------
+
+SELECT 'column: profiles.phone_digits' AS check_name,
+       CASE WHEN (
+           SELECT COUNT(*) FROM information_schema.columns
+           WHERE table_schema = 'public'
+             AND table_name = 'profiles'
+             AND column_name = 'phone_digits'
+       ) = 1 THEN 'ok' ELSE 'FAILED (a phone number cannot be looked up)' END AS result
+UNION ALL
+SELECT 'phone function: ' || wanted.name,
+       CASE WHEN (
+           SELECT COUNT(*)
+           FROM pg_proc AS p
+           JOIN pg_namespace AS n ON n.oid = p.pronamespace
+           WHERE n.nspname = 'public' AND p.proname = wanted.name
+       ) = 1 THEN 'ok' ELSE 'FAILED (dialling a number from the app will not work)' END
+FROM (VALUES ('normalize_phone_digits'), ('find_member_by_phone')) AS wanted(name)
+UNION ALL
+SELECT 'one number per account',
+       CASE WHEN (
+           SELECT COUNT(*) FROM (
+               SELECT phone_digits FROM public.profiles
+               WHERE phone_digits <> ''
+               GROUP BY phone_digits HAVING COUNT(*) > 1
+           ) AS clashes
+       ) = 0 THEN 'ok' ELSE 'FAILED: two accounts already share one number' END;
+
+
 -- FINAL CHECK: every row should read ok
 -- ===================================================================
 SELECT 'publication: ' || t.table_name AS check_name,
@@ -5152,7 +6151,7 @@ FROM (VALUES ('user_blocks'), ('user_presence'), ('call_signals'), ('friend_requ
              ('message_attachments'), ('notification_preferences'), ('student_registrations'),
              ('contact_names'), ('message_reactions'), ('message_stars'), ('lecturer_submissions'),
              ('programmes'), ('units'), ('class_sessions'), ('bulletins'), ('companies'),
-             ('community_reads'), ('device_tokens')) AS t(table_name)
+             ('community_reads'), ('device_tokens'), ('conversation_settings')) AS t(table_name)
 LEFT JOIN information_schema.tables AS tb
        ON tb.table_schema = 'public' AND tb.table_name = t.table_name
 UNION ALL
@@ -5168,6 +6167,18 @@ FROM (VALUES ('register_device_token'), ('forget_device_token')) AS f(function_n
 LEFT JOIN information_schema.routines AS x
        ON x.routine_schema = 'public' AND x.routine_name = f.function_name
 UNION ALL
+SELECT 'identity function: ' || f.function_name,
+       CASE WHEN x.specific_name IS NOT NULL THEN 'ok' ELSE 'MISSING (admins cannot correct a school or programme)' END
+FROM (VALUES ('set_member_university'), ('set_member_programme')) AS f(function_name)
+LEFT JOIN information_schema.routines AS x
+       ON x.routine_schema = 'public' AND x.routine_name = f.function_name
+UNION ALL
+SELECT 'column: conversation_settings.' || c.column_name,
+       CASE WHEN x.column_name IS NOT NULL THEN 'ok' ELSE 'MISSING (archive, mute, lock and colours will stay on this phone only)' END
+FROM (VALUES ('archived'), ('muted'), ('locked'), ('chat_list'), ('theme'), ('cleared_at'), ('hidden_at')) AS c(column_name)
+LEFT JOIN information_schema.columns AS x
+       ON x.table_schema = 'public' AND x.table_name = 'conversation_settings' AND x.column_name = c.column_name
+UNION ALL
 SELECT 'column: messages.' || c.column_name,
        CASE WHEN x.column_name IS NOT NULL THEN 'ok' ELSE 'MISSING' END
 FROM (VALUES ('edited_at'), ('deleted_for_everyone'), ('deleted_by'), ('reply_to'), ('reply_preview')) AS c(column_name)
@@ -5177,7 +6188,14 @@ UNION ALL
 SELECT 'column: profiles.' || c.column_name,
        CASE WHEN x.column_name IS NOT NULL THEN 'ok' ELSE 'MISSING' END
 FROM (VALUES ('role'), ('verification_status'), ('is_discoverable'), ('university'),
-               ('staff_id_number'), ('employment_status'), ('study_mode'), ('lecturer_since'), ('company'), ('company_role')) AS c(column_name)
+               ('staff_id_number'), ('employment_status'), ('study_mode'), ('lecturer_since'), ('company'), ('company_role'),
+               ('phone_digits')) AS c(column_name)
 LEFT JOIN information_schema.columns AS x
        ON x.table_schema = 'public' AND x.table_name = 'profiles' AND x.column_name = c.column_name
+UNION ALL
+SELECT 'phone function: ' || f.function_name,
+       CASE WHEN x.specific_name IS NOT NULL THEN 'ok' ELSE 'MISSING (dialling a number from the app will not work)' END
+FROM (VALUES ('normalize_phone_digits'), ('find_member_by_phone')) AS f(function_name)
+LEFT JOIN information_schema.routines AS x
+       ON x.routine_schema = 'public' AND x.routine_name = f.function_name
 ORDER BY check_name;

@@ -287,10 +287,10 @@
             .form-grid.two { grid-template-columns: 1fr; }
         }
     </style>
-  <script type="module" crossorigin src="/assets/classes-HKZRbz7D.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/pwa-aBwfaQCD.js">
-  <link rel="modulepreload" crossorigin href="/assets/profile-identity-rcHzNdHw.js">
-  <link rel="modulepreload" crossorigin href="/assets/staff-verification-CcWKMn5I.js">
+  <script type="module" crossorigin src="/assets/classes-Ba7W_AZo.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/pwa-BxV_M1rA.js">
+  <link rel="modulepreload" crossorigin href="/assets/offline-banner-BZg6ZPvo.js">
+  <link rel="modulepreload" crossorigin href="/assets/staff-verification-Bm1mG1sO.js">
   <link rel="modulepreload" crossorigin href="/assets/member-view-CKKBednP.js">
 </head>
 
@@ -381,6 +381,15 @@
 
         <section id="lecturer-panel" class="card lecturer-card" hidden>
             <h2 data-i18n="Lecturer tools">Lecturer tools</h2>
+
+            <h3 data-i18n="My programme (private)">My programme (private)</h3>
+            <p class="my-studies-hint" data-i18n="All lecturers get the same tools. This only fixes which programme your units and class plans open in. You choose it yourself from the school catalogue, it stays yours until you change it, and an admin can correct it.">All lecturers get the same tools. This only fixes which programme your units and class plans open in. You choose it yourself from the school catalogue, it stays yours until you change it, and an admin can correct it.</p>
+            <div class="filter-row">
+                <select id="my-programme" aria-label="My programme" data-i18n-aria-label="My programme"></select>
+                <button id="save-my-programme" class="form-button" type="button" data-i18n="Fix my programme">Fix my programme</button>
+            </div>
+            <p id="my-programme-line" class="my-class-line"></p>
+
             <h3 data-i18n="Add a unit to this programme">Add a unit to this programme</h3>
             <form id="unit-form" class="form-grid">
                 <div class="form-grid two">
