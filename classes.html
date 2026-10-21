@@ -234,6 +234,8 @@
 
         .managed-row span { flex: 1; overflow-wrap: anywhere; }
 
+        .managed-row.wrap { flex-wrap: wrap; }
+
         .managed-delete {
             padding: 4px 10px;
             border: 1px solid #d93025;
@@ -242,6 +244,69 @@
             color: #d93025;
             font-size: 12px;
         }
+
+        .register-box {
+            flex-basis: 100%;
+            margin-top: 9px;
+            padding-top: 9px;
+            border-top: 1px dashed var(--border);
+        }
+
+        .register-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+        .register-code {
+            font-family: ui-monospace, "SFMono-Regular", monospace;
+            font-size: 20px;
+            font-weight: 800;
+            letter-spacing: 3px;
+            color: var(--primary);
+        }
+
+        .register-input {
+            width: 104px;
+            padding: 8px 10px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            background: var(--input);
+            color: var(--text);
+            font-weight: 800;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+        }
+
+        .register-button {
+            padding: 8px 13px;
+            border: none;
+            border-radius: 10px;
+            background: var(--primary);
+            color: #fff;
+            font-size: 13px;
+            font-weight: 700;
+        }
+
+        .register-button.ghost {
+            background: transparent;
+            border: 1px solid var(--border);
+            color: var(--text);
+        }
+
+        .register-button:disabled { opacity: .55; }
+
+        .register-note { margin: 5px 0 0; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+        .register-note.error { color: #d93025; }
+        .register-note.success { color: var(--primary); font-weight: 600; }
+
+        .register-list {
+            margin: 8px 0 0;
+            padding: 0;
+            list-style: none;
+            display: grid;
+            gap: 4px;
+        }
+
+        .register-list[hidden] { display: none; }
+        .register-list li { font-size: 12px; }
+        .register-list li span { color: var(--muted); }
 
         .my-studies-card { margin-top: 14px; }
         .my-studies-card h2 { margin: 0 0 6px; font-size: 16px; }
@@ -287,10 +352,11 @@
             .form-grid.two { grid-template-columns: 1fr; }
         }
     </style>
-  <script type="module" crossorigin src="/assets/classes-Ba7W_AZo.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/pwa-BxV_M1rA.js">
-  <link rel="modulepreload" crossorigin href="/assets/offline-banner-BZg6ZPvo.js">
-  <link rel="modulepreload" crossorigin href="/assets/staff-verification-Bm1mG1sO.js">
+  <script type="module" crossorigin src="/assets/classes-BvzEaljC.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/pwa-Ciu4DNql.js">
+  <link rel="modulepreload" crossorigin href="/assets/offline-banner-DubDYSn2.js">
+  <link rel="modulepreload" crossorigin href="/assets/profile-identity-kxx3M_X_.js">
+  <link rel="modulepreload" crossorigin href="/assets/staff-verification-BOkqpcJs.js">
   <link rel="modulepreload" crossorigin href="/assets/member-view-CKKBednP.js">
 </head>
 
@@ -471,6 +537,7 @@
             </form>
 
             <h3 data-i18n="My units and classes">My units and classes</h3>
+            <p class="session-meta" data-i18n="Open the register in class. The attendance list writes itself from the codes the students type.">Open the register in class. The attendance list writes itself from the codes the students type.</p>
             <div id="managed-list" class="managed-list"></div>
         </section>
     </main>

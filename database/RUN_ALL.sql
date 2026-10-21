@@ -4,7 +4,9 @@
 -- policies behind the typing indicator, private group chats, the device list
 -- behind push alerts, the campus identity rules (one school per member, one
 -- person per staff account), the per-chat archive / mute / lock / label flags,
--- the phone number that lets a classmate dial you, and a final check.
+-- the phone number that lets a classmate dial you, the hostel, catering and
+-- chaplaincy departments of a school, the class register that writes itself,
+-- and a final check.
 -- It replaces RUN_ONCE.sql, RUN_THIS_IN_SUPABASE.sql, RUN_MESSAGE_MARKS.sql,
 -- RUN_FRIEND_NAMES.sql, RUN_CLASSES_MIN.sql and REPAIR_CHATS.sql.
 -- ===================================================================
@@ -14,7 +16,7 @@
 -- Built 2026-10-14 from schema.sql + all migrations, in order.
 -- ===================================================================
 
--- ==================== PART 1/21: schema.sql ===========================
+-- ==================== PART 1/22: schema.sql ===========================
 -- ============================================================
 -- CAMPUS CONNECT
 -- Social networking database for university students
@@ -1526,7 +1528,7 @@ $$;
 
 NOTIFY pgrst, 'reload schema';
 
--- ================ PART 2/21: migrations/20261011_profile_gender.sql ================
+-- ================ PART 2/22: migrations/20261011_profile_gender.sql ================
 BEGIN;
 
 ALTER TABLE public.profiles
@@ -1548,7 +1550,7 @@ $$;
 
 COMMIT;
 
--- ================ PART 3/21: migrations/20261011_social_access_controls.sql ================
+-- ================ PART 3/22: migrations/20261011_social_access_controls.sql ================
 BEGIN;
 
 CREATE TABLE IF NOT EXISTS public.user_blocks (
@@ -1900,7 +1902,7 @@ CREATE POLICY "Users delete own private social media"
 
 COMMIT;
 
--- ================ PART 4/21: migrations/20261011_student_interactions_and_calls.sql ================
+-- ================ PART 4/22: migrations/20261011_student_interactions_and_calls.sql ================
 BEGIN;
 
 ALTER TABLE public.profiles
@@ -2013,7 +2015,7 @@ $migration$;
 
 COMMIT;
 
--- ================ PART 5/21: migrations/20261012_friendships_attachments_notification_preferences.sql ================
+-- ================ PART 5/22: migrations/20261012_friendships_attachments_notification_preferences.sql ================
 BEGIN;
 
 -- Explicit friend requests are separate from the existing one-way follow graph.
@@ -2201,7 +2203,7 @@ REVOKE ALL ON FUNCTION public.notify_friend_request() FROM PUBLIC, anon, authent
 
 COMMIT;
 
--- ================ PART 6/21: migrations/20261012_respond_to_chat_invitations.sql ================
+-- ================ PART 6/22: migrations/20261012_respond_to_chat_invitations.sql ================
 BEGIN;
 
 -- Let a recipient accept or decline a one-way follow invitation. Accepting
@@ -2308,7 +2310,7 @@ $migration$;
 
 COMMIT;
 
--- ================ PART 7/21: migrations/20261013_find_people.sql ================
+-- ================ PART 7/22: migrations/20261013_find_people.sql ================
 -- ============================================================
 -- STEP 1 / FINDING PEOPLE
 -- Makes members discoverable by default, lets a user claim a unique
@@ -2481,7 +2483,7 @@ SELECT 'everyone_discoverable',
 FROM public.profiles
 WHERE is_discoverable IS DISTINCT FROM TRUE;
 
--- ================ PART 8/21: migrations/20261014_roles_and_admin.sql ================
+-- ================ PART 8/22: migrations/20261014_roles_and_admin.sql ================
 -- ============================================================
 -- CAMPUS CONNECT — ROLES, APPROVAL, AND ADMIN
 -- Kabarak University: Student / Lecturer / Security / Admin.
@@ -2980,7 +2982,7 @@ SELECT 'at_least_one_admin',
        CASE WHEN COUNT(*) > 0 THEN 'ok' ELSE 'NONE YET (run section 9)' END
 FROM public.profiles WHERE role = 'admin';
 
--- ============ PART 9/21: migrations/20261014_message_edit_delete.sql ============
+-- ============ PART 9/22: migrations/20261014_message_edit_delete.sql ============
 -- ============================================================
 -- MESSAGE EDIT + DELETE (run this whole file in Supabase SQL Editor)
 -- Rules enforced inside the database, not just the app:
@@ -3084,7 +3086,7 @@ CREATE TRIGGER protect_message_fields_trigger
     EXECUTE FUNCTION public.protect_message_fields();
 
 
--- ============ PART 10/21: migrations/20261015_programmes_units_classes.sql ============
+-- ============ PART 10/22: migrations/20261015_programmes_units_classes.sql ============
 -- ============================================================
 -- CAMPUS CONNECT — PROGRAMMES, UNITS, AND CLASS TIMETABLES
 -- Kabarak University course system:
@@ -3353,7 +3355,7 @@ INSERT INTO public.programmes (school, name, level, max_year, campus, specializa
     ('School of Pharmacy', 'Bachelor of Pharmacy', 'undergraduate', 5, 'Main', '')
 ON CONFLICT (school, name) DO NOTHING;
 
--- ==================== PART 11/21: friend names (contact_names) ==========
+-- ==================== PART 11/22: friend names (contact_names) ==========
 CREATE TABLE IF NOT EXISTS public.contact_names (
     author_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     peer_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -3499,7 +3501,7 @@ ALTER TABLE public.messages
 
 COMMIT;
 
--- ============ PART 12/21: migrations/20261016_lecturer_credentials.sql ============
+-- ============ PART 12/22: migrations/20261016_lecturer_credentials.sql ============
 -- ============================================================
 -- CAMPUS CONNECT — LECTURER CREDENTIALS, STUDY MODE, STAFF LOG
 -- Kabarak University rules this adds:
@@ -4124,7 +4126,7 @@ GRANT SELECT, INSERT, UPDATE ON public.lecturer_submissions TO authenticated;
 
 NOTIFY pgrst, 'reload schema';
 
--- ============ PART 13/21: migrations/20261016_one_number_one_account.sql ============
+-- ============ PART 13/22: migrations/20261016_one_number_one_account.sql ============
 
 -- ============================================================
 -- CAMPUS CONNECT — ONE NUMBER, ONE ACCOUNT
@@ -4474,7 +4476,7 @@ ALTER TABLE public.admin_action_log
 NOTIFY pgrst, 'reload schema';
 
 
--- ============ PART 14/21: migrations/20261017_bulletins.sql ============
+-- ============ PART 14/22: migrations/20261017_bulletins.sql ============
 
 -- ============================================================
 -- CAMPUS CONNECT — THE BULLETIN BOARD
@@ -4562,7 +4564,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON public.bulletins TO authenticated;
 NOTIFY pgrst, 'reload schema';
 
 
--- ============ PART 15/21: migrations/20261017_companies.sql ============
+-- ============ PART 15/22: migrations/20261017_companies.sql ============
 
 -- ============================================================
 -- CAMPUS CONNECT — THE COMPANY DIRECTORY
@@ -4726,7 +4728,7 @@ ALTER TABLE public.bulletins
 NOTIFY pgrst, 'reload schema';
 
 
--- ============ PART 16/21: migrations/20261017_realtime_broadcast.sql ============
+-- ============ PART 16/22: migrations/20261017_realtime_broadcast.sql ============
 
 -- PART 16: realtime broadcast for the typing / recording indicators.
 --
@@ -4800,7 +4802,7 @@ $do$;
 NOTIFY pgrst, 'reload schema';
 
 
--- ============ PART 17/21: migrations/20261017_private_groups.sql ============
+-- ============ PART 17/22: migrations/20261017_private_groups.sql ============
 
 -- PART 17: private group chats, the WhatsApp shape.
 --
@@ -5033,7 +5035,7 @@ GRANT EXECUTE ON FUNCTION public.mark_group_read(UUID) TO authenticated;
 NOTIFY pgrst, 'reload schema';
 
 
--- ============ PART 18/21: migrations/20261017_push_tokens.sql ============
+-- ============ PART 18/22: migrations/20261017_push_tokens.sql ============
 
 -- PART 18: the device list behind push alerts.
 --
@@ -5137,7 +5139,7 @@ GRANT EXECUTE ON FUNCTION public.forget_device_token(TEXT) TO authenticated;
 NOTIFY pgrst, 'reload schema';
 
 
--- ============ PART 19/21: migrations/20261018_campus_identity.sql ============
+-- ============ PART 19/22: migrations/20261018_campus_identity.sql ============
 
 -- ============================================================
 -- CAMPUS CONNECT — ONE PERSON, ONE SCHOOL, HIS OWN PROGRAMME
@@ -5532,7 +5534,7 @@ SELECT 'one person trigger',
     ) THEN 'ok' ELSE 'MISSING' END;
 
 
--- ============ PART 20/21: migrations/20261019_chat_organize.sql ============
+-- ============ PART 20/22: migrations/20261019_chat_organize.sql ============
 
 -- ============================================================
 -- CAMPUS CONNECT — CHATS YOU ARCHIVE, MUTE, LOCK OR LABEL
@@ -5663,7 +5665,7 @@ REVOKE ALL ON public.conversation_settings FROM anon;
 NOTIFY pgrst, 'reload schema';
 
 
--- ============ PART 21/21: migrations/20261020_phone_identity.sql ============
+-- ============ PART 21/22: migrations/20261020_phone_identity.sql ============
 -- ============================================================
 -- PART 21: A PHONE NUMBER IS AN ADDRESS
 -- Campus Connect now lets a student, a lecturer or a security guard join with
@@ -6135,6 +6137,1220 @@ SELECT 'one number per account',
        ) = 0 THEN 'ok' ELSE 'FAILED: two accounts already share one number' END;
 
 
+-- ============ PART 22/22: migrations/20261020_campus_services.sql ============
+-- ============================================================
+-- CAMPUS CONNECT — THE CAMPUS SERVICES DEPARTMENTS
+-- A university is more than a chat. A student also needs a bed, a meal,
+-- a chapel and a name on the class list, and each of those belongs to a
+-- different department. This part puts all four in the database, one
+-- switch per school, so a school that has no catering simply never
+-- turns catering on and nobody sees an empty screen.
+--   * campus_services: one row per school with four switches
+--     (accommodation, catering, chaplaincy, attendance). A school that is
+--     not in the table has nothing, which is the truth until somebody who
+--     works there says otherwise. Nothing is invented for another
+--     university: its own staff turn its own services on.
+--   * hostels + hostel_rooms + hostel_bookings: a student asks for a bed
+--     in a named hostel for one semester, and the housing office decides.
+--     The four Kabarak men's hostels are seeded because the school's own
+--     member named them; no hostel exists here that nobody named.
+--   * meal_plans: the catering department posts what it serves and costs.
+--   * chaplaincy_events + prayer_requests: a chaplain publishes the
+--     year's church programme for their own school and answers the
+--     requests students send in. A prayer request is never public.
+--   * class_checkins: a lecturer opens a short window with a code and the
+--     students in the room (or on the online link) check in. The roll is
+--     built from those rows, so an attendance list is something a student
+--     cannot type.
+--   * the role 'chaplain' is added, alongside the four roles that already
+--     exist. Only an admin grants it, exactly the way every other role is
+--     granted.
+-- Everything here is scoped by school name, the same way profiles.university
+-- is: the name is the key because a person must be able to belong to a
+-- school before that school has been set up.
+-- Idempotent: safe to run more than once.
+-- ============================================================
+
+
+-- ------------------------------------------------------------
+-- 1. A CHAPLAIN IS A ROLE, NOT A HACK
+-- 'chaplain' joins the roles that already exist, in the check on the
+-- column and in the check on what a member is allowed to ask for.
+-- ------------------------------------------------------------
+
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'profiles_role_check' AND conrelid = 'public.profiles'::regclass
+    ) THEN
+        ALTER TABLE public.profiles DROP CONSTRAINT profiles_role_check;
+    END IF;
+    ALTER TABLE public.profiles
+        ADD CONSTRAINT profiles_role_check
+        CHECK (role IN ('student', 'lecturer', 'security', 'admin', 'member', 'chaplain'));
+END
+$$;
+
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'profiles_requested_role_check'
+          AND conrelid = 'public.profiles'::regclass
+    ) THEN
+        ALTER TABLE public.profiles DROP CONSTRAINT profiles_requested_role_check;
+    END IF;
+    ALTER TABLE public.profiles
+        ADD CONSTRAINT profiles_requested_role_check
+        CHECK (requested_role IN ('', 'student', 'lecturer', 'security', 'chaplain'));
+END
+$$;
+
+
+-- ------------------------------------------------------------
+-- 2. THE FOUR SWITCHES PER SCHOOL
+-- One row says which departments of this app that school actually runs.
+-- A member of that school's staff (or any admin) flips them.
+-- ------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS public.campus_services (
+    school TEXT NOT NULL,
+    school_key TEXT GENERATED ALWAYS AS (LOWER(BTRIM(school))) STORED,
+    accommodation BOOLEAN NOT NULL DEFAULT FALSE,
+    catering BOOLEAN NOT NULL DEFAULT FALSE,
+    chaplaincy BOOLEAN NOT NULL DEFAULT FALSE,
+    attendance BOOLEAN NOT NULL DEFAULT FALSE,
+    note TEXT NOT NULL DEFAULT '' CHECK (char_length(note) <= 400),
+    updated_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT campus_services_school_unique UNIQUE (school_key)
+);
+
+
+-- ------------------------------------------------------------
+-- 3. WHO RUNS A DEPARTMENT
+-- is_admin() covers the owner of the app. Below it, a school's own staff
+-- run their own school and nothing else: a lecturer at one campus cannot
+-- open a hostel booking at another.
+-- ------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.my_school_key()
+RETURNS TEXT
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT LOWER(BTRIM(COALESCE(
+        (SELECT p.university FROM public.profiles AS p WHERE p.id = auth.uid()),
+        ''
+    )));
+$$;
+
+CREATE OR REPLACE FUNCTION public.is_school_staff(p_school_key TEXT)
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT COALESCE((
+        SELECT p.role = 'admin'
+            OR (p.role IN ('lecturer', 'security')
+                AND p.employment_status = 'active'
+                AND LOWER(BTRIM(p.university)) = LOWER(BTRIM(COALESCE(p_school_key, ''))))
+        FROM public.profiles AS p
+        WHERE p.id = auth.uid()
+    ), FALSE);
+$$;
+
+CREATE OR REPLACE FUNCTION public.may_lead_chaplaincy(p_school_key TEXT)
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT COALESCE((
+        SELECT p.role = 'admin'
+            OR (p.role = 'chaplain'
+                AND LOWER(BTRIM(p.university)) = LOWER(BTRIM(COALESCE(p_school_key, ''))))
+        FROM public.profiles AS p
+        WHERE p.id = auth.uid()
+    ), FALSE);
+$$;
+
+REVOKE ALL ON FUNCTION public.my_school_key() FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.is_school_staff(TEXT) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.may_lead_chaplaincy(TEXT) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.my_school_key() TO authenticated;
+GRANT EXECUTE ON FUNCTION public.is_school_staff(TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.may_lead_chaplaincy(TEXT) TO authenticated;
+
+ALTER TABLE public.campus_services ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS campus_services_readable ON public.campus_services;
+CREATE POLICY campus_services_readable ON public.campus_services
+    FOR SELECT TO authenticated
+    USING (TRUE);
+
+DROP POLICY IF EXISTS campus_services_staff_write ON public.campus_services;
+CREATE POLICY campus_services_staff_write ON public.campus_services
+    FOR INSERT TO authenticated
+    WITH CHECK (updated_by = auth.uid() AND public.is_school_staff(school_key));
+
+DROP POLICY IF EXISTS campus_services_staff_edit ON public.campus_services;
+CREATE POLICY campus_services_staff_edit ON public.campus_services
+    FOR UPDATE TO authenticated
+    USING (public.is_school_staff(school_key))
+    WITH CHECK (public.is_school_staff(school_key));
+
+GRANT SELECT, INSERT, UPDATE ON public.campus_services TO authenticated;
+REVOKE ALL ON public.campus_services FROM anon, public;
+
+
+-- ------------------------------------------------------------
+-- 4. THE HOSTELS
+-- A hostel is a name attached to a school, not a global row: two schools
+-- can both have a "Baringo" and mean different buildings by it.
+-- ------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS public.hostels (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    school TEXT NOT NULL,
+    school_key TEXT GENERATED ALWAYS AS (LOWER(BTRIM(school))) STORED,
+    name TEXT NOT NULL CHECK (char_length(BTRIM(name)) BETWEEN 2 AND 80),
+    name_key TEXT GENERATED ALWAYS AS (LOWER(BTRIM(name))) STORED,
+    gender TEXT NOT NULL DEFAULT 'mixed'
+        CHECK (gender IN ('men', 'women', 'mixed')),
+    address TEXT NOT NULL DEFAULT '' CHECK (char_length(address) <= 160),
+    note TEXT NOT NULL DEFAULT '' CHECK (char_length(note) <= 400),
+    verified BOOLEAN NOT NULL DEFAULT FALSE,
+    added_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT hostels_school_name_unique UNIQUE (school_key, name_key)
+);
+
+CREATE TABLE IF NOT EXISTS public.hostel_rooms (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    hostel_id UUID NOT NULL REFERENCES public.hostels(id) ON DELETE CASCADE,
+    label TEXT NOT NULL CHECK (char_length(BTRIM(label)) BETWEEN 1 AND 40),
+    sharing TEXT NOT NULL DEFAULT 'other'
+        CHECK (sharing IN ('single', 'twin', 'double', 'four', 'other')),
+    capacity INT NOT NULL DEFAULT 1 CHECK (capacity BETWEEN 1 AND 12),
+    fee_semester NUMERIC(10, 2) CHECK (fee_semester IS NULL OR fee_semester >= 0),
+    meal_included BOOLEAN NOT NULL DEFAULT FALSE,
+    note TEXT NOT NULL DEFAULT '' CHECK (char_length(note) <= 200),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT hostel_rooms_label_unique UNIQUE (hostel_id, label)
+);
+
+CREATE TABLE IF NOT EXISTS public.hostel_bookings (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    room_id UUID NOT NULL REFERENCES public.hostel_rooms(id) ON DELETE CASCADE,
+    student_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    semester TEXT NOT NULL CHECK (char_length(BTRIM(semester)) BETWEEN 3 AND 40),
+    status TEXT NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending', 'approved', 'rejected', 'cancelled')),
+    request_note TEXT NOT NULL DEFAULT '' CHECK (char_length(request_note) <= 400),
+    decision_note TEXT NOT NULL DEFAULT '' CHECK (char_length(decision_note) <= 400),
+    decided_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+    decided_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- One live request per student per semester. A cancelled or rejected one
+-- frees the place, so a student who was refused can ask for another room
+-- without an admin touching the database.
+CREATE UNIQUE INDEX IF NOT EXISTS hostel_bookings_one_live_per_semester
+    ON public.hostel_bookings (student_id, LOWER(BTRIM(semester)))
+    WHERE status IN ('pending', 'approved');
+
+CREATE INDEX IF NOT EXISTS hostels_school_idx ON public.hostels (school_key);
+CREATE INDEX IF NOT EXISTS hostel_bookings_room_idx
+    ON public.hostel_bookings (room_id, status);
+CREATE INDEX IF NOT EXISTS hostel_bookings_student_idx
+    ON public.hostel_bookings (student_id);
+
+ALTER TABLE public.hostels ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.hostel_rooms ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.hostel_bookings ENABLE ROW LEVEL SECURITY;
+
+-- Which beds this account already holds. A policy cannot read its own table
+-- (Postgres answers with a recursion error), so the answer comes from a
+-- definer function that reads it once and hands back pairs.
+CREATE OR REPLACE FUNCTION public.my_approved_beds()
+RETURNS TABLE (room_id UUID, semester_key TEXT)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT b.room_id, LOWER(BTRIM(b.semester))
+    FROM public.hostel_bookings AS b
+    WHERE b.student_id = auth.uid()
+      AND b.status = 'approved';
+$$;
+
+REVOKE ALL ON FUNCTION public.my_approved_beds() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.my_approved_beds() TO authenticated;
+
+-- A list of hostels is on every prospectus: reading is open, writing is not.
+DROP POLICY IF EXISTS hostels_readable ON public.hostels;
+CREATE POLICY hostels_readable ON public.hostels
+    FOR SELECT TO authenticated
+    USING (TRUE);
+
+DROP POLICY IF EXISTS hostels_staff_write ON public.hostels;
+CREATE POLICY hostels_staff_write ON public.hostels
+    FOR INSERT TO authenticated
+    WITH CHECK (added_by = auth.uid() AND public.is_school_staff(school_key));
+
+DROP POLICY IF EXISTS hostels_staff_edit ON public.hostels;
+CREATE POLICY hostels_staff_edit ON public.hostels
+    FOR UPDATE TO authenticated
+    USING (public.is_school_staff(school_key))
+    WITH CHECK (public.is_school_staff(school_key));
+
+DROP POLICY IF EXISTS hostels_staff_remove ON public.hostels;
+CREATE POLICY hostels_staff_remove ON public.hostels
+    FOR DELETE TO authenticated
+    USING (public.is_school_staff(school_key));
+
+DROP POLICY IF EXISTS hostel_rooms_readable ON public.hostel_rooms;
+CREATE POLICY hostel_rooms_readable ON public.hostel_rooms
+    FOR SELECT TO authenticated
+    USING (TRUE);
+
+DROP POLICY IF EXISTS hostel_rooms_staff_write ON public.hostel_rooms;
+CREATE POLICY hostel_rooms_staff_write ON public.hostel_rooms
+    FOR INSERT TO authenticated
+    WITH CHECK (EXISTS (
+        SELECT 1 FROM public.hostels AS h
+        WHERE h.id = hostel_rooms.hostel_id
+          AND public.is_school_staff(h.school_key)
+    ));
+
+DROP POLICY IF EXISTS hostel_rooms_staff_edit ON public.hostel_rooms;
+CREATE POLICY hostel_rooms_staff_edit ON public.hostel_rooms
+    FOR UPDATE TO authenticated
+    USING (EXISTS (
+        SELECT 1 FROM public.hostels AS h
+        WHERE h.id = hostel_rooms.hostel_id
+          AND public.is_school_staff(h.school_key)
+    ))
+    WITH CHECK (EXISTS (
+        SELECT 1 FROM public.hostels AS h
+        WHERE h.id = hostel_rooms.hostel_id
+          AND public.is_school_staff(h.school_key)
+    ));
+
+DROP POLICY IF EXISTS hostel_rooms_staff_remove ON public.hostel_rooms;
+CREATE POLICY hostel_rooms_staff_remove ON public.hostel_rooms
+    FOR DELETE TO authenticated
+    USING (EXISTS (
+        SELECT 1 FROM public.hostels AS h
+        WHERE h.id = hostel_rooms.hostel_id
+          AND public.is_school_staff(h.school_key)
+    ));
+
+-- A student sees their own requests; the housing office of that school
+-- sees every request for its own beds; and a student who has been given a
+-- bed sees the others approved into the same room for the same semester,
+-- because a roommate is the first person a new student wants to know.
+DROP POLICY IF EXISTS hostel_bookings_own ON public.hostel_bookings;
+CREATE POLICY hostel_bookings_own ON public.hostel_bookings
+    FOR SELECT TO authenticated
+    USING (
+        student_id = auth.uid()
+        OR public.is_admin()
+        OR EXISTS (
+            SELECT 1 FROM public.hostel_rooms AS r
+            JOIN public.hostels AS h ON h.id = r.hostel_id
+            WHERE r.id = hostel_bookings.room_id
+              AND public.is_school_staff(h.school_key)
+        )
+        OR EXISTS (
+            SELECT 1 FROM public.my_approved_beds() AS mine
+            WHERE mine.room_id = hostel_bookings.room_id
+              AND mine.semester_key = LOWER(BTRIM(hostel_bookings.semester))
+        )
+    );
+
+DROP POLICY IF EXISTS hostel_bookings_student_ask ON public.hostel_bookings;
+CREATE POLICY hostel_bookings_student_ask ON public.hostel_bookings
+    FOR INSERT TO authenticated
+    WITH CHECK (student_id = auth.uid());
+
+DROP POLICY IF EXISTS hostel_bookings_student_cancel ON public.hostel_bookings;
+CREATE POLICY hostel_bookings_student_cancel ON public.hostel_bookings
+    FOR UPDATE TO authenticated
+    USING (student_id = auth.uid() AND status = 'pending')
+    WITH CHECK (student_id = auth.uid() AND status = 'cancelled');
+
+-- Two policies cover this table: the one a student uses to cancel their own
+-- waiting request, and this one for the office. Each is checked on its own
+-- terms, so a student cancelling can never reach the decision columns.
+DROP POLICY IF EXISTS hostel_bookings_office_edit ON public.hostel_bookings;
+CREATE POLICY hostel_bookings_office_edit ON public.hostel_bookings
+    FOR UPDATE TO authenticated
+    USING (EXISTS (
+        SELECT 1 FROM public.hostel_rooms AS r
+        JOIN public.hostels AS h ON h.id = r.hostel_id
+        WHERE r.id = hostel_bookings.room_id
+          AND public.is_school_staff(h.school_key)
+    ))
+    WITH CHECK (status IN ('approved', 'rejected', 'cancelled'));
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.hostels TO authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.hostel_rooms TO authenticated;
+GRANT SELECT, INSERT, UPDATE ON public.hostel_bookings TO authenticated;
+REVOKE ALL ON public.hostels FROM anon, public;
+REVOKE ALL ON public.hostel_rooms FROM anon, public;
+REVOKE ALL ON public.hostel_bookings FROM anon, public;
+
+
+-- ------------------------------------------------------------
+-- 5. A BED IS APPROVED BY AN OFFICE, NOT BY A STUDENT
+-- approve is the one write a student cannot make for themselves, and a
+-- room cannot fill past the beds it has. Both belong in a definer, and
+-- the count of approved bookings is the only number that matters.
+-- ------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.decide_hostel_booking(
+    p_booking_id UUID,
+    p_decision TEXT,
+    p_note TEXT DEFAULT ''
+)
+RETURNS TEXT
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_room UUID;
+    v_school TEXT;
+    v_semester TEXT;
+    v_taken INT;
+    v_capacity INT;
+BEGIN
+    IF p_decision NOT IN ('approved', 'rejected', 'cancelled') THEN
+        RAISE EXCEPTION 'That decision is not one the housing office can make.'
+            USING ERRCODE = '22023';
+    END IF;
+
+    SELECT r.id, h.school_key, b.semester
+      INTO v_room, v_school, v_semester
+    FROM public.hostel_bookings AS b
+    JOIN public.hostel_rooms AS r ON r.id = b.room_id
+    JOIN public.hostels AS h ON h.id = r.hostel_id
+    WHERE b.id = p_booking_id;
+
+    IF v_room IS NULL THEN
+        RAISE EXCEPTION 'No such booking.' USING ERRCODE = 'P0002';
+    END IF;
+
+    IF NOT public.is_school_staff(v_school) THEN
+        RAISE EXCEPTION 'Only the housing office of that school can decide a bed.'
+            USING ERRCODE = '42501';
+    END IF;
+
+    IF p_decision = 'approved' THEN
+        SELECT capacity INTO v_capacity FROM public.hostel_rooms WHERE id = v_room;
+        SELECT COUNT(*) INTO v_taken
+        FROM public.hostel_bookings
+        WHERE room_id = v_room
+          AND LOWER(BTRIM(semester)) = LOWER(BTRIM(v_semester))
+          AND status = 'approved'
+          AND id <> p_booking_id;
+        IF v_taken >= v_capacity THEN
+            RAISE EXCEPTION 'That room is full for % - % of % beds are already approved.',
+                v_semester, v_taken, v_capacity
+                USING ERRCODE = 'P0001';
+        END IF;
+    END IF;
+
+    UPDATE public.hostel_bookings
+        SET status = p_decision,
+            decision_note = LEFT(BTRIM(COALESCE(p_note, '')), 400),
+            decided_by = auth.uid(),
+            decided_at = NOW()
+        WHERE id = p_booking_id;
+
+    RETURN p_decision;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.ask_for_hostel_bed(
+    p_room_id UUID,
+    p_semester TEXT,
+    p_note TEXT DEFAULT ''
+)
+RETURNS UUID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_id UUID;
+    v_school TEXT;
+    v_accommodation BOOLEAN;
+BEGIN
+    IF NOT public.may_use_classes() THEN
+        RAISE EXCEPTION 'A bed is only asked for once your registration number is on file.'
+            USING ERRCODE = '42501';
+    END IF;
+
+    SELECT h.school_key INTO v_school
+    FROM public.hostel_rooms AS r
+    JOIN public.hostels AS h ON h.id = r.hostel_id
+    WHERE r.id = p_room_id;
+
+    IF v_school IS NULL THEN
+        RAISE EXCEPTION 'No such room.' USING ERRCODE = 'P0002';
+    END IF;
+
+    SELECT accommodation INTO v_accommodation
+    FROM public.campus_services WHERE school_key = v_school;
+
+    IF v_accommodation IS DISTINCT FROM TRUE THEN
+        RAISE EXCEPTION 'That school does not take hostel requests here.'
+            USING ERRCODE = 'P0001';
+    END IF;
+
+    INSERT INTO public.hostel_bookings (room_id, student_id, semester, request_note)
+        VALUES (
+            p_room_id,
+            auth.uid(),
+            LEFT(BTRIM(p_semester), 40),
+            LEFT(BTRIM(COALESCE(p_note, '')), 400)
+        )
+        RETURNING id INTO v_id;
+
+    RETURN v_id;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.decide_hostel_booking(UUID, TEXT, TEXT) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.ask_for_hostel_bed(UUID, TEXT, TEXT) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.decide_hostel_booking(UUID, TEXT, TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.ask_for_hostel_bed(UUID, TEXT, TEXT) TO authenticated;
+
+
+-- ------------------------------------------------------------
+-- 5b. THE TWO LISTS A BOOKING APPEARS IN
+-- A booking joins three tables before it means anything to a person: the
+-- room, the hostel, and for the office the student who asked. That join is
+-- written once, here, so no page has to guess how PostgREST spells it and a
+-- housing office is not handed a table of strangers' profiles.
+-- ------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.my_bed_requests()
+RETURNS TABLE (
+    booking_id UUID,
+    hostel_name TEXT,
+    room_label TEXT,
+    room_capacity INT,
+    school TEXT,
+    semester TEXT,
+    status TEXT,
+    request_note TEXT,
+    decision_note TEXT,
+    decided_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ
+)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT b.id, h.name, r.label, r.capacity, h.school, b.semester, b.status,
+           b.request_note, b.decision_note, b.decided_at, b.created_at
+    FROM public.hostel_bookings AS b
+    JOIN public.hostel_rooms AS r ON r.id = b.room_id
+    JOIN public.hostels AS h ON h.id = r.hostel_id
+    WHERE b.student_id = auth.uid()
+    ORDER BY b.created_at DESC
+    LIMIT 40;
+$$;
+
+CREATE OR REPLACE FUNCTION public.school_bed_requests(p_school_key TEXT)
+RETURNS TABLE (
+    booking_id UUID,
+    student_id UUID,
+    student_name TEXT,
+    registration_number TEXT,
+    hostel_name TEXT,
+    room_label TEXT,
+    room_capacity INT,
+    beds_approved INT,
+    semester TEXT,
+    status TEXT,
+    request_note TEXT,
+    decided_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ
+)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    IF NOT public.is_school_staff(p_school_key) THEN
+        RAISE EXCEPTION 'Only the housing office of that school sees its requests.'
+            USING ERRCODE = '42501';
+    END IF;
+
+    RETURN QUERY
+    SELECT b.id,
+           b.student_id,
+           p.full_name,
+           r0.registration_number,
+           h.name,
+           r.label,
+           r.capacity,
+           (SELECT COUNT(*)::INT
+              FROM public.hostel_bookings AS x
+             WHERE x.room_id = b.room_id
+               AND x.status = 'approved'
+               AND LOWER(BTRIM(x.semester)) = LOWER(BTRIM(b.semester))),
+           b.semester,
+           b.status,
+           b.request_note,
+           b.decided_at,
+           b.created_at
+    FROM public.hostel_bookings AS b
+    JOIN public.hostel_rooms AS r ON r.id = b.room_id
+    JOIN public.hostels AS h ON h.id = r.hostel_id
+    JOIN public.profiles AS p ON p.id = b.student_id
+    LEFT JOIN public.student_registrations AS r0 ON r0.user_id = b.student_id
+    WHERE h.school_key = LOWER(BTRIM(COALESCE(p_school_key, '')))
+    ORDER BY b.created_at DESC
+    LIMIT 200;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.my_bed_requests() FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.school_bed_requests(TEXT) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.my_bed_requests() TO authenticated;
+GRANT EXECUTE ON FUNCTION public.school_bed_requests(TEXT) TO authenticated;
+
+DROP TRIGGER IF EXISTS hostels_set_updated_at ON public.hostels;
+CREATE TRIGGER hostels_set_updated_at
+    BEFORE UPDATE ON public.hostels
+    FOR EACH ROW
+    EXECUTE FUNCTION public.set_updated_at();
+
+DROP TRIGGER IF EXISTS hostel_rooms_set_updated_at ON public.hostel_rooms;
+CREATE TRIGGER hostel_rooms_set_updated_at
+    BEFORE UPDATE ON public.hostel_rooms
+    FOR EACH ROW
+    EXECUTE FUNCTION public.set_updated_at();
+
+DROP TRIGGER IF EXISTS hostel_bookings_set_updated_at ON public.hostel_bookings;
+CREATE TRIGGER hostel_bookings_set_updated_at
+    BEFORE UPDATE ON public.hostel_bookings
+    FOR EACH ROW
+    EXECUTE FUNCTION public.set_updated_at();
+
+
+-- ------------------------------------------------------------
+-- 6. CATERING
+-- One row is one plan: what it includes, what it costs and over which
+-- dates. A plan may belong to a hostel (the hall that cooks it) or to the
+-- school as a whole.
+-- ------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS public.meal_plans (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    school TEXT NOT NULL,
+    school_key TEXT GENERATED ALWAYS AS (LOWER(BTRIM(school))) STORED,
+    hostel_id UUID REFERENCES public.hostels(id) ON DELETE SET NULL,
+    name TEXT NOT NULL CHECK (char_length(BTRIM(name)) BETWEEN 2 AND 80),
+    kind TEXT NOT NULL DEFAULT 'full'
+        CHECK (kind IN ('full', 'half', 'light', 'self_catering', 'other')),
+    price_weekly NUMERIC(10, 2) CHECK (price_weekly IS NULL OR price_weekly >= 0),
+    price_semester NUMERIC(10, 2) CHECK (price_semester IS NULL OR price_semester >= 0),
+    menu TEXT NOT NULL DEFAULT '' CHECK (char_length(menu) <= 2000),
+    note TEXT NOT NULL DEFAULT '' CHECK (char_length(note) <= 400),
+    starts_on DATE,
+    ends_on DATE,
+    created_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS meal_plans_school_idx ON public.meal_plans (school_key, created_at DESC);
+
+ALTER TABLE public.meal_plans ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS meal_plans_readable ON public.meal_plans;
+CREATE POLICY meal_plans_readable ON public.meal_plans
+    FOR SELECT TO authenticated
+    USING (TRUE);
+
+DROP POLICY IF EXISTS meal_plans_staff_write ON public.meal_plans;
+CREATE POLICY meal_plans_staff_write ON public.meal_plans
+    FOR INSERT TO authenticated
+    WITH CHECK (created_by = auth.uid() AND public.is_school_staff(school_key));
+
+DROP POLICY IF EXISTS meal_plans_staff_edit ON public.meal_plans;
+CREATE POLICY meal_plans_staff_edit ON public.meal_plans
+    FOR UPDATE TO authenticated
+    USING (public.is_school_staff(school_key))
+    WITH CHECK (public.is_school_staff(school_key));
+
+DROP POLICY IF EXISTS meal_plans_staff_remove ON public.meal_plans;
+CREATE POLICY meal_plans_staff_remove ON public.meal_plans
+    FOR DELETE TO authenticated
+    USING (public.is_school_staff(school_key));
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.meal_plans TO authenticated;
+REVOKE ALL ON public.meal_plans FROM anon, public;
+
+DROP TRIGGER IF EXISTS meal_plans_set_updated_at ON public.meal_plans;
+CREATE TRIGGER meal_plans_set_updated_at
+    BEFORE UPDATE ON public.meal_plans
+    FOR EACH ROW
+    EXECUTE FUNCTION public.set_updated_at();
+
+
+-- ------------------------------------------------------------
+-- 7. THE CHAPLAINCY
+-- The chaplain publishes the year's programme: chapel on Wednesday, the
+-- crusade in March, a retreat in August. A dated event and a repeating
+-- series are the same row, because a school's calendar is half of each.
+-- ------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS public.chaplaincy_events (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    school TEXT NOT NULL,
+    school_key TEXT GENERATED ALWAYS AS (LOWER(BTRIM(school))) STORED,
+    title TEXT NOT NULL CHECK (char_length(BTRIM(title)) BETWEEN 3 AND 120),
+    kind TEXT NOT NULL DEFAULT 'chapel'
+        CHECK (kind IN ('chapel', 'crusade', 'prayer', 'fellowship', 'service', 'retreat', 'other')),
+    term TEXT NOT NULL DEFAULT '' CHECK (char_length(term) <= 60),
+    starts_at TIMESTAMPTZ,
+    ends_at TIMESTAMPTZ,
+    venue TEXT NOT NULL DEFAULT '' CHECK (char_length(venue) <= 160),
+    description TEXT NOT NULL DEFAULT '' CHECK (char_length(description) <= 2000),
+    repeat TEXT NOT NULL DEFAULT 'none' CHECK (repeat IN ('none', 'weekly', 'monthly')),
+    weekday INT CHECK (weekday IS NULL OR weekday BETWEEN 1 AND 7),
+    start_time TIME,
+    contact TEXT NOT NULL DEFAULT '' CHECK (char_length(contact) <= 120),
+    created_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT chaplaincy_events_when_check CHECK (
+        starts_at IS NOT NULL
+        OR (repeat <> 'none' AND weekday IS NOT NULL AND start_time IS NOT NULL)
+    ),
+    CONSTRAINT chaplaincy_events_span_check CHECK (ends_at IS NULL OR starts_at IS NULL OR ends_at > starts_at)
+);
+
+CREATE INDEX IF NOT EXISTS chaplaincy_events_school_idx
+    ON public.chaplaincy_events (school_key, starts_at DESC NULLS LAST, created_at DESC);
+
+ALTER TABLE public.chaplaincy_events ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS chaplaincy_events_readable ON public.chaplaincy_events;
+CREATE POLICY chaplaincy_events_readable ON public.chaplaincy_events
+    FOR SELECT TO authenticated
+    USING (TRUE);
+
+DROP POLICY IF EXISTS chaplaincy_chaplain_write ON public.chaplaincy_events;
+CREATE POLICY chaplaincy_chaplain_write ON public.chaplaincy_events
+    FOR INSERT TO authenticated
+    WITH CHECK (created_by = auth.uid() AND public.may_lead_chaplaincy(school_key));
+
+DROP POLICY IF EXISTS chaplaincy_chaplain_edit ON public.chaplaincy_events;
+CREATE POLICY chaplaincy_chaplain_edit ON public.chaplaincy_events
+    FOR UPDATE TO authenticated
+    USING (public.may_lead_chaplaincy(school_key))
+    WITH CHECK (public.may_lead_chaplaincy(school_key));
+
+DROP POLICY IF EXISTS chaplaincy_chaplain_remove ON public.chaplaincy_events;
+CREATE POLICY chaplaincy_chaplain_remove ON public.chaplaincy_events
+    FOR DELETE TO authenticated
+    USING (public.may_lead_chaplaincy(school_key));
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.chaplaincy_events TO authenticated;
+REVOKE ALL ON public.chaplaincy_events FROM anon, public;
+
+DROP TRIGGER IF EXISTS chaplaincy_events_set_updated_at ON public.chaplaincy_events;
+CREATE TRIGGER chaplaincy_events_set_updated_at
+    BEFORE UPDATE ON public.chaplaincy_events
+    FOR EACH ROW
+    EXECUTE FUNCTION public.set_updated_at();
+
+
+-- ------------------------------------------------------------
+-- 8. PRAYER REQUESTS
+-- Unlike every other table here, a request is not a catalogue. The
+-- student who wrote it and the chaplaincy of their school are the only
+-- accounts that ever see it.
+-- ------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS public.prayer_requests (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    school TEXT NOT NULL DEFAULT '',
+    school_key TEXT GENERATED ALWAYS AS (LOWER(BTRIM(school))) STORED,
+    student_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    request TEXT NOT NULL CHECK (char_length(BTRIM(request)) BETWEEN 1 AND 1000),
+    kind TEXT NOT NULL DEFAULT 'prayer'
+        CHECK (kind IN ('prayer', 'counsel', 'thanksgiving', 'other')),
+    answerable BOOLEAN NOT NULL DEFAULT TRUE,
+    status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'answered')),
+    reply TEXT NOT NULL DEFAULT '' CHECK (char_length(reply) <= 1000),
+    answered_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+    answered_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS prayer_requests_school_status_idx
+    ON public.prayer_requests (school_key, status, created_at DESC);
+
+ALTER TABLE public.prayer_requests ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS prayer_requests_own_or_chaplaincy ON public.prayer_requests;
+CREATE POLICY prayer_requests_own_or_chaplaincy ON public.prayer_requests
+    FOR SELECT TO authenticated
+    USING (student_id = auth.uid() OR public.may_lead_chaplaincy(school_key));
+
+DROP POLICY IF EXISTS prayer_requests_student_write ON public.prayer_requests;
+CREATE POLICY prayer_requests_student_write ON public.prayer_requests
+    FOR INSERT TO authenticated
+    WITH CHECK (student_id = auth.uid() AND answerable);
+
+DROP POLICY IF EXISTS prayer_requests_chaplaincy_answer ON public.prayer_requests;
+CREATE POLICY prayer_requests_chaplaincy_answer ON public.prayer_requests
+    FOR UPDATE TO authenticated
+    USING (public.may_lead_chaplaincy(school_key))
+    WITH CHECK (public.may_lead_chaplaincy(school_key) AND student_id = OLD.student_id);
+
+DROP POLICY IF EXISTS prayer_requests_student_remove ON public.prayer_requests;
+CREATE POLICY prayer_requests_student_remove ON public.prayer_requests
+    FOR DELETE TO authenticated
+    USING (student_id = auth.uid() AND status = 'open');
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.prayer_requests TO authenticated;
+REVOKE ALL ON public.prayer_requests FROM anon, public;
+
+DROP TRIGGER IF EXISTS prayer_requests_set_updated_at ON public.prayer_requests;
+CREATE TRIGGER prayer_requests_set_updated_at
+    BEFORE UPDATE ON public.prayer_requests
+    FOR EACH ROW
+    EXECUTE FUNCTION public.set_updated_at();
+
+
+-- ------------------------------------------------------------
+-- 9. THE CLASS LIST THAT WRITES ITSELF
+-- A lecturer opens a window, reads out a code, and every student who is
+-- actually in the class presses once. The names come out of the rows
+-- below, so an attendance list is never something a student typed.
+-- ------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.class_occurrence_date(p_weekday INT)
+RETURNS DATE
+LANGUAGE sql
+STABLE
+SET search_path = ''
+AS $$
+    SELECT CURRENT_DATE - (EXTRACT(ISODOW FROM CURRENT_DATE)::INT - p_weekday)
+$$;
+
+REVOKE ALL ON FUNCTION public.class_occurrence_date(INT) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.class_occurrence_date(INT) TO authenticated;
+
+ALTER TABLE public.class_sessions
+    ADD COLUMN IF NOT EXISTS checkin_code TEXT NOT NULL DEFAULT '',
+    ADD COLUMN IF NOT EXISTS checkin_opens_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS checkin_expires_at TIMESTAMPTZ,
+    ADD COLUMN IF NOT EXISTS checkin_occurrence DATE;
+
+CREATE TABLE IF NOT EXISTS public.class_checkins (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    class_id UUID NOT NULL REFERENCES public.class_sessions(id) ON DELETE CASCADE,
+    student_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    occurrence_date DATE NOT NULL,
+    method TEXT NOT NULL DEFAULT 'code' CHECK (method IN ('code', 'corrected')),
+    checked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT class_checkins_once_per_class UNIQUE (class_id, student_id, occurrence_date)
+);
+
+CREATE INDEX IF NOT EXISTS class_checkins_roll_idx
+    ON public.class_checkins (class_id, occurrence_date, checked_at);
+
+ALTER TABLE public.class_checkins ENABLE ROW LEVEL SECURITY;
+
+-- A student sees their own mark. The lecturer who owns the class sees the
+-- whole list; nobody else gets anything.
+DROP POLICY IF EXISTS class_checkins_own_or_owner ON public.class_checkins;
+CREATE POLICY class_checkins_own_or_owner ON public.class_checkins
+    FOR SELECT TO authenticated
+    USING (
+        student_id = auth.uid()
+        OR public.is_admin()
+        OR EXISTS (
+            SELECT 1 FROM public.class_sessions AS s
+            WHERE s.id = class_checkins.class_id
+              AND s.lecturer_id = auth.uid()
+        )
+    );
+
+GRANT SELECT ON public.class_checkins TO authenticated;
+REVOKE ALL ON public.class_checkins FROM anon, public;
+
+CREATE OR REPLACE FUNCTION public.open_class_checkin(p_class_id UUID, p_minutes INT DEFAULT 20)
+RETURNS TEXT
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_lecturer UUID;
+    v_weekday INT;
+    v_code TEXT;
+    v_window INT;
+BEGIN
+    SELECT s.lecturer_id, s.weekday INTO v_lecturer, v_weekday
+    FROM public.class_sessions AS s
+    WHERE s.id = p_class_id;
+
+    IF v_lecturer IS NULL THEN
+        RAISE EXCEPTION 'No such class.' USING ERRCODE = 'P0002';
+    END IF;
+
+    IF v_lecturer <> auth.uid() AND NOT public.is_admin() THEN
+        RAISE EXCEPTION 'Only the lecturer taking that class can open its register.'
+            USING ERRCODE = '42501';
+    END IF;
+
+    v_window := LEAST(GREATEST(COALESCE(p_minutes, 20), 1), 120);
+    SELECT UPPER(SUBSTR(MD5(RANDOM()::TEXT || CLOCK_TIMESTAMP()::TEXT), 1, 6)) INTO v_code;
+
+    UPDATE public.class_sessions
+        SET checkin_code = v_code,
+            checkin_opens_at = NOW(),
+            checkin_expires_at = NOW() + MAKE_INTERVAL(mins => v_window),
+            checkin_occurrence = public.class_occurrence_date(v_weekday)
+        WHERE id = p_class_id;
+
+    RETURN v_code;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.check_into_class(p_class_id UUID, p_code TEXT)
+RETURNS INT
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_expected TEXT;
+    v_expires TIMESTAMPTZ;
+    v_on DATE;
+    v_weekday INT;
+BEGIN
+    SELECT s.checkin_code, s.checkin_expires_at, s.checkin_occurrence, s.weekday
+      INTO v_expected, v_expires, v_on, v_weekday
+    FROM public.class_sessions AS s
+    WHERE s.id = p_class_id;
+
+    IF v_expected IS NULL THEN
+        RAISE EXCEPTION 'No such class.' USING ERRCODE = 'P0002';
+    END IF;
+
+    -- The register is opened by the lecturer, never by the app alone. This
+    -- is the whole difference between an attendance list and a wish list.
+    IF v_expected = '' OR v_expires IS NULL OR v_expires < NOW() THEN
+        RAISE EXCEPTION 'That register is closed. Ask the lecturer to open it again.'
+            USING ERRCODE = 'P0001';
+    END IF;
+
+    IF UPPER(BTRIM(COALESCE(p_code, ''))) <> v_expected THEN
+        RAISE EXCEPTION 'That code is not the one on the board.'
+            USING ERRCODE = '22023';
+    END IF;
+
+    IF NOT public.may_use_classes() THEN
+        RAISE EXCEPTION 'A class list needs your registration number on file.'
+            USING ERRCODE = '42501';
+    END IF;
+
+    IF v_on IS NULL THEN
+        v_on := public.class_occurrence_date(v_weekday);
+    END IF;
+
+    INSERT INTO public.class_checkins (class_id, student_id, occurrence_date)
+        VALUES (p_class_id, auth.uid(), v_on)
+    ON CONFLICT (class_id, student_id, occurrence_date) DO NOTHING;
+
+    RETURN FOUND::INT;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.class_attendance(
+    p_class_id UUID,
+    p_occurrence DATE DEFAULT NULL
+)
+RETURNS TABLE (
+    member_id UUID,
+    full_name TEXT,
+    username TEXT,
+    registration_number TEXT,
+    programme TEXT,
+    study_year INT,
+    semester INT,
+    checked_at TIMESTAMPTZ
+)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    v_lecturer UUID;
+BEGIN
+    SELECT s.lecturer_id INTO v_lecturer
+    FROM public.class_sessions AS s
+    WHERE s.id = p_class_id;
+
+    IF v_lecturer IS NULL THEN
+        RAISE EXCEPTION 'No such class.' USING ERRCODE = 'P0002';
+    END IF;
+
+    IF v_lecturer <> auth.uid() AND NOT public.is_admin() THEN
+        RAISE EXCEPTION 'Only the lecturer taking that class reads its attendance.'
+            USING ERRCODE = '42501';
+    END IF;
+
+    RETURN QUERY
+    SELECT c.student_id,
+           p.full_name,
+           p.username,
+           r.registration_number,
+           g.name,
+           p.study_year,
+           p.semester,
+           c.checked_at
+    FROM public.class_checkins AS c
+    JOIN public.profiles AS p ON p.id = c.student_id
+    LEFT JOIN public.student_registrations AS r ON r.user_id = p.id
+    LEFT JOIN public.programmes AS g ON g.id = p.programme_id
+    WHERE c.class_id = p_class_id
+      AND (p_occurrence IS NULL OR c.occurrence_date = p_occurrence)
+    ORDER BY p.full_name;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.open_class_checkin(UUID, INT) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.check_into_class(UUID, TEXT) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.class_attendance(UUID, DATE) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.open_class_checkin(UUID, INT) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.check_into_class(UUID, TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.class_attendance(UUID, DATE) TO authenticated;
+
+DROP TRIGGER IF EXISTS campus_services_set_updated_at ON public.campus_services;
+CREATE TRIGGER campus_services_set_updated_at
+    BEFORE UPDATE ON public.campus_services
+    FOR EACH ROW
+    EXECUTE FUNCTION public.set_updated_at();
+
+
+-- ------------------------------------------------------------
+-- 10. THE APPROVAL PATH NOW KNOWS THE FIFTH ROLE
+-- A person asks for the role, an admin grants it. These are the same two
+-- functions that already do that for a lecturer or a security member,
+-- with 'chaplain' added to the lists they check.
+-- ------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.approve_membership(p_user_id UUID)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    IF NOT public.is_admin() THEN
+        RAISE EXCEPTION 'Only an admin can approve a role request.'
+            USING ERRCODE = '42501';
+    END IF;
+
+    UPDATE public.profiles
+        SET verification_status = 'approved',
+            role = CASE WHEN requested_role IN ('lecturer', 'security', 'chaplain')
+                        THEN requested_role ELSE role END
+        WHERE id = p_user_id;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'No such member.' USING ERRCODE = 'P0002';
+    END IF;
+
+    INSERT INTO public.admin_action_log (actor_id, target_user_id, action)
+        VALUES (auth.uid(), p_user_id, 'approve');
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.set_user_role(p_user_id UUID, p_role TEXT)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    IF NOT public.is_admin() THEN
+        RAISE EXCEPTION 'Only an admin can change a role.'
+            USING ERRCODE = '42501';
+    END IF;
+
+    IF p_role NOT IN ('student', 'lecturer', 'security', 'admin', 'member', 'chaplain') THEN
+        RAISE EXCEPTION 'Unknown role.' USING ERRCODE = '22023';
+    END IF;
+
+    -- Refuse to lock everybody out of the admin screen.
+    IF p_role <> 'admin'
+       AND (SELECT role FROM public.profiles WHERE id = p_user_id) = 'admin'
+       AND (SELECT COUNT(*) FROM public.profiles WHERE role = 'admin') <= 1 THEN
+        RAISE EXCEPTION 'That is the last admin. Appoint another admin first.'
+            USING ERRCODE = 'P0001';
+    END IF;
+
+    UPDATE public.profiles
+        SET role = p_role,
+            verification_status = 'approved',
+            requested_role = ''
+        WHERE id = p_user_id;
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'No such member.' USING ERRCODE = 'P0002';
+    END IF;
+
+    INSERT INTO public.admin_action_log (actor_id, target_user_id, action, detail)
+        VALUES (auth.uid(), p_user_id, 'set_role', p_role);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.enforce_profile_role_integrity()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    IF auth.uid() IS NULL THEN
+        RETURN NEW;
+    END IF;
+
+    IF TG_OP = 'INSERT' THEN
+        IF public.is_admin() AND NEW.role IS NOT NULL THEN
+            RETURN NEW;
+        END IF;
+        -- Sign-up can carry a request, never a role.
+        NEW.role := 'student';
+        IF NEW.requested_role IN ('lecturer', 'security', 'chaplain') THEN
+            NEW.verification_status := 'pending';
+        ELSE
+            NEW.verification_status := 'approved';
+            NEW.requested_role := '';
+        END IF;
+        RETURN NEW;
+    END IF;
+
+    -- A member may ask for a role; only an admin may grant one.
+    IF NEW.requested_role IS DISTINCT FROM OLD.requested_role THEN
+        IF NEW.requested_role = ''
+           AND OLD.role = 'student'
+           AND NOT public.is_admin() THEN
+            NEW.verification_status := 'approved';
+            RETURN NEW;
+        END IF;
+
+        IF NEW.requested_role <> '' AND NOT public.is_admin() THEN
+            IF OLD.verification_status = 'rejected' AND OLD.requested_role = NEW.requested_role THEN
+                RAISE EXCEPTION 'An admin already rejected that role request.'
+                    USING ERRCODE = '42501';
+            END IF;
+            NEW.verification_status := 'pending';
+            RETURN NEW;
+        END IF;
+    END IF;
+
+    IF NEW.role IS DISTINCT FROM OLD.role
+       OR NEW.verification_status IS DISTINCT FROM OLD.verification_status THEN
+        IF NOT public.is_admin() THEN
+            RAISE EXCEPTION 'Only an admin can change a role or approval status.'
+                USING ERRCODE = '42501';
+        END IF;
+    END IF;
+
+    RETURN NEW;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.enforce_profile_role_integrity() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.approve_membership(UUID) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.set_user_role(UUID, TEXT) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.approve_membership(UUID) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.set_user_role(UUID, TEXT) TO authenticated;
+
+
+-- ------------------------------------------------------------
+-- 11. KABARAK, AS ITS OWN MEMBER DESCRIBED IT
+-- Only what was actually named: the school and its four men's hostels.
+-- No hall is invented here, so a ladies' hostel appears the moment
+-- somebody who knows its name adds it. Every other school is left out of
+-- this table on purpose - its own staff turn its own services on.
+-- ------------------------------------------------------------
+
+INSERT INTO public.campus_services
+        (school, accommodation, catering, chaplaincy, attendance, updated_by)
+SELECT 'Kabarak University', TRUE, TRUE, TRUE, TRUE,
+       (SELECT p.id FROM public.profiles AS p WHERE p.role = 'admin' ORDER BY p.created_at LIMIT 1)
+ON CONFLICT (school_key) DO NOTHING;
+
+INSERT INTO public.hostels (school, name, gender, verified, added_by)
+SELECT 'Kabarak University', h.name, 'men', TRUE,
+       (SELECT p.id FROM public.profiles AS p WHERE p.role = 'admin' ORDER BY p.created_at LIMIT 1)
+FROM (VALUES ('Elementeita'), ('Bogoria'), ('Baringo'), ('Turkana')) AS h(name)
+ON CONFLICT (school_key, name_key) DO NOTHING;
+
+
+-- ------------------------------------------------------------
+-- 12. TELL POSTGREST THE SHAPE CHANGED
+-- ------------------------------------------------------------
+
+NOTIFY pgrst, 'reload schema';
+
+
+-- ------------------------------------------------------------
+-- PART 22 CHECK: the two rows that a school cannot fix from the app
+-- ------------------------------------------------------------
+
+SELECT 'campus service: Kabarak has its departments' AS check_name,
+       CASE WHEN COUNT(*) = 1 THEN 'ok'
+            ELSE 'MISSING (turn the four switches on for that school in the Services page)' END AS result
+FROM public.campus_services
+WHERE school_key = 'kabarak university'
+UNION ALL
+SELECT 'hostels named for Kabarak',
+       CASE WHEN COUNT(*) >= 4 THEN 'ok'
+            ELSE 'MISSING (the four men''s hostels the school named are not all in the list)' END
+FROM public.hostels
+WHERE school_key = 'kabarak university'
+UNION ALL
+SELECT 'register: an authenticated account may open it',
+       CASE WHEN has_function_privilege('authenticated', 'public.open_class_checkin(uuid, integer)', 'EXECUTE')
+            THEN 'ok' ELSE 'MISSING (a lecturer cannot open a class register)' END;
+
+
+
 -- FINAL CHECK: every row should read ok
 -- ===================================================================
 SELECT 'publication: ' || t.table_name AS check_name,
@@ -6151,7 +7367,9 @@ FROM (VALUES ('user_blocks'), ('user_presence'), ('call_signals'), ('friend_requ
              ('message_attachments'), ('notification_preferences'), ('student_registrations'),
              ('contact_names'), ('message_reactions'), ('message_stars'), ('lecturer_submissions'),
              ('programmes'), ('units'), ('class_sessions'), ('bulletins'), ('companies'),
-             ('community_reads'), ('device_tokens'), ('conversation_settings')) AS t(table_name)
+             ('community_reads'), ('device_tokens'), ('conversation_settings'),
+             ('campus_services'), ('hostels'), ('hostel_rooms'), ('hostel_bookings'),
+             ('meal_plans'), ('chaplaincy_events'), ('prayer_requests'), ('class_checkins')) AS t(table_name)
 LEFT JOIN information_schema.tables AS tb
        ON tb.table_schema = 'public' AND tb.table_name = t.table_name
 UNION ALL
@@ -6196,6 +7414,15 @@ UNION ALL
 SELECT 'phone function: ' || f.function_name,
        CASE WHEN x.specific_name IS NOT NULL THEN 'ok' ELSE 'MISSING (dialling a number from the app will not work)' END
 FROM (VALUES ('normalize_phone_digits'), ('find_member_by_phone')) AS f(function_name)
+LEFT JOIN information_schema.routines AS x
+       ON x.routine_schema = 'public' AND x.routine_name = f.function_name
+UNION ALL
+SELECT 'services function: ' || f.function_name,
+       CASE WHEN x.specific_name IS NOT NULL THEN 'ok' ELSE 'MISSING (hostels, chaplaincy or the class register will not work)' END
+FROM (VALUES ('my_school_key'), ('is_school_staff'), ('may_lead_chaplaincy'),
+             ('ask_for_hostel_bed'), ('decide_hostel_booking'), ('my_bed_requests'),
+             ('school_bed_requests'), ('class_occurrence_date'),
+             ('open_class_checkin'), ('check_into_class'), ('class_attendance')) AS f(function_name)
 LEFT JOIN information_schema.routines AS x
        ON x.routine_schema = 'public' AND x.routine_name = f.function_name
 ORDER BY check_name;

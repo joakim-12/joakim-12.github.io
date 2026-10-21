@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#075b57">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="campus connect">
+    <meta name="description" content="The departments of your school inside the app: a hostel bed, a meal plan, the year's church programme and the class register.">
+    <link rel="icon" type="image/png" href="/icons/icon-192.png">
+    <link rel="apple-touch-icon" href="/icons/icon-192.png">
+    <link rel="manifest" href="/manifest.json">
+    <title>Campus services | campus connect</title>
+    <style>
+        :root {
+            color-scheme: light;
+            --page: #f0f2f5;
+            --panel: #fff;
+            --text: #111b21;
+            --muted: #667781;
+            --border: #e9edef;
+            --primary: #00a884;
+            --input: #f0f2f5;
+        }
+
+        body.dark-mode {
+            color-scheme: dark;
+            --page: #0b141a;
+            --panel: #111b21;
+            --text: #e9edef;
+            --muted: #8696a0;
+            --border: #2f3b40;
+            --primary: #00a884;
+            --input: #2a3942;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            padding-bottom: calc(28px + env(safe-area-inset-bottom, 0px));
+            background: var(--page);
+            color: var(--text);
+            font-family: "Segoe UI", system-ui, -apple-system, Arial, sans-serif;
+        }
+
+        a { color: inherit; }
+
+        .uni-topbar {
+            position: sticky;
+            top: 0;
+            z-index: 5;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 12px;
+            background: var(--primary);
+            color: #fff;
+        }
+
+        .uni-topbar h1 { flex: 1; margin: 0; font-size: 17px; }
+        .uni-topbar a, .uni-topbar button { color: #fff; font-size: 14px; }
+        .uni-topbar .back { display: grid; width: 34px; height: 34px; place-items: center; border-radius: 50%; background: rgb(255 255 255 / 16%); text-decoration: none; font-size: 18px; }
+        .text-button { padding: 7px 12px; border: 0; border-radius: 999px; background: rgb(255 255 255 / 16%); font: inherit; cursor: pointer; }
+
+        .wrap { max-width: 780px; margin: 0 auto; padding: 14px 12px 0; }
+
+        .page-title { margin: 6px 0 2px; font-size: clamp(24px, 5vw, 30px); font-weight: 800; letter-spacing: -.7px; }
+        .page-sub { margin: 0 0 14px; color: var(--muted); font-size: 14px; }
+
+        .search-bar {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 0 0 12px;
+            padding: 10px 16px;
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            background: var(--panel);
+        }
+
+        .search-bar svg { width: 18px; height: 18px; fill: none; stroke: var(--muted); stroke-width: 2; flex: 0 0 auto; }
+        .search-bar input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text); font: inherit; font-size: 15px; }
+        .search-bar button { padding: 6px 12px; border: 0; border-radius: 999px; background: var(--primary); color: #04150f; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+
+        .panel { margin: 0 0 14px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 14px; background: var(--panel); }
+        .panel summary { font-weight: 700; cursor: pointer; }
+        .panel label { display: block; margin: 10px 0 4px; font-size: 13px; color: var(--muted); }
+        .panel input, .panel select, .panel textarea {
+            width: 100%;
+            padding: 9px 11px;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            background: var(--input);
+            color: var(--text);
+            font: inherit;
+            font-size: 14px;
+        }
+        .panel textarea { min-height: 74px; resize: vertical; }
+        .panel button[type="submit"], .panel button.go {
+            margin-top: 12px;
+            padding: 9px 16px;
+            border: 0;
+            border-radius: 999px;
+            background: var(--primary);
+            color: #04150f;
+            font: inherit;
+            font-weight: 700;
+            cursor: pointer;
+        }
+        .panel p { margin: 10px 0 0; color: var(--muted); font-size: 12.5px; line-height: 1.5; }
+
+        .chips { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 14px; }
+        .dept-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 7px 13px;
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            background: var(--panel);
+            color: var(--text);
+            font: inherit;
+            font-size: 13.5px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        .dept-chip.on { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 14%, var(--panel)); }
+
+        .section-title { margin: 18px 0 8px; font-size: 13px; font-weight: 700; letter-spacing: .06em; color: var(--muted); text-transform: uppercase; }
+
+        .uni-card { margin: 0 0 10px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 14px; background: var(--panel); }
+        .uni-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+        .uni-name { margin: 0; font-size: 17px; font-weight: 700; }
+        .uni-meta { color: var(--muted); font-size: 13px; }
+        .uni-note { margin: 10px 0 0; color: var(--muted); font-size: 12.5px; line-height: 1.5; }
+
+        .kind-chip { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px; border-radius: 999px; font-size: 11.5px; font-weight: 700; letter-spacing: .02em; white-space: nowrap; }
+        .kind-men { background: color-mix(in srgb, #2582d8 16%, var(--panel)); color: #1668b3; }
+        .kind-women { background: color-mix(in srgb, #c9457f 16%, var(--panel)); color: #a5306a; }
+        .kind-mixed { background: color-mix(in srgb, #7a5bd0 16%, var(--panel)); color: #5a3fb0; }
+        .kind-site { background: color-mix(in srgb, var(--primary) 16%, var(--panel)); color: #046c56; }
+
+        .room-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border); }
+        .room-label { font-size: 14px; font-weight: 600; }
+        .room-meta { flex: 1; min-width: 120px; color: var(--muted); font-size: 12.5px; }
+
+        .uni-card button, .row-button {
+            padding: 7px 13px;
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            background: color-mix(in srgb, var(--text) 4%, var(--panel));
+            color: var(--text);
+            font: inherit;
+            font-size: 13px;
+            cursor: pointer;
+        }
+        .uni-card button.go, .row-button.go { border: 0; background: var(--primary); color: #04150f; font-weight: 700; }
+        .uni-card button[disabled] { opacity: .55; cursor: default; }
+
+        .state { padding: 18px 4px; color: var(--muted); font-size: 14px; text-align: center; }
+        .status { margin: 10px 0 0; font-size: 13px; }
+        .status.error { color: #d12c2c; }
+        .status.success { color: #046c56; }
+        .footnote { margin: 18px 0 8px; color: var(--muted); font-size: 12.5px; line-height: 1.6; }
+        [hidden] { display: none !important; }
+    </style>
+  <script type="module" crossorigin src="/assets/services-DA37TxmH.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/pwa-Ciu4DNql.js">
+  <link rel="modulepreload" crossorigin href="/assets/offline-banner-DubDYSn2.js">
+  <link rel="modulepreload" crossorigin href="/assets/offline-store-C3sY6Srk.js">
+</head>
+
+<body>
+    <header class="uni-topbar">
+        <a class="back" href="/#profile" aria-label="Back" data-i18n-aria-label="Back">←</a>
+        <h1 data-i18n="Campus services">Campus services</h1>
+        <div class="topbar-actions">
+            <button class="text-button" type="button" id="theme-toggle">🌙 Night Mode</button>
+        </div>
+    </header>
+
+    <main class="wrap">
+        <h2 class="page-title" data-i18n="Your school's departments">Your school's departments</h2>
+        <p class="page-sub" data-i18n="A bed in a hostel, a meal plan, the year's church programme and the class register - the offices of your school, inside the app.">
+            A bed in a hostel, a meal plan, the year's church programme and the class register - the offices of your
+            school, inside the app.
+        </p>
+
+        <div class="search-bar">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" /><path d="m20 20-3.6-3.6" /></svg>
+            <input id="school-input" type="search" autocomplete="off"
+                   placeholder="Type your school's name…" data-i18n-placeholder="Type your school's name…">
+            <button type="button" id="school-go" data-i18n="Look up">Look up</button>
+        </div>
+
+        <div id="dept-chips" class="chips" hidden></div>
+
+        <p id="page-status" class="state"></p>
+
+        <section id="none-panel" class="panel" hidden>
+            <strong data-i18n="Nothing is switched on for this school yet.">Nothing is switched on for this school yet.</strong>
+            <p data-i18n="A school appears here only when somebody who works there says what it runs. Nothing is invented for a school that has not described itself.">
+                A school appears here only when somebody who works there says what it runs. Nothing is invented for a
+                school that has not described itself.
+            </p>
+        </section>
+
+        <details id="switch-panel" class="panel" hidden>
+            <summary data-i18n="Which departments does this school run?">Which departments does this school run?</summary>
+            <label><input type="checkbox" id="switch-accommodation"> <span data-i18n="Hostels and beds">Hostels and beds</span></label>
+            <label><input type="checkbox" id="switch-catering"> <span data-i18n="Catering and meal plans">Catering and meal plans</span></label>
+            <label><input type="checkbox" id="switch-chaplaincy"> <span data-i18n="Chaplaincy and the year's programme">Chaplaincy and the year's programme</span></label>
+            <button class="go" type="button" id="switch-save" data-i18n="Save these switches">Save these switches</button>
+            <p data-i18n="Only the office of that school, or an admin, can change them. A school with no row here offers nothing until it is switched on.">
+                Only the office of that school, or an admin, can change them. A school with no row here offers nothing
+                until it is switched on.
+            </p>
+            <p id="switch-status" class="status" role="status"></p>
+        </details>
+
+        <section id="bed-section" hidden>
+            <div id="my-bed-heading" class="section-title" data-i18n="Your bed requests">Your bed requests</div>
+            <div id="my-bed-list"></div>
+
+            <div class="section-title" id="hostel-heading" data-i18n="Hostels of this school">Hostels of this school</div>
+            <div id="hostel-list"></div>
+
+            <details id="hostel-add-panel" class="panel" hidden>
+                <summary data-i18n="Add a hostel or a room">Add a hostel or a room</summary>
+                <form id="hostel-form">
+                    <label for="hostel-name" data-i18n="Hostel name">Hostel name</label>
+                    <input id="hostel-name" type="text" maxlength="80" autocomplete="off" required>
+                    <label for="hostel-gender" data-i18n="Who lives here">Who lives here</label>
+                    <select id="hostel-gender">
+                        <option value="men" data-i18n="Men">Men</option>
+                        <option value="women" data-i18n="Women">Women</option>
+                        <option value="mixed" data-i18n="Mixed">Mixed</option>
+                    </select>
+                    <label for="hostel-address" data-i18n="Where it stands">Where it stands</label>
+                    <input id="hostel-address" type="text" maxlength="160" autocomplete="off">
+                    <label for="hostel-note" data-i18n="Anything a parent should know">Anything a parent should know</label>
+                    <input id="hostel-note" type="text" maxlength="400" autocomplete="off">
+                    <button type="submit" data-i18n="Add the hostel">Add the hostel</button>
+                </form>
+                <form id="room-form">
+                    <label for="room-hostel" data-i18n="Which hostel">Which hostel</label>
+                    <select id="room-hostel"></select>
+                    <label for="room-label" data-i18n="Room">Room</label>
+                    <input id="room-label" type="text" maxlength="40" autocomplete="off" placeholder="B-14" data-i18n-placeholder="Room">
+                    <label for="room-sharing" data-i18n="Sharing">Sharing</label>
+                    <select id="room-sharing">
+                        <option value="single" data-i18n="Single">Single</option>
+                        <option value="twin" data-i18n="Twin">Twin</option>
+                        <option value="double" data-i18n="Double">Double</option>
+                        <option value="four" data-i18n="Four to a room">Four to a room</option>
+                        <option value="other" data-i18n="Other">Other</option>
+                    </select>
+                    <label for="room-beds" data-i18n="Beds in it">Beds in it</label>
+                    <input id="room-beds" type="number" min="1" max="12" value="2">
+                    <label for="room-fee" data-i18n="Fee per semester">Fee per semester</label>
+                    <input id="room-fee" type="text" inputmode="decimal" maxlength="12" autocomplete="off">
+                    <label><input type="checkbox" id="room-meals"> <span data-i18n="Meals are included">Meals are included</span></label>
+                    <button class="go" type="button" id="room-save" data-i18n="Add the room">Add the room</button>
+                </form>
+                <p data-i18n="Write the name exactly as the school writes it, so a parent searching for it finds the one row.">
+                    Write the name exactly as the school writes it, so a parent searching for it finds the one row.
+                </p>
+                <p id="hostel-status" class="status" role="status"></p>
+            </details>
+
+            <details id="office-panel" class="panel" hidden>
+                <summary data-i18n="Housing office: requests waiting">Housing office: requests waiting</summary>
+                <div id="office-list"></div>
+                <p id="office-status" class="status" role="status"></p>
+            </details>
+        </section>
+
+        <section id="catering-section" hidden>
+            <div class="section-title" data-i18n="Catering">Catering</div>
+            <div id="meal-list"></div>
+
+            <details id="meal-add-panel" class="panel" hidden>
+                <summary data-i18n="Put a plan on the catering board">Put a plan on the catering board</summary>
+                <form id="meal-form">
+                    <label for="meal-name" data-i18n="Plan name">Plan name</label>
+                    <input id="meal-name" type="text" maxlength="80" autocomplete="off" required>
+                    <label for="meal-kind" data-i18n="What it covers">What it covers</label>
+                    <select id="meal-kind">
+                        <option value="full" data-i18n="Three meals a day">Three meals a day</option>
+                        <option value="half" data-i18n="Two meals a day">Two meals a day</option>
+                        <option value="light" data-i18n="One meal a day">One meal a day</option>
+                        <option value="self_catering" data-i18n="Self catering">Self catering</option>
+                        <option value="other" data-i18n="Other">Other</option>
+                    </select>
+                    <label for="meal-week" data-i18n="Price per week">Price per week</label>
+                    <input id="meal-week" type="text" inputmode="decimal" maxlength="12" autocomplete="off">
+                    <label for="meal-term" data-i18n="Price per semester">Price per semester</label>
+                    <input id="meal-term" type="text" inputmode="decimal" maxlength="12" autocomplete="off">
+                    <label for="meal-menu" data-i18n="The week's menu">The week's menu</label>
+                    <textarea id="meal-menu" maxlength="2000"></textarea>
+                    <button type="submit" data-i18n="Add the plan">Add the plan</button>
+                </form>
+                <p id="meal-status" class="status" role="status"></p>
+            </details>
+        </section>
+
+        <section id="chaplaincy-section" hidden>
+            <div class="section-title" data-i18n="Chaplaincy">Chaplaincy</div>
+            <div id="event-list"></div>
+
+            <details id="event-add-panel" class="panel" hidden>
+                <summary data-i18n="Chaplain: publish the year's programme">Chaplain: publish the year's programme</summary>
+                <form id="event-form">
+                    <label for="event-title" data-i18n="Name of the programme">Name of the programme</label>
+                    <input id="event-title" type="text" maxlength="120" autocomplete="off" required>
+                    <label for="event-kind" data-i18n="What it is">What it is</label>
+                    <select id="event-kind">
+                        <option value="chapel" data-i18n="Chapel service">Chapel service</option>
+                        <option value="crusade" data-i18n="Crusade">Crusade</option>
+                        <option value="prayer" data-i18n="Prayer meeting">Prayer meeting</option>
+                        <option value="fellowship" data-i18n="Fellowship">Fellowship</option>
+                        <option value="service" data-i18n="Worship service">Worship service</option>
+                        <option value="retreat" data-i18n="Retreat">Retreat</option>
+                        <option value="other" data-i18n="Other">Other</option>
+                    </select>
+                    <label for="event-term" data-i18n="Which term">Which term</label>
+                    <input id="event-term" type="text" maxlength="60" autocomplete="off" placeholder="Michaelmas 2026/2027">
+                    <label for="event-repeat" data-i18n="How often">How often</label>
+                    <select id="event-repeat">
+                        <option value="none" data-i18n="One date only">One date only</option>
+                        <option value="weekly" data-i18n="Every week">Every week</option>
+                        <option value="monthly" data-i18n="Every month">Every month</option>
+                    </select>
+                    <div id="event-dated">
+                        <label for="event-start" data-i18n="Starts">Starts</label>
+                        <input id="event-start" type="datetime-local">
+                        <label for="event-end" data-i18n="Ends (optional)">Ends (optional)</label>
+                        <input id="event-end" type="datetime-local">
+                    </div>
+                    <div id="event-series" hidden>
+                        <label for="event-weekday" data-i18n="Which day">Which day</label>
+                        <select id="event-weekday">
+                            <option value="1" data-i18n="Monday">Monday</option>
+                            <option value="2" data-i18n="Tuesday">Tuesday</option>
+                            <option value="3" data-i18n="Wednesday">Wednesday</option>
+                            <option value="4" data-i18n="Thursday">Thursday</option>
+                            <option value="5" data-i18n="Friday">Friday</option>
+                            <option value="6" data-i18n="Saturday">Saturday</option>
+                            <option value="7" data-i18n="Sunday">Sunday</option>
+                        </select>
+                        <label for="event-time" data-i18n="At what time">At what time</label>
+                        <input id="event-time" type="time" value="18:00">
+                    </div>
+                    <label for="event-venue" data-i18n="Where">Where</label>
+                    <input id="event-venue" type="text" maxlength="160" autocomplete="off">
+                    <label for="event-about" data-i18n="What it is about">What it is about</label>
+                    <textarea id="event-about" maxlength="2000"></textarea>
+                    <button type="submit" data-i18n="Put it on the calendar">Put it on the calendar</button>
+                </form>
+                <p id="event-status" class="status" role="status"></p>
+            </details>
+
+            <details id="request-panel" class="panel">
+                <summary data-i18n="Send something to the chaplain">Send something to the chaplain</summary>
+                <form id="request-form">
+                    <label for="request-kind" data-i18n="What do you need">What do you need</label>
+                    <select id="request-kind">
+                        <option value="prayer" data-i18n="A prayer">A prayer</option>
+                        <option value="counsel" data-i18n="Someone to talk to">Someone to talk to</option>
+                        <option value="thanksgiving" data-i18n="Thanks">Thanks</option>
+                        <option value="other" data-i18n="Something else">Something else</option>
+                    </select>
+                    <label for="request-text" data-i18n="Write it here">Write it here</label>
+                    <textarea id="request-text" maxlength="1000" required></textarea>
+                    <label><input type="checkbox" id="request-answerable" checked> <span data-i18n="Let the chaplain reply to me">Let the chaplain reply to me</span></label>
+                    <button type="submit" data-i18n="Send it">Send it</button>
+                </form>
+                <p data-i18n="Only you and the chaplaincy of your school ever see this. It is not a post and no other student reads it.">
+                    Only you and the chaplaincy of your school ever see this. It is not a post and no other student
+                    reads it.
+                </p>
+                <p id="request-status" class="status" role="status"></p>
+            </details>
+
+            <details id="prayer-panel" class="panel" hidden>
+                <summary data-i18n="Chaplain: what has been sent in">Chaplain: what has been sent in</summary>
+                <div id="prayer-list"></div>
+                <p id="prayer-status" class="status" role="status"></p>
+            </details>
+        </section>
+
+        <p class="footnote" data-i18n="Everything on this page lives in your own database. A hostel is only listed because somebody who works at that school named it, a bed is only given by that school's own office, and a class list is only written by the students who were actually in the room.">
+            Everything on this page lives in your own database. A hostel is only listed because somebody who works at
+            that school named it, a bed is only given by that school's own office, and a class list is only written by
+            the students who were actually in the room.
+        </p>
+    </main>
+
+</body>
+
+</html>
