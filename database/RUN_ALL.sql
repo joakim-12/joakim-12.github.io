@@ -6,6 +6,7 @@
 -- person per staff account), the per-chat archive / mute / lock / label flags,
 -- the phone number that lets a classmate dial you, the hostel, catering and
 -- chaplaincy departments of a school, the class register that writes itself,
+-- the document somebody picked up and the private word it sends to its owner,
 -- and a final check.
 -- It replaces RUN_ONCE.sql, RUN_THIS_IN_SUPABASE.sql, RUN_MESSAGE_MARKS.sql,
 -- RUN_FRIEND_NAMES.sql, RUN_CLASSES_MIN.sql and REPAIR_CHATS.sql.
@@ -16,7 +17,7 @@
 -- Built 2026-10-14 from schema.sql + all migrations, in order.
 -- ===================================================================
 
--- ==================== PART 1/22: schema.sql ===========================
+-- ==================== PART 1/23: schema.sql ===========================
 -- ============================================================
 -- CAMPUS CONNECT
 -- Social networking database for university students
@@ -1528,7 +1529,7 @@ $$;
 
 NOTIFY pgrst, 'reload schema';
 
--- ================ PART 2/22: migrations/20261011_profile_gender.sql ================
+-- ================ PART 2/23: migrations/20261011_profile_gender.sql ================
 BEGIN;
 
 ALTER TABLE public.profiles
@@ -1550,7 +1551,7 @@ $$;
 
 COMMIT;
 
--- ================ PART 3/22: migrations/20261011_social_access_controls.sql ================
+-- ================ PART 3/23: migrations/20261011_social_access_controls.sql ================
 BEGIN;
 
 CREATE TABLE IF NOT EXISTS public.user_blocks (
@@ -1902,7 +1903,7 @@ CREATE POLICY "Users delete own private social media"
 
 COMMIT;
 
--- ================ PART 4/22: migrations/20261011_student_interactions_and_calls.sql ================
+-- ================ PART 4/23: migrations/20261011_student_interactions_and_calls.sql ================
 BEGIN;
 
 ALTER TABLE public.profiles
@@ -2015,7 +2016,7 @@ $migration$;
 
 COMMIT;
 
--- ================ PART 5/22: migrations/20261012_friendships_attachments_notification_preferences.sql ================
+-- ================ PART 5/23: migrations/20261012_friendships_attachments_notification_preferences.sql ================
 BEGIN;
 
 -- Explicit friend requests are separate from the existing one-way follow graph.
@@ -2203,7 +2204,7 @@ REVOKE ALL ON FUNCTION public.notify_friend_request() FROM PUBLIC, anon, authent
 
 COMMIT;
 
--- ================ PART 6/22: migrations/20261012_respond_to_chat_invitations.sql ================
+-- ================ PART 6/23: migrations/20261012_respond_to_chat_invitations.sql ================
 BEGIN;
 
 -- Let a recipient accept or decline a one-way follow invitation. Accepting
@@ -2310,7 +2311,7 @@ $migration$;
 
 COMMIT;
 
--- ================ PART 7/22: migrations/20261013_find_people.sql ================
+-- ================ PART 7/23: migrations/20261013_find_people.sql ================
 -- ============================================================
 -- STEP 1 / FINDING PEOPLE
 -- Makes members discoverable by default, lets a user claim a unique
@@ -2483,7 +2484,7 @@ SELECT 'everyone_discoverable',
 FROM public.profiles
 WHERE is_discoverable IS DISTINCT FROM TRUE;
 
--- ================ PART 8/22: migrations/20261014_roles_and_admin.sql ================
+-- ================ PART 8/23: migrations/20261014_roles_and_admin.sql ================
 -- ============================================================
 -- CAMPUS CONNECT — ROLES, APPROVAL, AND ADMIN
 -- Kabarak University: Student / Lecturer / Security / Admin.
@@ -2982,7 +2983,7 @@ SELECT 'at_least_one_admin',
        CASE WHEN COUNT(*) > 0 THEN 'ok' ELSE 'NONE YET (run section 9)' END
 FROM public.profiles WHERE role = 'admin';
 
--- ============ PART 9/22: migrations/20261014_message_edit_delete.sql ============
+-- ============ PART 9/23: migrations/20261014_message_edit_delete.sql ============
 -- ============================================================
 -- MESSAGE EDIT + DELETE (run this whole file in Supabase SQL Editor)
 -- Rules enforced inside the database, not just the app:
@@ -3086,7 +3087,7 @@ CREATE TRIGGER protect_message_fields_trigger
     EXECUTE FUNCTION public.protect_message_fields();
 
 
--- ============ PART 10/22: migrations/20261015_programmes_units_classes.sql ============
+-- ============ PART 10/23: migrations/20261015_programmes_units_classes.sql ============
 -- ============================================================
 -- CAMPUS CONNECT — PROGRAMMES, UNITS, AND CLASS TIMETABLES
 -- Kabarak University course system:
@@ -3355,7 +3356,7 @@ INSERT INTO public.programmes (school, name, level, max_year, campus, specializa
     ('School of Pharmacy', 'Bachelor of Pharmacy', 'undergraduate', 5, 'Main', '')
 ON CONFLICT (school, name) DO NOTHING;
 
--- ==================== PART 11/22: friend names (contact_names) ==========
+-- ==================== PART 11/23: friend names (contact_names) ==========
 CREATE TABLE IF NOT EXISTS public.contact_names (
     author_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     peer_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -3501,7 +3502,7 @@ ALTER TABLE public.messages
 
 COMMIT;
 
--- ============ PART 12/22: migrations/20261016_lecturer_credentials.sql ============
+-- ============ PART 12/23: migrations/20261016_lecturer_credentials.sql ============
 -- ============================================================
 -- CAMPUS CONNECT — LECTURER CREDENTIALS, STUDY MODE, STAFF LOG
 -- Kabarak University rules this adds:
@@ -4126,7 +4127,7 @@ GRANT SELECT, INSERT, UPDATE ON public.lecturer_submissions TO authenticated;
 
 NOTIFY pgrst, 'reload schema';
 
--- ============ PART 13/22: migrations/20261016_one_number_one_account.sql ============
+-- ============ PART 13/23: migrations/20261016_one_number_one_account.sql ============
 
 -- ============================================================
 -- CAMPUS CONNECT — ONE NUMBER, ONE ACCOUNT
@@ -4476,7 +4477,7 @@ ALTER TABLE public.admin_action_log
 NOTIFY pgrst, 'reload schema';
 
 
--- ============ PART 14/22: migrations/20261017_bulletins.sql ============
+-- ============ PART 14/23: migrations/20261017_bulletins.sql ============
 
 -- ============================================================
 -- CAMPUS CONNECT — THE BULLETIN BOARD
@@ -4564,7 +4565,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON public.bulletins TO authenticated;
 NOTIFY pgrst, 'reload schema';
 
 
--- ============ PART 15/22: migrations/20261017_companies.sql ============
+-- ============ PART 15/23: migrations/20261017_companies.sql ============
 
 -- ============================================================
 -- CAMPUS CONNECT — THE COMPANY DIRECTORY
@@ -4728,7 +4729,7 @@ ALTER TABLE public.bulletins
 NOTIFY pgrst, 'reload schema';
 
 
--- ============ PART 16/22: migrations/20261017_realtime_broadcast.sql ============
+-- ============ PART 16/23: migrations/20261017_realtime_broadcast.sql ============
 
 -- PART 16: realtime broadcast for the typing / recording indicators.
 --
@@ -4802,7 +4803,7 @@ $do$;
 NOTIFY pgrst, 'reload schema';
 
 
--- ============ PART 17/22: migrations/20261017_private_groups.sql ============
+-- ============ PART 17/23: migrations/20261017_private_groups.sql ============
 
 -- PART 17: private group chats, the WhatsApp shape.
 --
@@ -5035,7 +5036,7 @@ GRANT EXECUTE ON FUNCTION public.mark_group_read(UUID) TO authenticated;
 NOTIFY pgrst, 'reload schema';
 
 
--- ============ PART 18/22: migrations/20261017_push_tokens.sql ============
+-- ============ PART 18/23: migrations/20261017_push_tokens.sql ============
 
 -- PART 18: the device list behind push alerts.
 --
@@ -5139,7 +5140,7 @@ GRANT EXECUTE ON FUNCTION public.forget_device_token(TEXT) TO authenticated;
 NOTIFY pgrst, 'reload schema';
 
 
--- ============ PART 19/22: migrations/20261018_campus_identity.sql ============
+-- ============ PART 19/23: migrations/20261018_campus_identity.sql ============
 
 -- ============================================================
 -- CAMPUS CONNECT — ONE PERSON, ONE SCHOOL, HIS OWN PROGRAMME
@@ -5521,7 +5522,8 @@ SELECT 'signup guard',
     CASE WHEN pg_catalog.pg_get_functiondef(
         (SELECT oid FROM pg_catalog.pg_proc
           WHERE proname = 'handle_new_auth_user'
-            AND pronamespace = 'public'::regnamespace)
+            AND pronamespace = 'public'::regnamespace
+          LIMIT 1)
     ) LIKE '%claimed_university%' THEN 'ok' ELSE 'MISSING' END
 UNION ALL
 SELECT 'one person trigger',
@@ -5530,11 +5532,11 @@ SELECT 'one person trigger',
           JOIN pg_catalog.pg_class AS table_class ON table_class.oid = trigger_row.tgrelid
          WHERE trigger_row.tgname = 'lecturer_submissions_one_person'
            AND table_class.relname = 'lecturer_submissions'
-           AND trigger_row.tgdropped = FALSE
+           AND trigger_row.tgisinternal = FALSE
     ) THEN 'ok' ELSE 'MISSING' END;
 
 
--- ============ PART 20/22: migrations/20261019_chat_organize.sql ============
+-- ============ PART 20/23: migrations/20261019_chat_organize.sql ============
 
 -- ============================================================
 -- CAMPUS CONNECT — CHATS YOU ARCHIVE, MUTE, LOCK OR LABEL
@@ -5665,7 +5667,7 @@ REVOKE ALL ON public.conversation_settings FROM anon;
 NOTIFY pgrst, 'reload schema';
 
 
--- ============ PART 21/22: migrations/20261020_phone_identity.sql ============
+-- ============ PART 21/23: migrations/20261020_phone_identity.sql ============
 -- ============================================================
 -- PART 21: A PHONE NUMBER IS AN ADDRESS
 -- Campus Connect now lets a student, a lecturer or a security guard join with
@@ -6137,7 +6139,7 @@ SELECT 'one number per account',
        ) = 0 THEN 'ok' ELSE 'FAILED: two accounts already share one number' END;
 
 
--- ============ PART 22/22: migrations/20261020_campus_services.sql ============
+-- ============ PART 22/23: migrations/20261020_campus_services.sql ============
 -- ============================================================
 -- CAMPUS CONNECT — THE CAMPUS SERVICES DEPARTMENTS
 -- A university is more than a chat. A student also needs a bed, a meal,
@@ -7350,6 +7352,599 @@ SELECT 'register: an authenticated account may open it',
             THEN 'ok' ELSE 'MISSING (a lecturer cannot open a class register)' END;
 
 
+-- ============ PART 23/23: migrations/20261025_found_items.sql ============
+-- ============================================================
+-- PART 23: SOMEBODY PICKED UP A DOCUMENT
+-- A student ID is lying on the road. Whoever picks it up photographs it,
+-- types the number printed on it and says where they are standing. The
+-- database - never the page - works out whose number it is and tells only
+-- that person. Four rules hold here:
+--   * it is never public. No post, no bulletin, no list any member can
+--     browse. Only three accounts ever see a row: the hand that found it,
+--     the desk of that school, and the person it belongs to.
+--   * the owner is never told who found their document, and the finder is
+--     never told the owner's phone number. The owner reads a place and a
+--     time - which is all they need to walk there.
+--   * the match happens inside the database, because student_registrations
+--     is shut against browsing on purpose. A page that could look a number
+--     up would hand the whole register to anyone who opened the console.
+--   * a number cannot be walked. The same hand reporting the same number
+--     twice in six hours is refused, and six reports in a day is the most
+--     any account makes, so this feature cannot be used to test which
+--     student numbers have accounts.
+-- The answer a finder gets back is one bit: somebody was told, or this
+-- number has no account here. Never a name.
+-- The photo goes in the private bucket under the finder's own folder and
+-- only two people can ever open it: the finder and the school's desk.
+-- Idempotent: safe to run more than once.
+-- ============================================================
+
+
+-- ------------------------------------------------------------
+-- 1. ONE ROW PER DOCUMENT PICKED UP
+-- school is copied from the finder's own profile at the moment of
+-- reporting, so the desk of that school finds the row even if the finder
+-- later changes their university. number_key is the normalised form the
+-- match is tried against; number_input stays exactly as typed, for the
+-- desk to read a number the app could not match.
+-- ------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS public.found_items (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    school TEXT NOT NULL DEFAULT '',
+    school_key TEXT GENERATED ALWAYS AS (LOWER(BTRIM(school))) STORED,
+    reporter_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL DEFAULT 'other'
+        CONSTRAINT found_items_kind_check
+        CHECK (kind IN ('student_id', 'national_id', 'passport', 'drivers_license',
+                        'bank_card', 'phone', 'laptop', 'book', 'keys', 'wallet', 'other')),
+    number_input TEXT NOT NULL DEFAULT '',
+    number_key TEXT NOT NULL DEFAULT '',
+    place TEXT NOT NULL
+        CONSTRAINT found_items_place_length_check CHECK (char_length(place) <= 200),
+    held_at TEXT NOT NULL DEFAULT 'with_finder'
+        CONSTRAINT found_items_held_at_check
+        CHECK (held_at IN ('with_finder', 'security_desk', 'lost_office')),
+    found_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    photo_path TEXT,
+    status TEXT NOT NULL DEFAULT 'open'
+        CONSTRAINT found_items_status_check CHECK (status IN ('open', 'returned')),
+    matched_user_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
+    matched_by TEXT
+        CONSTRAINT found_items_matched_by_check
+        CHECK (matched_by IN ('registration', 'staff_id', 'national_id')),
+    matched_at TIMESTAMPTZ,
+    owner_seen_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    CONSTRAINT found_items_number_key_length_check CHECK (char_length(number_key) <= 32)
+);
+
+CREATE INDEX IF NOT EXISTS found_items_school_idx
+    ON public.found_items (school_key, created_at DESC);
+CREATE INDEX IF NOT EXISTS found_items_reporter_idx
+    ON public.found_items (reporter_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS found_items_owner_idx
+    ON public.found_items (matched_user_id, found_at DESC)
+    WHERE matched_user_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS found_items_number_key_idx
+    ON public.found_items (number_key, reporter_id, created_at DESC);
+
+ALTER TABLE public.found_items ENABLE ROW LEVEL SECURITY;
+
+-- Read only, and only for the two accounts that touched the document.
+-- There is no INSERT, UPDATE or DELETE policy at all: a page cannot write
+-- a found item, only the functions below can.
+DROP POLICY IF EXISTS "Finder reads their own report" ON public.found_items;
+CREATE POLICY "Finder reads their own report"
+    ON public.found_items FOR SELECT TO authenticated
+    USING (reporter_id = (SELECT auth.uid()));
+
+DROP POLICY IF EXISTS "The desk of a school reads its own finds" ON public.found_items;
+CREATE POLICY "The desk of a school reads its own finds"
+    ON public.found_items FOR SELECT TO authenticated
+    USING (public.is_school_staff(school_key));
+
+GRANT SELECT ON public.found_items TO authenticated;
+
+
+-- ------------------------------------------------------------
+-- 2. REPORT A DOCUMENT. THE MATCHING HAPPENS HERE, IN THE DATABASE,
+--    AND ONLY ONE BIT COMES BACK OUT.
+-- ------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.report_found_item(
+    p_kind TEXT,
+    p_number TEXT,
+    p_place TEXT,
+    p_held_at TEXT,
+    p_photo_path TEXT,
+    p_found_at TIMESTAMPTZ DEFAULT NULL
+)
+RETURNS JSONB
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    me UUID := auth.uid();
+    kind_ok TEXT;
+    held_ok TEXT;
+    clean_number TEXT;
+    clean_place TEXT;
+    my_school TEXT;
+    item_id UUID;
+    owner_id UUID;
+    matched_by TEXT;
+    hit_count INT;
+BEGIN
+    IF me IS NULL THEN
+        RAISE EXCEPTION 'Sign in before reporting a document you found.'
+            USING ERRCODE = '42501';
+    END IF;
+
+    kind_ok := CASE WHEN p_kind IN ('student_id', 'national_id', 'passport', 'drivers_license',
+                                    'bank_card', 'phone', 'laptop', 'book', 'keys', 'wallet', 'other')
+                   THEN p_kind ELSE 'other' END;
+    held_ok := CASE WHEN p_held_at IN ('with_finder', 'security_desk', 'lost_office')
+                    THEN p_held_at ELSE 'with_finder' END;
+
+    clean_number := LEFT(public.normalize_id_number(p_number), 32);
+    clean_place := LEFT(BTRIM(COALESCE(p_place, '')), 200);
+
+    IF char_length(clean_number) < 3 THEN
+        RAISE EXCEPTION 'Type the number printed on the document, exactly as it is printed.'
+            USING ERRCODE = '22001';
+    END IF;
+    IF char_length(clean_place) < 3 THEN
+        RAISE EXCEPTION 'Say where you found it, so the owner knows where to come.'
+            USING ERRCODE = '22001';
+    END IF;
+
+    -- The same hand, the same number, twice in six hours is not a find.
+    SELECT COUNT(*) INTO hit_count
+    FROM public.found_items AS f
+    WHERE f.reporter_id = me
+      AND f.number_key = clean_number
+      AND f.created_at > NOW() - INTERVAL '6 hours';
+    IF hit_count > 0 THEN
+        RETURN jsonb_build_object('result', 'duplicate');
+    END IF;
+
+    -- Six reports a day is the most an account can make, so a list of
+    -- numbers can never be walked through this function.
+    SELECT COUNT(*) INTO hit_count
+    FROM public.found_items AS f
+    WHERE f.reporter_id = me
+      AND f.created_at > NOW() - INTERVAL '24 hours';
+    IF hit_count >= 6 THEN
+        RETURN jsonb_build_object('result', 'too_many');
+    END IF;
+
+    SELECT BTRIM(p.university) INTO my_school
+    FROM public.profiles AS p
+    WHERE p.id = me;
+    my_school := COALESCE(my_school, '');
+
+    INSERT INTO public.found_items
+            (school, reporter_id, kind, number_input, number_key, place, held_at, photo_path, found_at)
+    VALUES (my_school, me, kind_ok,
+            LEFT(BTRIM(COALESCE(p_number, '')), 40), clean_number, clean_place, held_ok,
+            NULLIF(LEFT(BTRIM(COALESCE(p_photo_path, '')), 400), ''),
+            COALESCE(p_found_at, NOW()))
+    RETURNING id INTO item_id;
+
+    -- Whose number is it? Three tables, tried in this order. Only the id
+    -- of the owner is ever read out of them, never a name or a phone.
+    SELECT s.user_id INTO owner_id
+    FROM public.student_registrations AS s
+    WHERE s.registration_number = clean_number
+    ORDER BY s.created_at
+    LIMIT 1;
+
+    IF owner_id IS NOT NULL THEN
+        matched_by := 'registration';
+    END IF;
+
+    IF owner_id IS NULL THEN
+        SELECT p.id INTO owner_id
+        FROM public.profiles AS p
+        WHERE public.normalize_id_number(p.staff_id_number) = clean_number
+          AND p.staff_id_number <> ''
+        ORDER BY p.created_at
+        LIMIT 1;
+
+        IF owner_id IS NOT NULL THEN
+            matched_by := 'staff_id';
+        END IF;
+    END IF;
+
+    IF owner_id IS NULL THEN
+        SELECT ls.user_id INTO owner_id
+        FROM public.lecturer_submissions AS ls
+        WHERE public.normalize_id_number(ls.national_id_number) = clean_number
+        ORDER BY ls.created_at
+        LIMIT 1;
+
+        IF owner_id IS NOT NULL THEN
+            matched_by := 'national_id';
+        END IF;
+    END IF;
+
+    IF owner_id IS NULL THEN
+        RETURN jsonb_build_object('result', 'unmatched', 'id', item_id);
+    END IF;
+
+    IF owner_id = me THEN
+        UPDATE public.found_items AS f
+           SET matched_user_id = owner_id,
+               matched_by = matched_by,
+               matched_at = NOW(),
+               owner_seen_at = NOW()
+         WHERE f.id = item_id;
+        RETURN jsonb_build_object('result', 'own', 'id', item_id);
+    END IF;
+
+    UPDATE public.found_items AS f
+       SET matched_user_id = owner_id,
+           matched_by = matched_by,
+           matched_at = NOW()
+     WHERE f.id = item_id;
+
+    INSERT INTO public.notifications (recipient_id, actor_id, kind, found_item_id)
+    VALUES (owner_id, me, 'found_item', item_id);
+
+    RETURN jsonb_build_object('result', 'matched', 'id', item_id);
+END;
+$$;
+
+
+-- ------------------------------------------------------------
+-- 3. WHAT THE OWNER IS TOLD - AND WHAT THE OWNER IS NEVER TOLD
+-- No reporter column appears here. The person who lost the document reads
+-- a place, a time and their own number; who picked it up stays with the
+-- desk.
+-- ------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.my_found_items()
+RETURNS TABLE (
+    item_id UUID,
+    kind TEXT,
+    number_key TEXT,
+    place TEXT,
+    held_at TEXT,
+    found_at TIMESTAMPTZ,
+    status TEXT,
+    school TEXT,
+    matched_at TIMESTAMPTZ,
+    owner_seen_at TIMESTAMPTZ
+)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    IF auth.uid() IS NULL THEN
+        RAISE EXCEPTION 'Sign in first.'
+            USING ERRCODE = '42501';
+    END IF;
+
+    RETURN QUERY
+    SELECT f.id, f.kind, f.number_key, f.place, f.held_at, f.found_at, f.status,
+           f.school, f.matched_at, f.owner_seen_at
+    FROM public.found_items AS f
+    WHERE f.matched_user_id = auth.uid()
+    ORDER BY (f.owner_seen_at IS NULL) DESC, f.found_at DESC
+    LIMIT 30;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.seen_found_item(p_item_id UUID)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    me UUID := auth.uid();
+BEGIN
+    IF me IS NULL THEN
+        RAISE EXCEPTION 'Sign in first.'
+            USING ERRCODE = '42501';
+    END IF;
+
+    UPDATE public.found_items AS f
+       SET owner_seen_at = NOW()
+     WHERE f.id = p_item_id
+       AND f.matched_user_id = me
+       AND f.owner_seen_at IS NULL;
+    RETURN FOUND;
+END;
+$$;
+
+
+-- ------------------------------------------------------------
+-- 4. WHAT THE FINDER SEES: THEIR OWN REPORTS, AND WHETHER ANYBODY WAS
+--    TOLD. Never the owner's name - that is the desk's record, not theirs.
+-- ------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.my_found_reports()
+RETURNS TABLE (
+    item_id UUID,
+    kind TEXT,
+    number_key TEXT,
+    place TEXT,
+    held_at TEXT,
+    found_at TIMESTAMPTZ,
+    status TEXT,
+    photo_path TEXT,
+    was_matched BOOLEAN,
+    created_at TIMESTAMPTZ
+)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    IF auth.uid() IS NULL THEN
+        RAISE EXCEPTION 'Sign in first.'
+            USING ERRCODE = '42501';
+    END IF;
+
+    RETURN QUERY
+    SELECT f.id, f.kind, f.number_key, f.place, f.held_at, f.found_at, f.status,
+           f.photo_path, f.matched_user_id IS NOT NULL, f.created_at
+    FROM public.found_items AS f
+    WHERE f.reporter_id = auth.uid()
+    ORDER BY f.created_at DESC
+    LIMIT 40;
+END;
+$$;
+
+
+-- ------------------------------------------------------------
+-- 5. THE DESK: THE SCHOOL'S OWN OFFICE SEES EVERYTHING ABOUT ITS OWN
+--    SCHOOL, INCLUDING WHO PICKED THE DOCUMENT UP AND THE PHOTOGRAPH.
+-- ------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.school_found_items(p_school_key TEXT)
+RETURNS TABLE (
+    item_id UUID,
+    kind TEXT,
+    number_input TEXT,
+    number_key TEXT,
+    place TEXT,
+    held_at TEXT,
+    found_at TIMESTAMPTZ,
+    status TEXT,
+    photo_path TEXT,
+    finder_id UUID,
+    finder_name TEXT,
+    finder_phone TEXT,
+    owner_id UUID,
+    owner_name TEXT,
+    owner_phone TEXT,
+    matched_at TIMESTAMPTZ,
+    owner_seen_at TIMESTAMPTZ
+)
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    IF NOT public.is_school_staff(p_school_key) THEN
+        RAISE EXCEPTION 'Only the office of that school sees its found documents.'
+            USING ERRCODE = '42501';
+    END IF;
+
+    RETURN QUERY
+    SELECT f.id, f.kind, f.number_input, f.number_key, f.place, f.held_at, f.found_at,
+           f.status, f.photo_path,
+           f.reporter_id, r.full_name, r.contact_phone,
+           f.matched_user_id, o.full_name, o.contact_phone,
+           f.matched_at, f.owner_seen_at
+    FROM public.found_items AS f
+    JOIN public.profiles AS r ON r.id = f.reporter_id
+    LEFT JOIN public.profiles AS o ON o.id = f.matched_user_id
+    WHERE f.school_key = LOWER(BTRIM(COALESCE(p_school_key, '')))
+    ORDER BY f.created_at DESC
+    LIMIT 200;
+END;
+$$;
+
+
+-- ------------------------------------------------------------
+-- 6. CLOSING A FIND
+-- The finder says where the document now is; the desk or the owner says
+-- it has gone back into the right hands. Nobody else can touch a row.
+-- ------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.set_found_item_result(
+    p_item_id UUID,
+    p_status TEXT,
+    p_held_at TEXT
+)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+DECLARE
+    me UUID := auth.uid();
+    row_status TEXT;
+    allowed BOOLEAN;
+BEGIN
+    IF me IS NULL THEN
+        RAISE EXCEPTION 'Sign in first.'
+            USING ERRCODE = '42501';
+    END IF;
+
+    IF p_status NOT IN ('open', 'returned') THEN
+        RAISE EXCEPTION 'That is not a state a found document can be in.'
+            USING ERRCODE = '22001';
+    END IF;
+    IF p_held_at IS NOT NULL AND p_held_at NOT IN ('with_finder', 'security_desk', 'lost_office') THEN
+        RAISE EXCEPTION 'That is not a place a found document is kept.'
+            USING ERRCODE = '22001';
+    END IF;
+
+    SELECT f.status INTO row_status
+    FROM public.found_items AS f
+    WHERE f.id = p_item_id;
+
+    IF row_status IS NULL THEN
+        RAISE EXCEPTION 'That document is not on record.'
+            USING ERRCODE = 'P0002';
+    END IF;
+
+    SELECT (
+        f.reporter_id = me
+        OR public.is_school_staff(f.school_key)
+        OR (f.matched_user_id = me AND p_status = 'returned')
+    ) INTO allowed
+    FROM public.found_items AS f
+    WHERE f.id = p_item_id;
+
+    IF NOT COALESCE(allowed, FALSE) THEN
+        RAISE EXCEPTION 'Only the finder, the owner or the desk of that school can change this.'
+            USING ERRCODE = '42501';
+    END IF;
+
+    UPDATE public.found_items AS f
+       SET status = p_status,
+           held_at = COALESCE(p_held_at, f.held_at),
+           owner_seen_at = CASE WHEN f.matched_user_id = me THEN COALESCE(f.owner_seen_at, NOW())
+                                ELSE f.owner_seen_at END
+     WHERE f.id = p_item_id;
+    RETURN TRUE;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.report_found_item(TEXT, TEXT, TEXT, TEXT, TEXT, TIMESTAMPTZ) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.my_found_items() FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.seen_found_item(UUID) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.my_found_reports() FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.school_found_items(TEXT) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.set_found_item_result(UUID, TEXT, TEXT) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.report_found_item(TEXT, TEXT, TEXT, TEXT, TEXT, TIMESTAMPTZ) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.my_found_items() TO authenticated;
+GRANT EXECUTE ON FUNCTION public.seen_found_item(UUID) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.my_found_reports() TO authenticated;
+GRANT EXECUTE ON FUNCTION public.school_found_items(TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.set_found_item_result(UUID, TEXT, TEXT) TO authenticated;
+
+
+-- ------------------------------------------------------------
+-- 7. THE PHOTOGRAPH OF A DOCUMENT
+-- It is uploaded into the private bucket inside the finder's own folder,
+-- which the existing insert policy already allows. This policy is the read
+-- side: the finder opens their own file, and the desk of the school opens a
+-- file a found item actually points at. Nobody else, not even a mutual
+-- connection, ever gets a signed URL for it.
+-- ------------------------------------------------------------
+
+DROP POLICY IF EXISTS "The desk opens a found document photo" ON storage.objects;
+CREATE POLICY "The desk opens a found document photo"
+    ON storage.objects FOR SELECT TO authenticated
+    USING (
+        bucket_id = 'campus-private-media'
+        AND EXISTS (
+            SELECT 1
+            FROM public.found_items AS f
+            WHERE ('private-media:' || storage.objects.name) = f.photo_path
+              AND (
+                    f.reporter_id = (SELECT auth.uid())
+                    OR public.is_school_staff(f.school_key)
+                  )
+        )
+    );
+
+
+-- ------------------------------------------------------------
+-- 8. THE OWNER'S ALERT IS STILL JUST A PRIVATE NOTIFICATION
+-- It joins the kinds that already exist and points at the row it came
+-- from, so the app can read the safe columns through my_found_items()
+-- instead of showing a notification built from somebody else's name.
+-- ------------------------------------------------------------
+
+ALTER TABLE public.notifications
+    ADD COLUMN IF NOT EXISTS found_item_id UUID
+        REFERENCES public.found_items(id) ON DELETE CASCADE;
+
+CREATE INDEX IF NOT EXISTS notifications_found_item_idx
+    ON public.notifications (found_item_id)
+    WHERE found_item_id IS NOT NULL;
+
+DO $$
+BEGIN
+    ALTER TABLE public.notifications DROP CONSTRAINT IF EXISTS notifications_kind_check;
+    ALTER TABLE public.notifications
+        ADD CONSTRAINT notifications_kind_check
+        CHECK (kind IN ('reaction', 'comment', 'follow', 'message', 'friend_request', 'found_item'));
+END;
+$$;
+
+
+-- ------------------------------------------------------------
+-- 9. A FOUND DOCUMENT IS NOT A POST, SO IT IS NOT IN REALTIME EITHER
+-- The alert row that my_found_items() leaves behind lives in notifications,
+-- which is already published. found_items itself stays out of the
+-- publication on purpose: nothing about a stranger's document should ever
+-- arrive on another phone.
+-- ------------------------------------------------------------
+
+DROP TRIGGER IF EXISTS found_items_set_updated_at ON public.found_items;
+CREATE TRIGGER found_items_set_updated_at
+    BEFORE UPDATE ON public.found_items
+    FOR EACH ROW
+    EXECUTE FUNCTION public.set_updated_at();
+
+NOTIFY pgrst, 'reload schema';
+
+
+-- ------------------------------------------------------------
+-- PART 23 CHECK: the doors a found document needs
+-- ------------------------------------------------------------
+
+SELECT 'table: found_items' AS check_name,
+       CASE WHEN t.table_name IS NOT NULL THEN 'ok' ELSE 'MISSING (no document can be reported yet)' END AS result
+FROM (SELECT 'found_items'::TEXT AS n) AS want
+LEFT JOIN information_schema.tables AS t
+       ON t.table_schema = 'public' AND t.table_name = want.n
+UNION ALL
+SELECT 'function: ' || f.function_name,
+       CASE WHEN x.specific_name IS NOT NULL THEN 'ok'
+            ELSE 'MISSING (a found document cannot be reported or read back)' END
+FROM (VALUES ('report_found_item'), ('my_found_items'), ('seen_found_item'),
+             ('my_found_reports'), ('school_found_items'), ('set_found_item_result')) AS f(function_name)
+LEFT JOIN information_schema.routines AS x
+       ON x.routine_schema = 'public' AND x.routine_name = f.function_name
+UNION ALL
+SELECT 'notification: found_item is an allowed kind',
+       CASE WHEN EXISTS (
+                SELECT 1 FROM pg_constraint AS c
+                WHERE c.conrelid = 'public.notifications'::REGCLASS
+                  AND c.conname = 'notifications_kind_check'
+                  AND pg_get_constraintdef(c.oid) LIKE '%found_item%'
+            ) THEN 'ok' ELSE 'MISSING (the owner would never be alerted)' END
+UNION ALL
+SELECT 'policy: the desk can open a document photo',
+       CASE WHEN COUNT(*) = 1 THEN 'ok' ELSE 'MISSING (the photograph of a found document stays unreadable)' END
+FROM pg_policies
+WHERE schemaname = 'storage' AND tablename = 'objects'
+  AND policyname = 'The desk opens a found document photo'
+UNION ALL
+SELECT 'policy: a found item cannot be written from a page',
+       CASE WHEN COUNT(*) = 2 THEN 'ok'
+            ELSE 'MISSING (' || COUNT(*) || ' policies on found_items, expected 2 read-only ones)' END
+FROM pg_policies
+WHERE schemaname = 'public' AND tablename = 'found_items'
+ORDER BY check_name;
+
+
 
 -- FINAL CHECK: every row should read ok
 -- ===================================================================
@@ -7369,7 +7964,8 @@ FROM (VALUES ('user_blocks'), ('user_presence'), ('call_signals'), ('friend_requ
              ('programmes'), ('units'), ('class_sessions'), ('bulletins'), ('companies'),
              ('community_reads'), ('device_tokens'), ('conversation_settings'),
              ('campus_services'), ('hostels'), ('hostel_rooms'), ('hostel_bookings'),
-             ('meal_plans'), ('chaplaincy_events'), ('prayer_requests'), ('class_checkins')) AS t(table_name)
+             ('meal_plans'), ('chaplaincy_events'), ('prayer_requests'), ('class_checkins'),
+             ('found_items')) AS t(table_name)
 LEFT JOIN information_schema.tables AS tb
        ON tb.table_schema = 'public' AND tb.table_name = t.table_name
 UNION ALL
@@ -7423,6 +8019,13 @@ FROM (VALUES ('my_school_key'), ('is_school_staff'), ('may_lead_chaplaincy'),
              ('ask_for_hostel_bed'), ('decide_hostel_booking'), ('my_bed_requests'),
              ('school_bed_requests'), ('class_occurrence_date'),
              ('open_class_checkin'), ('check_into_class'), ('class_attendance')) AS f(function_name)
+LEFT JOIN information_schema.routines AS x
+       ON x.routine_schema = 'public' AND x.routine_name = f.function_name
+UNION ALL
+SELECT 'found function: ' || f.function_name,
+       CASE WHEN x.specific_name IS NOT NULL THEN 'ok' ELSE 'MISSING (a found document cannot be reported or claimed)' END
+FROM (VALUES ('report_found_item'), ('my_found_items'), ('seen_found_item'),
+             ('my_found_reports'), ('school_found_items'), ('set_found_item_result')) AS f(function_name)
 LEFT JOIN information_schema.routines AS x
        ON x.routine_schema = 'public' AND x.routine_name = f.function_name
 ORDER BY check_name;

@@ -1520,6 +1520,30 @@
             font-weight: 700;
         }
 
+        /* ---- A document of yours, found ---------------------------------- */
+        .found-item {
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            background: var(--panel);
+            padding: 10px 12px;
+            margin: 0 0 10px;
+        }
+
+        .found-item h4 {
+            margin: 0 0 4px;
+            font-size: 15px;
+        }
+
+        .found-item p {
+            margin: 2px 0;
+            font-size: 13px;
+            color: var(--muted);
+        }
+
+        .found-item .dial-row {
+            margin-top: 8px;
+        }
+
         /* ---- Full-screen call surfaces -------------------------------- */
         .call-dialog[open],
         .incoming-dialog[open] {
@@ -3512,14 +3536,15 @@
             }
         }
     </style>
-  <script type="module" crossorigin src="/assets/messages-zkHP619k.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/pwa-CFI67F8o.js">
+  <script type="module" crossorigin src="/assets/messages-AQq_OPgl.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/pwa-CrhfiAFw.js">
   <link rel="modulepreload" crossorigin href="/assets/voice-player-C956cenq.js">
-  <link rel="modulepreload" crossorigin href="/assets/offline-banner-BzflXqCE.js">
-  <link rel="modulepreload" crossorigin href="/assets/profile-identity-Ck8uir9O.js">
-  <link rel="modulepreload" crossorigin href="/assets/offline-chat-Bd9AlZnh.js">
-  <link rel="modulepreload" crossorigin href="/assets/staff-verification-DbpAmLUV.js">
+  <link rel="modulepreload" crossorigin href="/assets/offline-banner-CF5p75mC.js">
+  <link rel="modulepreload" crossorigin href="/assets/profile-identity-BHkrqr9n.js">
+  <link rel="modulepreload" crossorigin href="/assets/offline-chat-C8RJoXZq.js">
+  <link rel="modulepreload" crossorigin href="/assets/staff-verification-CvBMCoAo.js">
   <link rel="modulepreload" crossorigin href="/assets/member-view-CKKBednP.js">
+  <link rel="modulepreload" crossorigin href="/assets/notify-Dj_yd9YX.js">
   <link rel="modulepreload" crossorigin href="/assets/offline-store-C3sY6Srk.js">
 </head>
 
@@ -4257,6 +4282,19 @@
         <p class="dial-result" id="media-test-help" role="status"></p>
         <div class="dial-row">
             <button id="media-test-close" class="secondary-action" type="button" data-i18n="Close">Close</button>
+        </div>
+    </dialog>
+    <dialog id="found-chat-dialog" class="sheet-dialog" aria-labelledby="found-chat-title">
+        <div class="new-chat-head">
+            <h3 id="found-chat-title" data-i18n="Something of yours was found">Something of yours was found</h3>
+            <button id="found-chat-close" class="icon-button" type="button" aria-label="Close"
+                data-i18n-aria-label="Close">×</button>
+        </div>
+        <div id="found-chat-list"></div>
+        <p class="dial-result" id="found-chat-status" role="status"></p>
+        <div class="dial-row">
+            <a class="secondary-action" href="/services.html#found-section" data-i18n="Open the record">Open the
+                record</a>
         </div>
     </dialog>
     <dialog id="new-chat-dialog" class="sheet-dialog new-chat-dialog" aria-labelledby="new-chat-title">

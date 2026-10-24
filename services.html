@@ -146,6 +146,10 @@
         .room-label { font-size: 14px; font-weight: 600; }
         .room-meta { flex: 1; min-width: 120px; color: var(--muted); font-size: 12.5px; }
 
+        .uni-card.found-alert { border-color: var(--primary); background: color-mix(in srgb, var(--primary) 8%, var(--panel)); }
+        .found-photo { display: block; width: 100%; max-width: 420px; margin-top: 10px; border: 1px solid var(--border); border-radius: 12px; }
+        .panel input[type="file"] { padding: 7px 9px; font-size: 13px; }
+
         .uni-card button, .row-button {
             padding: 7px 13px;
             border: 1px solid var(--border);
@@ -166,10 +170,11 @@
         .footnote { margin: 18px 0 8px; color: var(--muted); font-size: 12.5px; line-height: 1.6; }
         [hidden] { display: none !important; }
     </style>
-  <script type="module" crossorigin src="/assets/services-CoAvAx3r.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/pwa-CFI67F8o.js">
-  <link rel="modulepreload" crossorigin href="/assets/offline-banner-BzflXqCE.js">
+  <script type="module" crossorigin src="/assets/services-BbrEt7C8.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/pwa-CrhfiAFw.js">
+  <link rel="modulepreload" crossorigin href="/assets/offline-banner-CF5p75mC.js">
   <link rel="modulepreload" crossorigin href="/assets/offline-store-C3sY6Srk.js">
+  <link rel="modulepreload" crossorigin href="/assets/found-items-BK4Ez3rI.js">
 </head>
 
 <body>
@@ -388,6 +393,57 @@
                 <summary data-i18n="Chaplain: what has been sent in">Chaplain: what has been sent in</summary>
                 <div id="prayer-list"></div>
                 <p id="prayer-status" class="status" role="status"></p>
+            </details>
+        </section>
+
+        <section id="found-section" hidden>
+            <div class="section-title" data-i18n="Found and lost">Found and lost</div>
+
+            <div id="found-mine-panel" hidden>
+                <div id="found-mine-heading" class="section-title">🔎 Something of yours was found</div>
+                <div id="found-mine-list"></div>
+                <p id="found-mine-status" class="status" role="status"></p>
+            </div>
+
+            <details id="found-report-panel" class="panel" hidden>
+                <summary data-i18n="I found somebody's document">I found somebody's document</summary>
+                <form id="found-form">
+                    <label for="found-kind" data-i18n="What is it">What is it</label>
+                    <select id="found-kind"></select>
+                    <label for="found-number" data-i18n="The number printed on it">The number printed on it</label>
+                    <input id="found-number" type="text" maxlength="32" autocomplete="off"
+                           placeholder="CUU/2345/2024" data-i18n-placeholder="The number printed on it">
+                    <p id="found-read-status" class="status" role="status"></p>
+                    <label for="found-place" data-i18n="Where you found it">Where you found it</label>
+                    <input id="found-place" type="text" maxlength="200" autocomplete="off"
+                           placeholder="By the gate, near the shuttle drop-off"
+                           data-i18n-placeholder="Where you found it">
+                    <label for="found-here" data-i18n="Where is it now">Where is it now</label>
+                    <select id="found-here"></select>
+                    <label for="found-when" data-i18n="When you found it">When you found it</label>
+                    <input id="found-when" type="datetime-local">
+                    <label for="found-photo" data-i18n="A photo of it (optional)">A photo of it (optional)</label>
+                    <input id="found-photo" type="file" accept="image/*" capture="environment">
+                    <button type="submit" data-i18n="Tell only its owner">Tell only its owner</button>
+                </form>
+                <p data-i18n="This is not a post and not a bulletin. The database reads the number and notifies only the account it belongs to: the owner is told a place and a time, never your name, and you are told only whether somebody was reached.">
+                    This is not a post and not a bulletin. The database reads the number and notifies only the account
+                    it belongs to: the owner is told a place and a time, never your name, and you are told only whether
+                    somebody was reached.
+                </p>
+                <p id="found-status" class="status" role="status"></p>
+            </details>
+
+            <details id="found-reports-panel" class="panel" hidden>
+                <summary data-i18n="What I have handed in">What I have handed in</summary>
+                <div id="found-reports-list"></div>
+                <p id="found-reports-status" class="status" role="status"></p>
+            </details>
+
+            <details id="found-desk-panel" class="panel" hidden>
+                <summary data-i18n="The desk: documents found at this school">The desk: documents found at this school</summary>
+                <div id="found-desk-list"></div>
+                <p id="found-desk-status" class="status" role="status"></p>
             </details>
         </section>
 
