@@ -533,6 +533,10 @@
     .container { width: min(720px, 94%); margin-top: 28px; }
     .card { border-color: var(--border); border-radius: 16px; box-shadow: 0 4px 18px rgb(28 48 66 / 5%); }
     #authSection { max-width: 580px; margin: 32px auto; padding: clamp(20px, 5vw, 38px); }
+    .auth-entry { display: flex; gap: 10px; justify-content: center; max-width: 580px; margin: 18px auto 0; }
+    .auth-entry button { border: 1px solid var(--blue); border-radius: 999px; background: var(--blue); color: #fff; padding: 10px 22px; font: inherit; cursor: pointer; }
+    .auth-entry button.secondary { background: transparent; color: var(--blue); }
+    #authSection .auth-close { float: right; margin: -8px -8px 0 0; border: 0; background: transparent; color: var(--muted); font-size: 24px; line-height: 1; cursor: pointer; }
     #authSection > h2 { margin-top: 0; font-size: clamp(24px, 4vw, 32px); letter-spacing: -.8px; }
     #loginForm h3, #registerForm h3 { margin-top: 22px; }
     .tabs { padding: 4px; border-radius: 12px; background: var(--background); }
@@ -1295,14 +1299,14 @@
       .you-details { margin-left: auto; margin-right: auto; max-width: 620px; }
     }
   </style>
-  <script type="module" crossorigin src="/assets/main-DKTENi_w.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/pwa-Ciu4DNql.js">
-  <link rel="modulepreload" crossorigin href="/assets/offline-banner-DubDYSn2.js">
-  <link rel="modulepreload" crossorigin href="/assets/offline-chat-DMGMCnqJ.js">
-  <link rel="modulepreload" crossorigin href="/assets/profile-identity-kxx3M_X_.js">
+  <script type="module" crossorigin src="/assets/main-B_Md1b_m.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/pwa-CFI67F8o.js">
+  <link rel="modulepreload" crossorigin href="/assets/offline-banner-BzflXqCE.js">
+  <link rel="modulepreload" crossorigin href="/assets/offline-chat-Bd9AlZnh.js">
+  <link rel="modulepreload" crossorigin href="/assets/profile-identity-Ck8uir9O.js">
   <link rel="modulepreload" crossorigin href="/assets/offline-store-C3sY6Srk.js">
-  <link rel="modulepreload" crossorigin href="/assets/company-directory-BLip9IJ3.js">
-  <link rel="modulepreload" crossorigin href="/assets/staff-verification-BOkqpcJs.js">
+  <link rel="modulepreload" crossorigin href="/assets/company-directory-B9jMRvCB.js">
+  <link rel="modulepreload" crossorigin href="/assets/staff-verification-DbpAmLUV.js">
 </head>
 
 <body>
@@ -1358,7 +1362,14 @@
   <main class="container">
 
     <!-- AUTHENTICATION -->
-    <section id="authSection" class="card">
+    <!-- Signing in is an option on this page, not a wall: the form stays folded
+         until somebody asks for it, and once he is in it does not come back. -->
+    <div id="authEntry" class="auth-entry">
+      <button id="authEntryLogin" type="button" data-i18n="Log in">Log in</button>
+      <button id="authEntryRegister" class="secondary" type="button" data-i18n="Register">Register</button>
+    </div>
+    <section id="authSection" class="card hidden">
+      <button id="authCloseButton" class="auth-close" type="button" aria-label="Close" data-i18n-aria-label="Close">×</button>
       <h2 data-i18n="Welcome to Campus Connect 🎓">Welcome to Campus Connect 🎓</h2>
       <p class="muted" data-i18n="Connect with people, wherever they study or work.">Connect with people, wherever they study or work.</p>
 

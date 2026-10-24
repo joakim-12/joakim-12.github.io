@@ -870,6 +870,7 @@
         .call-controls,
         .incoming-actions {
             display: flex;
+            flex-wrap: wrap;
             justify-content: center;
             gap: 10px;
             margin-top: 14px;
@@ -887,6 +888,86 @@
         .call-controls .end-call,
         .incoming-actions .decline-call {
             background: #d93025;
+        }
+
+        /* ---- Call meters, sound chip, shared notes -------------------- */
+        .call-meters {
+            display: grid;
+            gap: 6px;
+            margin-top: 12px;
+        }
+
+        .call-meters[hidden] {
+            display: none;
+        }
+
+        .call-meter {
+            display: grid;
+            grid-template-columns: 78px 1fr;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            color: #8696a0;
+        }
+
+        .meter-track {
+            display: block;
+            height: 8px;
+            border-radius: 999px;
+            background: color-mix(in srgb, var(--primary) 14%, var(--surface));
+            overflow: hidden;
+        }
+
+        .meter-fill {
+            display: block;
+            width: 0;
+            height: 100%;
+            border-radius: 999px;
+            background: var(--primary);
+            transition: width 80ms linear;
+        }
+
+        .remote-sound-chip {
+            display: block;
+            width: 100%;
+            margin-top: 12px;
+            padding: 12px 14px;
+            border: 1px solid var(--primary);
+            border-radius: 12px;
+            background: color-mix(in srgb, var(--primary) 16%, var(--surface));
+            color: var(--text);
+            font-weight: 600;
+            text-align: center;
+        }
+
+        .notes-dialog {
+            width: min(560px, calc(100vw - 20px));
+        }
+
+        .notes-canvas {
+            display: block;
+            width: 100%;
+            height: min(46vh, 340px);
+            margin-top: 10px;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            background: #fff;
+            touch-action: none;
+        }
+
+        .notes-tools button.is-on {
+            background: var(--primary);
+            color: #fff;
+        }
+
+        .call-controls button.is-on {
+            box-shadow: inset 0 0 0 2px #fff;
+        }
+
+        .sheet-dialog .secondary-action.is-on {
+            border-color: var(--primary);
+            color: var(--primary);
+            font-weight: 600;
         }
 
         .incoming-dialog {
@@ -3431,13 +3512,13 @@
             }
         }
     </style>
-  <script type="module" crossorigin src="/assets/messages-CZO08mqT.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/pwa-Ciu4DNql.js">
+  <script type="module" crossorigin src="/assets/messages-zkHP619k.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/pwa-CFI67F8o.js">
   <link rel="modulepreload" crossorigin href="/assets/voice-player-C956cenq.js">
-  <link rel="modulepreload" crossorigin href="/assets/offline-banner-DubDYSn2.js">
-  <link rel="modulepreload" crossorigin href="/assets/profile-identity-kxx3M_X_.js">
-  <link rel="modulepreload" crossorigin href="/assets/offline-chat-DMGMCnqJ.js">
-  <link rel="modulepreload" crossorigin href="/assets/staff-verification-BOkqpcJs.js">
+  <link rel="modulepreload" crossorigin href="/assets/offline-banner-BzflXqCE.js">
+  <link rel="modulepreload" crossorigin href="/assets/profile-identity-Ck8uir9O.js">
+  <link rel="modulepreload" crossorigin href="/assets/offline-chat-Bd9AlZnh.js">
+  <link rel="modulepreload" crossorigin href="/assets/staff-verification-DbpAmLUV.js">
   <link rel="modulepreload" crossorigin href="/assets/member-view-CKKBednP.js">
   <link rel="modulepreload" crossorigin href="/assets/offline-store-C3sY6Srk.js">
 </head>
@@ -4062,10 +4143,49 @@
             <video id="local-video" class="local-video" autoplay playsinline muted></video>
         </div>
         <audio id="remote-audio" autoplay></audio>
+        <div class="call-meters" id="call-meters" hidden>
+            <div class="call-meter">
+                <span data-i18n="Your microphone">Your microphone</span>
+                <i class="meter-track"><b id="meter-local" class="meter-fill"></b></i>
+            </div>
+            <div class="call-meter">
+                <span data-i18n="Their voice">Their voice</span>
+                <i class="meter-track"><b id="meter-remote" class="meter-fill"></b></i>
+            </div>
+        </div>
+        <button id="remote-sound-chip" class="remote-sound-chip" type="button" hidden
+            data-i18n="Tap for sound">Tap for sound</button>
         <div class="call-controls">
             <button id="toggle-mic-button" type="button" data-i18n="Mute">Mute</button>
             <button id="toggle-camera-button" type="button" data-i18n="Camera">Camera</button>
+            <button id="start-video-button" type="button" hidden data-i18n="Turn on video">Turn on video</button>
+            <button id="share-screen-button" type="button" hidden data-i18n="Share screen">Share screen</button>
+            <button id="share-notes-button" type="button" hidden data-i18n="Share notes">Share notes</button>
             <button id="end-call-button" class="end-call" type="button" data-i18n="End">End</button>
+        </div>
+    </dialog>
+    <dialog id="notes-dialog" class="sheet-dialog notes-dialog" aria-labelledby="notes-title">
+        <h3 id="notes-title" data-i18n="Shared notes">Shared notes</h3>
+        <canvas id="notes-canvas" class="notes-canvas" aria-label="Notes board"
+            data-i18n-aria-label="Notes board"></canvas>
+        <div class="dial-row notes-tools">
+            <button id="notes-pen-button" class="secondary-action is-on" type="button"
+                data-i18n="Pen">Pen</button>
+            <button id="notes-eraser-button" class="secondary-action" type="button"
+                data-i18n="Eraser">Eraser</button>
+            <button id="notes-undo-button" class="secondary-action" type="button"
+                data-i18n="Undo">Undo</button>
+            <button id="notes-clear-button" class="secondary-action" type="button"
+                data-i18n="Clear">Clear</button>
+        </div>
+        <p class="dial-result"
+            data-i18n="What you write here becomes your picture for the other side until you stop sharing.">
+            What you write here becomes your picture for the other side until you stop sharing.</p>
+        <div class="dial-row">
+            <button id="notes-stop-button" class="secondary-action" type="button" hidden
+                data-i18n="Stop sharing">Stop sharing</button>
+            <button id="notes-close-button" class="secondary-action" type="button"
+                data-i18n="Close">Close</button>
         </div>
     </dialog>
     <dialog id="keypad-dialog" class="sheet-dialog" aria-labelledby="keypad-title">
@@ -4111,6 +4231,22 @@
             <button id="clear-call-history-button" class="secondary-action" type="button"
                 data-i18n="Clear recent calls">Clear recent calls</button>
         </div>
+        <div class="dial-row">
+            <button id="plain-mic-button" class="secondary-action" type="button" aria-pressed="false"
+                data-i18n="Microphone without call processing">Microphone without call processing</button>
+        </div>
+        <p class="dial-result" id="plain-mic-hint"
+            data-i18n="Turn this on if nobody hears you in a call. The next call opens the microphone the plain way, with no echo cancelling.">
+            Turn this on if nobody hears you in a call. The next call opens the microphone the plain way, with no
+            echo cancelling.</p>
+        <div class="dial-row">
+            <button id="call-meter-button" class="secondary-action" type="button" aria-pressed="false"
+                data-i18n="Show a sound meter in calls">Show a sound meter in calls</button>
+        </div>
+        <p class="dial-result"
+            data-i18n="Two bars appear during a call: your microphone and their voice. A flat bar tells you which side is silent.">
+            Two bars appear during a call: your microphone and their voice. A flat bar tells you which side is
+            silent.</p>
         <p class="dial-result" data-i18n="Call history is stored only on this device.">
             Call history is stored only on this device.</p>
     </dialog>
