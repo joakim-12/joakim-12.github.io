@@ -1895,6 +1895,19 @@
             color: var(--muted);
         }
 
+        /* A send that never reached the server stays on screen, marked, and
+           tapping the bubble tries again. */
+        .bubble.failed-message {
+            border: 1px solid #d66a5a;
+            cursor: pointer;
+        }
+
+        body.dark-mode .bubble.failed-message { border-color: #e8825f; }
+
+        .message-time.failed { color: #b3372b; }
+
+        body.dark-mode .message-time.failed { color: #ff8a7a; }
+
         .message-actions-button {
             position: absolute;
             top: -6px;
@@ -3536,15 +3549,15 @@
             }
         }
     </style>
-  <script type="module" crossorigin src="/assets/messages-AQq_OPgl.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/pwa-CrhfiAFw.js">
+  <script type="module" crossorigin src="/assets/messages-B4Q-9BNJ.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/pwa-D6zdxfbW.js">
+  <link rel="modulepreload" crossorigin href="/assets/offline-banner-3Xt_Fgll.js">
   <link rel="modulepreload" crossorigin href="/assets/voice-player-C956cenq.js">
-  <link rel="modulepreload" crossorigin href="/assets/offline-banner-CF5p75mC.js">
-  <link rel="modulepreload" crossorigin href="/assets/profile-identity-BHkrqr9n.js">
-  <link rel="modulepreload" crossorigin href="/assets/offline-chat-C8RJoXZq.js">
-  <link rel="modulepreload" crossorigin href="/assets/staff-verification-CvBMCoAo.js">
+  <link rel="modulepreload" crossorigin href="/assets/profile-identity-Bfv2B1Px.js">
+  <link rel="modulepreload" crossorigin href="/assets/offline-chat-Cr6Pvk-W.js">
+  <link rel="modulepreload" crossorigin href="/assets/staff-verification-Dcz1YytD.js">
   <link rel="modulepreload" crossorigin href="/assets/member-view-CKKBednP.js">
-  <link rel="modulepreload" crossorigin href="/assets/notify-Dj_yd9YX.js">
+  <link rel="modulepreload" crossorigin href="/assets/notify-B4-aWr2T.js">
   <link rel="modulepreload" crossorigin href="/assets/offline-store-C3sY6Srk.js">
 </head>
 
@@ -4183,6 +4196,7 @@
         <div class="call-controls">
             <button id="toggle-mic-button" type="button" data-i18n="Mute">Mute</button>
             <button id="toggle-camera-button" type="button" data-i18n="Camera">Camera</button>
+            <button id="toggle-speaker-button" type="button" hidden data-i18n="Speaker">Speaker</button>
             <button id="start-video-button" type="button" hidden data-i18n="Turn on video">Turn on video</button>
             <button id="share-screen-button" type="button" hidden data-i18n="Share screen">Share screen</button>
             <button id="share-notes-button" type="button" hidden data-i18n="Share notes">Share notes</button>
@@ -4281,6 +4295,8 @@
         <p class="dial-result" id="media-test-camera" role="status">Camera: checking…</p>
         <p class="dial-result" id="media-test-help" role="status"></p>
         <div class="dial-row">
+            <button id="media-test-settings" class="secondary-action" type="button" hidden
+                data-i18n="Open phone settings">Open phone settings</button>
             <button id="media-test-close" class="secondary-action" type="button" data-i18n="Close">Close</button>
         </div>
     </dialog>
