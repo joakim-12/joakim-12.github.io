@@ -891,6 +891,16 @@
         }
 
         /* ---- Call meters, sound chip, shared notes -------------------- */
+        .call-network-line {
+            margin: 2px 0 0;
+            font-size: 12px;
+            color: #8696a0;
+        }
+
+        .call-network-line[hidden] {
+            display: none;
+        }
+
         .call-meters {
             display: grid;
             gap: 6px;
@@ -3549,15 +3559,15 @@
             }
         }
     </style>
-  <script type="module" crossorigin src="/assets/messages-B4Q-9BNJ.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/pwa-D6zdxfbW.js">
-  <link rel="modulepreload" crossorigin href="/assets/offline-banner-3Xt_Fgll.js">
+  <script type="module" crossorigin src="/assets/messages-BV4FzfYX.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/pwa-Dp-zRHUu.js">
+  <link rel="modulepreload" crossorigin href="/assets/offline-banner-BfB3f5B-.js">
   <link rel="modulepreload" crossorigin href="/assets/voice-player-C956cenq.js">
-  <link rel="modulepreload" crossorigin href="/assets/profile-identity-Bfv2B1Px.js">
-  <link rel="modulepreload" crossorigin href="/assets/offline-chat-Cr6Pvk-W.js">
-  <link rel="modulepreload" crossorigin href="/assets/staff-verification-Dcz1YytD.js">
+  <link rel="modulepreload" crossorigin href="/assets/profile-identity-Dbl4th72.js">
+  <link rel="modulepreload" crossorigin href="/assets/offline-chat-DwfcNpDo.js">
+  <link rel="modulepreload" crossorigin href="/assets/staff-verification-CNFN_pd2.js">
   <link rel="modulepreload" crossorigin href="/assets/member-view-CKKBednP.js">
-  <link rel="modulepreload" crossorigin href="/assets/notify-B4-aWr2T.js">
+  <link rel="modulepreload" crossorigin href="/assets/notify-m73LZHcZ.js">
   <link rel="modulepreload" crossorigin href="/assets/offline-store-C3sY6Srk.js">
 </head>
 
@@ -4175,6 +4185,7 @@
         <div class="call-surface-top">
             <h2 id="call-title" data-i18n="Call">Call</h2>
             <p id="call-state" class="notice" role="status"></p>
+            <p id="call-network-line" class="call-network-line" role="status" hidden></p>
         </div>
         <div class="call-videos">
             <video id="remote-video" class="remote-video" autoplay playsinline muted></video>
@@ -4262,6 +4273,15 @@
     </dialog>
     <dialog id="calls-menu-dialog" class="sheet-dialog" aria-labelledby="calls-menu-title">
         <h3 id="calls-menu-title" data-i18n="Calls">Calls</h3>
+        <div class="dial-row">
+            <button id="call-watch-button" class="secondary-action" type="button"
+                aria-describedby="call-watch-hint"
+                data-i18n="Calls when the app is closed">Calls when the app is closed</button>
+        </div>
+        <p class="dial-result" id="call-watch-hint"
+            data-i18n="Your phone can ring for a call even after you close the app. It uses the sign-in you are using now and stops when you sign out.">
+            Your phone can ring for a call even after you close the app. It uses the sign-in you are using now and
+            stops when you sign out.</p>
         <div class="dial-row">
             <button id="test-media-button" class="secondary-action" type="button"
                 data-i18n="Test camera and microphone">Test camera and microphone</button>
