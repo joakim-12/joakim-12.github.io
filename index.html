@@ -541,18 +541,18 @@
     input:focus, textarea:focus { border-color: var(--blue); outline: 3px solid rgb(51 144 236 / 14%); }
     .container { width: min(720px, 94%); margin-top: 28px; }
     .card { border-color: var(--border); border-radius: 16px; box-shadow: 0 4px 18px rgb(28 48 66 / 5%); }
-    #authSection { max-width: 580px; margin: 32px auto; padding: clamp(20px, 5vw, 38px); }
+    #authSection { max-width: 580px; margin: 32px auto; padding: 24px; padding: clamp(20px, 5vw, 38px); }
     .auth-entry { display: flex; gap: 10px; justify-content: center; max-width: 580px; margin: 18px auto 0; }
     .auth-entry button { border: 1px solid var(--blue); border-radius: 999px; background: var(--blue); color: #fff; padding: 10px 22px; font: inherit; cursor: pointer; }
     .auth-entry button.secondary { background: transparent; color: var(--blue); }
     #authSection .auth-close { float: right; margin: -8px -8px 0 0; border: 0; background: transparent; color: var(--muted); font-size: 24px; line-height: 1; cursor: pointer; }
-    #authSection > h2 { margin-top: 0; font-size: clamp(24px, 4vw, 32px); letter-spacing: -.8px; }
+    #authSection > h2 { margin-top: 0; font-size: 28px; font-size: clamp(24px, 4vw, 32px); letter-spacing: -.8px; }
     #loginForm h3, #registerForm h3 { margin-top: 22px; }
     .tabs { padding: 4px; border-radius: 12px; background: var(--background); }
     .tabs button { border-radius: 9px; }
     .tabs button.secondary { border-color: transparent; background: transparent; }
     .tabs button:not(.secondary) { box-shadow: 0 2px 6px rgb(28 48 66 / 12%); }
-    .updates-title { margin: 4px 0 18px; font-size: clamp(26px, 5vw, 32px); font-weight: 800; letter-spacing: -.9px; }
+    .updates-title { margin: 4px 0 18px; font-size: 28px; font-size: clamp(26px, 5vw, 32px); font-weight: 800; letter-spacing: -.9px; }
     .updates-section-head { display: flex; align-items: center; gap: 10px; margin: 0 0 4px; }
     .updates-section-head h2 { margin: 0; font-size: 18px; font-weight: 700; }
     .updates-section-head .spacer { flex: 1; }
@@ -579,14 +579,14 @@
     }
     .story-viewer--full::backdrop { background: rgb(0 0 0 / 82%); }
     .story-shell { position: relative; width: 100%; height: 100%; overflow: hidden; background: #000; }
-    .story-stage { position: absolute; inset: 0; display: grid; place-items: center; overflow: hidden; }
+    .story-stage { position: absolute; top: 0; right: 0; bottom: 0; left: 0; display: grid; place-items: center; overflow: hidden; }
     #storyViewer .story-media { width: 100%; height: 100%; max-height: none; margin: 0; border-radius: 0; background: #000; object-fit: contain; }
-    .story-stage-text { display: flex; width: 100%; height: 100%; flex-direction: column; justify-content: safe center; align-items: center; padding: 78px 24px 92px; overflow-y: auto; background: linear-gradient(150deg, #405de6, #833ab4 42%, #e1306c 72%, #f77737); color: #fff; font-size: clamp(27px, 7.4vw, 40px); font-weight: 800; letter-spacing: -.012em; line-height: 1.55; text-align: center; text-shadow: 0 2px 14px rgb(0 0 0 / 48%); white-space: pre-wrap; overflow-wrap: anywhere; }
+    .story-stage-text { display: flex; width: 100%; height: 100%; flex-direction: column; justify-content: safe center; align-items: center; padding: 78px 24px 92px; overflow-y: auto; background: linear-gradient(150deg, #405de6, #833ab4 42%, #e1306c 72%, #f77737); color: #fff; font-size: 32px; font-size: clamp(27px, 7.4vw, 40px); font-weight: 800; letter-spacing: -.012em; line-height: 1.55; text-align: center; text-shadow: 0 2px 14px rgb(0 0 0 / 48%); white-space: pre-wrap; overflow-wrap: anywhere; }
     .story-empty { padding: 24px; color: rgb(255 255 255 / 86%); font-size: 19px; font-weight: 600; text-align: center; }
     .story-caption { position: absolute; right: 0; bottom: 0; left: 0; z-index: 2; max-height: 44%; overflow-y: auto; padding: 34px 16px 22px; background: linear-gradient(transparent, rgb(0 0 0 / 86%)); color: #fff; font-size: 18px; font-weight: 600; line-height: 1.5; text-shadow: 0 1px 8px rgb(0 0 0 / 70%); white-space: pre-wrap; overflow-wrap: anywhere; }
     .story-progress { position: absolute; top: 9px; right: 12px; left: 12px; z-index: 4; display: flex; gap: 4px; }
     .story-bar { position: relative; flex: 1; height: 2px; overflow: hidden; border-radius: 3px; background: rgb(255 255 255 / 32%); }
-    .story-bar > i { position: absolute; inset: 0; display: block; transform: scaleX(0); transform-origin: left; background: #fff; }
+    .story-bar > i { position: absolute; top: 0; right: 0; bottom: 0; left: 0; display: block; transform: scaleX(0); transform-origin: left; background: #fff; }
     .story-bar.done > i { transform: scaleX(1); }
     .story-bar.active > i { animation: story-fill var(--story-duration, 6s) linear forwards; }
     @keyframes story-fill { to { transform: scaleX(1); } }
@@ -680,7 +680,7 @@
     .post-media-fallback a { color: var(--blue); font-weight: 600; }
     .post-media-fallback button { justify-self: center; padding: 7px 14px; border: 0; border-radius: 999px; background: var(--blue); color: #fff; font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
     /* An unplayable clip keeps its frame; the notice lies over the bottom of it so the video stays a video. */
-    .post-media-fallback.post-media-overlay { position: absolute; inset: auto 0 0 0; padding: 22px 14px 14px; background: linear-gradient(to top, rgba(0, 0, 0, .82), rgba(0, 0, 0, .35) 70%, transparent); color: #fff; }
+    .post-media-fallback.post-media-overlay { position: absolute; top: auto; right: 0; bottom: 0; left: 0; padding: 22px 14px 14px; background: linear-gradient(to top, rgba(0, 0, 0, .82), rgba(0, 0, 0, .35) 70%, transparent); color: #fff; }
     .post-media-fallback.post-media-overlay button { background: var(--blue); }
     .ig-post-bar { display: flex; align-items: center; gap: 14px; padding: 8px 10px 2px; }
     .ig-icon-button { display: inline-flex; align-items: center; gap: 6px; padding: 4px; border: 0; border-radius: 8px; background: transparent; color: var(--text); font: inherit; cursor: pointer; }
@@ -796,7 +796,11 @@
       #authSection { margin: 18px auto; }
     }
     /* ============ PROFILE ("YOU") TAB — mobile first ============ */
-    #appSection:has(#profile:target) > section:not(#profile):not(#adminPanel) {
+    /* :has() is Chrome 105. On a WebView older than that the rule is simply
+       never true and every section shows at once, so the page also puts the same
+       class on #appSection itself, where a plain child selector reaches it. */
+    #appSection:has(#profile:target) > section:not(#profile):not(#adminPanel),
+    #appSection.profile-open > section:not(#profile):not(#adminPanel) {
       display: none;
     }
 
@@ -1308,14 +1312,14 @@
       .you-details { margin-left: auto; margin-right: auto; max-width: 620px; }
     }
   </style>
-  <script type="module" crossorigin src="/assets/main-BAd9bwW0.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/pwa-B_aXpfmN.js">
-  <link rel="modulepreload" crossorigin href="/assets/offline-banner-DMF25OIQ.js">
-  <link rel="modulepreload" crossorigin href="/assets/offline-chat-BCKSmny2.js">
-  <link rel="modulepreload" crossorigin href="/assets/profile-identity-BZ5C15hx.js">
-  <link rel="modulepreload" crossorigin href="/assets/offline-store-C3sY6Srk.js">
-  <link rel="modulepreload" crossorigin href="/assets/company-directory-wVsj903f.js">
-  <link rel="modulepreload" crossorigin href="/assets/staff-verification-WHFmU_Yl.js">
+  <script type="module" crossorigin src="/assets/main-DoLg1fWx.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/pwa-BPvKOM3j.js">
+  <link rel="modulepreload" crossorigin href="/assets/offline-banner-CnmhCca_.js">
+  <link rel="modulepreload" crossorigin href="/assets/offline-chat-CUi7F-Al.js">
+  <link rel="modulepreload" crossorigin href="/assets/profile-identity-CDYYldBd.js">
+  <link rel="modulepreload" crossorigin href="/assets/offline-store-DtZovh2O.js">
+  <link rel="modulepreload" crossorigin href="/assets/company-directory-BXnAWoi6.js">
+  <link rel="modulepreload" crossorigin href="/assets/staff-verification-D0EvDt1r.js">
 </head>
 
 <body>
@@ -1691,7 +1695,7 @@
           <h2 data-i18n="About Campus Connect">About Campus Connect</h2>
           <p data-i18n="Share updates, find people, chat and call on campus.">Share updates, find people, chat and call on campus.</p>
           <p class="app-owner-name">Developed by Josh Chimal Akim · BSc Computer Science, Kabarak University</p>
-          <p class="muted" id="appVersionLine">Campus Connect v1.12</p>
+          <p class="muted" id="appVersionLine">Campus Connect v1.14</p>
         </section>
 
         <div id="youAppearanceSheet" class="you-sheet hidden">
@@ -2158,6 +2162,68 @@
     <p class="muted" data-i18n="Check every number against your official fee invoice before you pay. Campus Connect cannot see or change what your school is owed.">Check every number against your official fee invoice before you pay. Campus Connect cannot see or change what your school is owed.</p>
     <button id="closeFeesDialogButton" type="button" data-i18n="Close">Close</button>
   </dialog>
+
+  <script>
+    /* Everything below this line is a module, and a module an engine cannot parse
+       fails in total silence: a blank page, no error on screen, and no way for a
+       student to work out that the phone is the reason. This script is ES5 on
+       purpose, so it still runs on that old engine. It says nothing while the
+       bundle is merely slow - only when the bundle never started at all. */
+    (function () {
+      var WORDS = {
+        en: ["Campus Connect could not start on this phone.",
+          "Its web engine is too old for this app. Update Android System WebView in the Play Store, then reopen Campus Connect.",
+          "Reload"],
+        fr: ["Campus Connect n'a pas pu démarrer sur ce téléphone.",
+          "Son moteur web est trop ancien pour cette application. Mettez à jour Android System WebView dans le Play Store, puis rouvrez Campus Connect.",
+          "Recharger"],
+        sw: ["Campus Connect haikuweza kuanza kwenye simu hii.",
+          "Injini yake ya wavuti ni ya zamani sana kwa programu hii. Sasisha Android System WebView katika Play Store, kisha ufunue Campus Connect tena.",
+          "Pakia upya"],
+        es: ["Campus Connect no pudo iniciar en este teléfono.",
+          "Su motor web es demasiado viejo para esta aplicación. Actualiza Android System WebView en Play Store y vuelve a abrir Campus Connect.",
+          "Recargar"]
+      };
+      var tongue = String(navigator.language || "en").slice(0, 2).toLowerCase();
+      var lines = WORDS[tongue] || WORDS.en;
+
+      function speak() {
+        /* compat.js sets this flag as the first thing it does, so any engine that
+           could read the bundle at all has already stood this down. */
+        if (window.__ccStarted || document.getElementById("cc-boot-failure")) return;
+        var box = document.createElement("div");
+        box.id = "cc-boot-failure";
+        box.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:99999;"
+          + "padding:16px 18px 18px;background:#7a1414;color:#fff;text-align:center;"
+          + "font:400 15px/1.5 Roboto,Helvetica,Arial,sans-serif";
+        var title = document.createElement("div");
+        title.style.cssText = "font-size:17px;font-weight:700";
+        title.textContent = lines[0];
+        var detail = document.createElement("div");
+        detail.style.marginTop = "6px";
+        detail.textContent = lines[1];
+        var again = document.createElement("button");
+        again.type = "button";
+        again.textContent = lines[2];
+        again.style.cssText = "margin-top:12px;padding:9px 22px;border:0;border-radius:8px;"
+          + "background:#fff;color:#7a1414;font-size:15px;font-weight:700";
+        again.onclick = function () { window.location.reload(); };
+        box.appendChild(title);
+        box.appendChild(detail);
+        box.appendChild(again);
+        document.body.appendChild(box);
+      }
+
+      /* A script this engine refused reports itself the moment it is read, so a
+         phone that can never start the app is told straight away rather than after
+         a wait, and the wait still covers a bundle that never arrives. */
+      window.addEventListener("error", function (event) {
+        var node = event && event.target;
+        if (node && String(node.tagName).toUpperCase() === "SCRIPT") speak();
+      }, true);
+      window.setTimeout(speak, 20000);
+    })();
+  </script>
 
 </body>
 </html>

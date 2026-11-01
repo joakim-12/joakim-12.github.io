@@ -1,4 +1,4 @@
-const CACHE_NAME = "campus-connect-1.12";
+const CACHE_NAME = "campus-connect-1.14";
 const MEDIA_CACHE_NAME = "campus-connect-media-v1";
 const MAX_MEDIA_ENTRIES = 240;
 
@@ -55,7 +55,12 @@ async function cacheMedia(event, request, url) {
             );
         }
         return response;
-    } catch {
+        /* The name below is never read, and it still has to be there: a `catch`
+           with no binding is ES2019, and this file is copied as it is instead of
+           bundled down, so an older WebView would refuse to parse it and the app
+           would quietly lose the offline half a student on a bad network needs. */
+        // eslint-disable-next-line no-unused-vars
+    } catch (cacheMiss) {
         const fallback = await cache.match(stableKey);
         return fallback || Response.error();
     }

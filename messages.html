@@ -1559,7 +1559,10 @@
         .incoming-dialog[open] {
             display: grid;
             position: fixed;
-            inset: 0;
+            top: 0;
+            right: 0;
+            bottom: 0;
+            left: 0;
             width: 100vw;
             max-width: none;
             height: 100dvh;
@@ -1727,7 +1730,10 @@
             .call-dialog[open],
             .incoming-dialog[open] {
                 position: absolute;
-                inset: 0;
+                top: 0;
+                right: 0;
+                bottom: 0;
+                left: 0;
                 width: min(520px, 92vw);
                 height: min(640px, 88dvh);
                 margin: auto;
@@ -1967,7 +1973,10 @@
         /* Long-press message menu: quick reactions + dark action list */
         .menu-layer {
             position: fixed;
-            inset: 0;
+            top: 0;
+            right: 0;
+            bottom: 0;
+            left: 0;
             z-index: 70;
             background: rgb(0 0 0 / 24%);
         }
@@ -3491,11 +3500,17 @@
                 display: flex;
             }
 
-            body:has(.messaging.chat-open) .bottom-nav {
+            /* :has() is Chrome 105, and a phone whose WebView was never updated
+               stops at an older one. There the rule below is simply never true, so
+               the page also puts chat-open on <body> itself and these plain
+               selectors do the same job on every engine. */
+            body:has(.messaging.chat-open) .bottom-nav,
+            body.chat-open .bottom-nav {
                 display: none;
             }
 
-            body:has(.messaging.chat-open) .app {
+            body:has(.messaging.chat-open) .app,
+            body.chat-open .app {
                 height: calc(100vh - env(safe-area-inset-bottom, 0px));
                 height: calc(100dvh - env(safe-area-inset-bottom, 0px));
             }
@@ -3559,16 +3574,16 @@
             }
         }
     </style>
-  <script type="module" crossorigin src="/assets/messages-Dea5dz8S.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/pwa-B_aXpfmN.js">
-  <link rel="modulepreload" crossorigin href="/assets/offline-banner-DMF25OIQ.js">
+  <script type="module" crossorigin src="/assets/messages-C4xcc9ie.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/pwa-BPvKOM3j.js">
+  <link rel="modulepreload" crossorigin href="/assets/offline-banner-CnmhCca_.js">
   <link rel="modulepreload" crossorigin href="/assets/voice-player-C956cenq.js">
-  <link rel="modulepreload" crossorigin href="/assets/profile-identity-BZ5C15hx.js">
-  <link rel="modulepreload" crossorigin href="/assets/offline-chat-BCKSmny2.js">
-  <link rel="modulepreload" crossorigin href="/assets/staff-verification-WHFmU_Yl.js">
+  <link rel="modulepreload" crossorigin href="/assets/profile-identity-CDYYldBd.js">
+  <link rel="modulepreload" crossorigin href="/assets/offline-chat-CUi7F-Al.js">
+  <link rel="modulepreload" crossorigin href="/assets/staff-verification-D0EvDt1r.js">
   <link rel="modulepreload" crossorigin href="/assets/member-view-CKKBednP.js">
-  <link rel="modulepreload" crossorigin href="/assets/notify-BDXqvNp5.js">
-  <link rel="modulepreload" crossorigin href="/assets/offline-store-C3sY6Srk.js">
+  <link rel="modulepreload" crossorigin href="/assets/notify-BgFm7ZlL.js">
+  <link rel="modulepreload" crossorigin href="/assets/offline-store-DtZovh2O.js">
 </head>
 
 <body>
@@ -4438,7 +4453,70 @@
             </span>
             <span data-i18n="Profile">Profile</span>
         </a>
-    </nav>
+    </nav>
+
+    <script>
+        /* The chat screen below is a module, and a module an engine cannot parse
+           fails in total silence: a blank page, no error on screen, and no way for a
+           student to work out that the phone is the reason. This script is ES5 on
+           purpose, so it still runs on that old engine. It says nothing while the
+           bundle is merely slow - only when the bundle never started at all. */
+        (function () {
+            var WORDS = {
+                en: ["Campus Connect could not start on this phone.",
+                    "Its web engine is too old for this app. Update Android System WebView in the Play Store, then reopen Campus Connect.",
+                    "Reload"],
+                fr: ["Campus Connect n'a pas pu démarrer sur ce téléphone.",
+                    "Son moteur web est trop ancien pour cette application. Mettez à jour Android System WebView dans le Play Store, puis rouvrez Campus Connect.",
+                    "Recharger"],
+                sw: ["Campus Connect haikuweza kuanza kwenye simu hii.",
+                    "Injini yake ya wavuti ni ya zamani sana kwa programu hii. Sasisha Android System WebView katika Play Store, kisha ufunue Campus Connect tena.",
+                    "Pakia upya"],
+                es: ["Campus Connect no pudo iniciar en este teléfono.",
+                    "Su motor web es demasiado viejo para esta aplicación. Actualiza Android System WebView en Play Store y vuelve a abrir Campus Connect.",
+                    "Recargar"]
+            };
+            var tongue = String(navigator.language || "en").slice(0, 2).toLowerCase();
+            var lines = WORDS[tongue] || WORDS.en;
+
+            function speak() {
+                /* compat.js sets this flag as the first thing it does, so any engine
+                   that could read the bundle at all has already stood this down. */
+                if (window.__ccStarted || document.getElementById("cc-boot-failure")) return;
+                var box = document.createElement("div");
+                box.id = "cc-boot-failure";
+                box.style.cssText = "position:fixed;top:0;left:0;right:0;z-index:99999;"
+                    + "padding:16px 18px 18px;background:#7a1414;color:#fff;text-align:center;"
+                    + "font:400 15px/1.5 Roboto,Helvetica,Arial,sans-serif";
+                var title = document.createElement("div");
+                title.style.cssText = "font-size:17px;font-weight:700";
+                title.textContent = lines[0];
+                var detail = document.createElement("div");
+                detail.style.marginTop = "6px";
+                detail.textContent = lines[1];
+                var again = document.createElement("button");
+                again.type = "button";
+                again.textContent = lines[2];
+                again.style.cssText = "margin-top:12px;padding:9px 22px;border:0;border-radius:8px;"
+                    + "background:#fff;color:#7a1414;font-size:15px;font-weight:700";
+                again.onclick = function () { window.location.reload(); };
+                box.appendChild(title);
+                box.appendChild(detail);
+                box.appendChild(again);
+                document.body.appendChild(box);
+            }
+
+            /* A script this engine refused reports itself the moment it is read, so a
+               phone that can never start the app is told straight away rather than
+               after a wait, and the wait still covers a bundle that never arrives. */
+            window.addEventListener("error", function (event) {
+                var node = event && event.target;
+                if (node && String(node.tagName).toUpperCase() === "SCRIPT") speak();
+            }, true);
+            window.setTimeout(speak, 20000);
+        })();
+    </script>
+
 </body>
 
 </html>
