@@ -4679,6 +4679,35 @@ COMMENT ON COLUMN public.profiles.company_role IS
 CREATE INDEX IF NOT EXISTS profiles_company_idx
     ON public.profiles (LOWER(BTRIM(company)));
 
+-- ------------------------------------------------------------
+-- 4b. ONE DIRECTOR PER COMPANY
+-- Many accounts may share one company, but only one may call itself the
+-- Director of that name. First reconcile any old duplicates - the earliest
+-- claim keeps the seat, the rest drop to staff - then guard the seat with a
+-- partial unique index keyed the way the app normalises the name. Nothing is
+-- deleted; staff and everyone without a company are untouched.
+-- ------------------------------------------------------------
+
+DO $$
+BEGIN
+    UPDATE public.profiles AS p
+    SET company_role = 'staff'
+    WHERE p.company_role = 'director'
+      AND BTRIM(COALESCE(p.company, '')) <> ''
+      AND p.id <> (
+          SELECT keep.id
+          FROM public.profiles AS keep
+          WHERE keep.company_role = 'director'
+            AND LOWER(BTRIM(keep.company)) = LOWER(BTRIM(p.company))
+          ORDER BY keep.created_at ASC, keep.id ASC
+          LIMIT 1
+      );
+END $$;
+
+CREATE UNIQUE INDEX IF NOT EXISTS profiles_one_director_per_company
+    ON public.profiles (LOWER(BTRIM(company)))
+    WHERE company_role = 'director' AND BTRIM(COALESCE(company, '')) <> '';
+
 
 -- ------------------------------------------------------------
 -- 5. A COMPANY ACCOUNT MAY WRITE ANNOUNCEMENTS
