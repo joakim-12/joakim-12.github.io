@@ -1838,6 +1838,7 @@ CREATE POLICY "Users send messages as themselves"
         sender_id = (SELECT auth.uid())
         AND sender_id <> receiver_id
         AND NOT public.is_blocked_between(sender_id, receiver_id)
+        AND public.are_mutual_connections(sender_id, receiver_id)
     );
 
 DROP POLICY IF EXISTS "Recipients mark messages as read" ON public.messages;
