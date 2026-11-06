@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="theme-color" content="#075b57">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="campus connect">
@@ -2238,6 +2238,19 @@
             text-overflow: ellipsis;
         }
 
+        /* A quote that names a status is a link, so it invites the tap and
+           says in one word where the tap leads. */
+        .reply-quote--status { cursor: pointer; }
+        .reply-quote--status:hover { background: rgb(0 0 0 / 9%); }
+        body.dark-mode .reply-quote--status:hover { background: rgb(255 255 255 / 12%); }
+        .reply-quote-link {
+            display: block;
+            margin-top: 3px;
+            color: var(--primary);
+            font-size: 11.5px;
+            font-weight: 700;
+        }
+
         .quote-strip {
             display: flex;
             align-items: center;
@@ -2464,6 +2477,56 @@
         .attach-icon.camera { background: #e17076; }
         .attach-icon.location { background: #00a884; }
         .attach-icon.contact { background: #0084ff; }
+        .attach-icon.poll { background: #f7b731; }
+        .attach-icon.ghost { background: #4b6584; }
+        .poll-card { display: grid; gap: 6px; margin-top: 6px; min-width: min(260px, 72vw); }
+        .poll-option {
+            position: relative;
+            overflow: hidden;
+            border: 1px solid rgba(128, 128, 128, 0.4);
+            border-radius: 10px;
+            background: transparent;
+            color: inherit;
+            text-align: left;
+            padding: 9px 12px;
+            cursor: pointer;
+            font: inherit;
+        }
+        .poll-option .poll-bar {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            left: 0;
+            width: 0;
+            background: rgba(0, 168, 132, 0.22);
+            transition: width 0.35s ease;
+        }
+        .poll-option .poll-label { position: relative; display: block; }
+        .poll-option.my-vote { border-color: #00a884; font-weight: 600; }
+        .poll-total { font-size: 12px; opacity: 0.7; }
+        .view-once-veil {
+            display: grid;
+            place-items: center;
+            min-width: min(220px, 60vw);
+            min-height: 120px;
+            border-radius: 12px;
+            border: 1px dashed rgba(128, 128, 128, 0.55);
+            background: rgba(128, 128, 128, 0.14);
+            color: inherit;
+            font: inherit;
+            cursor: pointer;
+            padding: 14px;
+        }
+        .view-once-veil:disabled { cursor: default; opacity: 0.75; }
+        .poll-dialog-card { width: min(92vw, 420px); }
+        #pollOptions { display: grid; gap: 6px; margin: 10px 0; }
+        .poll-option-row { display: flex; gap: 6px; align-items: center; }
+        .poll-option-row input { flex: 1; }
+        .poll-option-remove { border: 0; background: transparent; color: inherit; cursor: pointer; font-size: 16px; }
+        #viewOnceViewer { border: 0; background: #000; padding: 0; margin: auto; }
+        #viewOnceViewer::backdrop { background: #000; }
+        #viewOnceStage { display: grid; place-items: center; color: #fff; padding: 16px; }
+        #viewOnceStage img, #viewOnceStage video { max-width: 92vw; max-height: 88vh; display: block; }
 
         .compose-field {
             position: relative;
@@ -3574,16 +3637,17 @@
             }
         }
     </style>
-  <script type="module" crossorigin src="/assets/messages-DWTjMmCo.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/pwa-7ZbODOgX.js">
-  <link rel="modulepreload" crossorigin href="/assets/offline-banner-I8TlAorH.js">
-  <link rel="modulepreload" crossorigin href="/assets/notify-BqVvlnCK.js">
+  <script type="module" crossorigin src="/assets/messages-BX4dmXFT.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/pwa-DkIiNRD7.js">
+  <link rel="modulepreload" crossorigin href="/assets/offline-banner-B7vEI88J.js">
+  <link rel="modulepreload" crossorigin href="/assets/offline-chat-meet0bJv.js">
+  <link rel="modulepreload" crossorigin href="/assets/notify-BR4d4gCP.js">
   <link rel="modulepreload" crossorigin href="/assets/voice-player-C956cenq.js">
-  <link rel="modulepreload" crossorigin href="/assets/profile-identity-tcfFy7VP.js">
-  <link rel="modulepreload" crossorigin href="/assets/offline-chat-B1Edtw_B.js">
-  <link rel="modulepreload" crossorigin href="/assets/staff-verification-svJYYrOt.js">
+  <link rel="modulepreload" crossorigin href="/assets/profile-identity-7cDZT5LF.js">
+  <link rel="modulepreload" crossorigin href="/assets/staff-verification-PtU_rhnb.js">
   <link rel="modulepreload" crossorigin href="/assets/member-view-CKKBednP.js">
   <link rel="modulepreload" crossorigin href="/assets/offline-store-DtZovh2O.js">
+  <link rel="stylesheet" crossorigin href="/assets/pwa-BFBmpa7B.css">
 </head>
 
 <body>
@@ -3857,6 +3921,14 @@
                             <span class="attach-icon contact" aria-hidden="true">👤</span>
                             <span data-i18n="Contacts">Contacts</span>
                         </button>
+                        <button id="attach-poll" type="button" class="attach-option">
+                            <span class="attach-icon poll" aria-hidden="true">📊</span>
+                            <span data-i18n="Poll">Poll</span>
+                        </button>
+                        <button id="attach-view-once" type="button" class="attach-option">
+                            <span class="attach-icon ghost" aria-hidden="true">👻</span>
+                            <span data-i18n="View once">View once</span>
+                        </button>
                     </div>
                     <div class="quote-strip" id="reply-strip" hidden>
                         <div>
@@ -4094,6 +4166,20 @@
         <div class="member-profile-actions">
             <button id="message-member-profile" class="primary-action" type="button" data-i18n="Message">Message</button>
         </div>
+    </dialog>
+    <dialog id="pollDialog" class="message-action-dialog poll-dialog-card" aria-labelledby="pollDialogTitle">
+        <h3 id="pollDialogTitle" data-i18n="New poll">New poll</h3>
+        <input id="pollQuestion" type="text" maxlength="200" placeholder="Ask a question…"
+            data-i18n-placeholder="Ask a question…" />
+        <div id="pollOptions"></div>
+        <button id="pollAddOption" type="button" class="ghost-action" data-i18n="Add option">Add option</button>
+        <div class="dialog-actions">
+            <button id="pollCancel" type="button" class="secondary-action" data-i18n="Cancel">Cancel</button>
+            <button id="pollCreate" type="button" class="primary-action" data-i18n="Create poll">Create poll</button>
+        </div>
+    </dialog>
+    <dialog id="viewOnceViewer" aria-label="View once">
+        <div id="viewOnceStage"></div>
     </dialog>
     <div class="menu-layer" id="messageMenuLayer" hidden>
         <div class="quick-reactions" id="quickReactions" role="menu" aria-label="React"></div>

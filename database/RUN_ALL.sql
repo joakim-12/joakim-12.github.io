@@ -830,6 +830,34 @@ CREATE POLICY "Users remove their own likes"
     FOR DELETE TO authenticated
     USING (auth.uid() = user_id);
 
+-- ---- STATUS LIKES (v1.24): like a status the way a post is liked ----
+
+CREATE TABLE IF NOT EXISTS public.story_likes (
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    story_id UUID NOT NULL REFERENCES public.stories(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (user_id, story_id)
+);
+
+CREATE INDEX IF NOT EXISTS story_likes_story_idx ON public.story_likes (story_id);
+
+ALTER TABLE public.story_likes ENABLE ROW LEVEL SECURITY;
+GRANT SELECT, INSERT, DELETE ON public.story_likes TO authenticated;
+
+DROP POLICY IF EXISTS "Authenticated users view status likes" ON public.story_likes;
+CREATE POLICY "Authenticated users view status likes" ON public.story_likes
+    FOR SELECT TO authenticated USING (TRUE);
+
+DROP POLICY IF EXISTS "Users like a status as themselves" ON public.story_likes;
+CREATE POLICY "Users like a status as themselves" ON public.story_likes
+    FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "Users remove their own status likes" ON public.story_likes;
+CREATE POLICY "Users remove their own status likes" ON public.story_likes
+    FOR DELETE TO authenticated USING (auth.uid() = user_id);
+
+NOTIFY pgrst, 'reload schema';
+
 
 -- ============================================================
 -- 15. COMMENT POLICIES

@@ -613,6 +613,26 @@
     .story-side--prev .story-side-icon { left: 10px; }
     .story-side--next .story-side-icon { right: 10px; }
     .story-side:hover .story-side-icon { background: rgb(254 254 254 / 34%); }
+    .story-footer { position: absolute; right: 0; bottom: 0; left: 0; z-index: 5; display: flex; align-items: center; gap: 10px; padding: 12px 12px calc(12px + env(safe-area-inset-bottom)); background: linear-gradient(transparent, rgb(0 0 0 / 82%)); }
+    .story-footer[hidden] { display: none; }
+    .story-like-btn { display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto; padding: 8px 10px; border: 0; border-radius: 20px; background: rgb(255 255 255 / 14%); color: #fff; font-size: 14px; font-weight: 700; cursor: pointer; }
+    .story-like-btn svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .story-like-btn.liked { color: #ff2d55; }
+    .story-like-btn.liked svg { fill: #ff2d55; stroke: #ff2d55; }
+    .story-like-count { min-width: 8px; }
+    .story-footer { position: relative; }
+    .story-react-btn { display: inline-flex; align-items: center; padding: 8px 6px; border: 0; background: transparent; font-size: 22px; cursor: pointer; color: inherit; }
+    .story-reaction-row { position: absolute; left: 50%; transform: translateX(-50%); bottom: 74px; display: flex; gap: 4px; background: rgba(0, 0, 0, 0.6); padding: 6px 10px; border-radius: 999px; z-index: 5; }
+    .story-reaction-row[hidden] { display: none; }
+    .story-reaction-row button { border: 0; background: transparent; font-size: 26px; line-height: 1; cursor: pointer; padding: 2px 4px; }
+    .story-reaction-row button.mine { outline: 2px solid rgba(255, 255, 255, 0.85); border-radius: 50%; }
+    .story-reply-form { display: flex; flex: 1; align-items: center; gap: 8px; min-width: 0; }
+    .story-reply-input { flex: 1; min-width: 0; padding: 10px 14px; border: 1px solid rgb(255 255 255 / 42%); border-radius: 22px; background: rgb(0 0 0 / 40%); color: #fff; font-size: 15px; }
+    .story-reply-input::placeholder { color: rgb(255 255 255 / 66%); }
+    .story-reply-send { display: grid; width: 40px; height: 40px; flex: 0 0 40px; place-items: center; border: 0; border-radius: 50%; background: #0866ff; color: #fff; cursor: pointer; }
+    .story-reply-send:disabled { opacity: .6; cursor: default; }
+    .story-reply-send svg { width: 20px; height: 20px; fill: currentColor; }
+    .story-reply-status { position: absolute; right: 14px; bottom: calc(100% + 6px); color: #fff; font-size: 13px; font-weight: 600; text-shadow: 0 1px 6px rgb(0 0 0 / 60%); }
 
     /* ============ FEED — INSTAGRAM POSTS ============ */
     .feed-shell { padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
@@ -1312,14 +1332,15 @@
       .you-details { margin-left: auto; margin-right: auto; max-width: 620px; }
     }
   </style>
-  <script type="module" crossorigin src="/assets/main-DPQGp8hd.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/pwa-7ZbODOgX.js">
-  <link rel="modulepreload" crossorigin href="/assets/offline-banner-I8TlAorH.js">
-  <link rel="modulepreload" crossorigin href="/assets/offline-chat-B1Edtw_B.js">
-  <link rel="modulepreload" crossorigin href="/assets/profile-identity-tcfFy7VP.js">
+  <script type="module" crossorigin src="/assets/main-CnoWwsuQ.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/pwa-DkIiNRD7.js">
+  <link rel="modulepreload" crossorigin href="/assets/offline-banner-B7vEI88J.js">
+  <link rel="modulepreload" crossorigin href="/assets/offline-chat-meet0bJv.js">
+  <link rel="modulepreload" crossorigin href="/assets/profile-identity-7cDZT5LF.js">
   <link rel="modulepreload" crossorigin href="/assets/offline-store-DtZovh2O.js">
-  <link rel="modulepreload" crossorigin href="/assets/company-directory-DrWqIV2X.js">
-  <link rel="modulepreload" crossorigin href="/assets/staff-verification-svJYYrOt.js">
+  <link rel="modulepreload" crossorigin href="/assets/company-directory-C-NoWhKs.js">
+  <link rel="modulepreload" crossorigin href="/assets/staff-verification-PtU_rhnb.js">
+  <link rel="stylesheet" crossorigin href="/assets/pwa-BFBmpa7B.css">
 </head>
 
 <body>
@@ -1695,7 +1716,10 @@
           <h2 data-i18n="About Campus Connect">About Campus Connect</h2>
           <p data-i18n="Share updates, find people, chat and call on campus.">Share updates, find people, chat and call on campus.</p>
           <p class="app-owner-name">Developed by Josh Chimal Akim · BSc Computer Science, Kabarak University</p>
-          <p class="muted" id="appVersionLine">Campus Connect v1.22</p>
+          <p class="muted" id="appVersionLine">Campus Connect v1.31</p>
+          <p class="muted" id="storageLine">Campus Connect keeps its media on this phone.</p>
+          <p class="muted"><small id="storageNote"></small></p>
+          <button type="button" class="secondary" id="clearSavedMedia" hidden data-i18n="Clear saved media">Clear saved media</button>
         </section>
 
         <div id="youAppearanceSheet" class="you-sheet hidden">
@@ -2041,6 +2065,13 @@
             <path d="M5 20h14" />
           </svg>
         </button>
+        <button id="storyLinkButton" class="story-head-action" type="button"
+                aria-label="Copy status link" data-i18n-aria-label="Copy status link" title="Link">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M10.5 13.5a4 4 0 0 0 5.7 0l2.3-2.3a4 4 0 0 0-5.7-5.7l-1 1" />
+            <path d="M13.5 10.5a4 4 0 0 0-5.7 0L5.5 12.8a4 4 0 0 0 5.7 5.7l1-1" />
+          </svg>
+        </button>
         <button id="closeStoryButton" class="story-close" type="button"
                 aria-label="Close status" data-i18n-aria-label="Close status">✕</button>
       </div>
@@ -2052,6 +2083,30 @@
               aria-label="Next status" data-i18n-aria-label="Next status">
         <span class="story-side-icon">›</span>
       </button>
+      <div id="storyFooter" class="story-footer" hidden>
+        <p id="storyReplyStatus" class="story-reply-status" role="status"></p>
+        <button id="storyLikeButton" class="story-like-btn" type="button" aria-pressed="false"
+                aria-label="Like this status" data-i18n-aria-label="Like this status">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M12 20s-7-4.6-9.3-9A4.7 4.7 0 0 1 12 6a4.7 4.7 0 0 1 9.3 5c-2.3 4.4-9.3 9-9.3 9Z" />
+          </svg>
+          <span id="storyLikeCount" class="story-like-count"></span>
+        </button>
+        <button id="storyReactButton" class="story-react-btn" type="button"
+                aria-label="React with an emoji" data-i18n-aria-label="React with an emoji">😊</button>
+        <div id="storyReactionRow" class="story-reaction-row" hidden role="menu" aria-label="React"></div>
+        <form id="storyReplyForm" class="story-reply-form">
+          <input id="storyReplyInput" class="story-reply-input" type="text" maxlength="5000" autocomplete="off"
+                 placeholder="Reply…" data-i18n-placeholder="Reply…"
+                 aria-label="Reply to this status" data-i18n-aria-label="Reply to this status">
+          <button id="storyReplySend" class="story-reply-send" type="submit"
+                  aria-label="Send reply" data-i18n-aria-label="Send reply">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 12l16-8-6 16-3-6-7 2Z" />
+            </svg>
+          </button>
+        </form>
+      </div>
     </div>
   </dialog>
 
