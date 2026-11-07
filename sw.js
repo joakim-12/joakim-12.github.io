@@ -1,4 +1,4 @@
-const CACHE_NAME = "campus-connect-1.35";
+const CACHE_NAME = "campus-connect-1.36";
 const MEDIA_CACHE_NAME = "campus-connect-media-v1";
 /* The app is a library now, not a viewer: statuses, stories and chat media
    stay readable on a bus with no network. The pile is bounded by count and
