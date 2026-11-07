@@ -6,6 +6,8 @@
 -- person per staff account), the per-chat archive / mute / lock / label flags,
 -- the phone number that lets a classmate dial you, the hostel, catering and
 -- chaplaincy departments of a school, the class register that writes itself,
+-- the placement a hostel or a print shop bought by hand and the front of the feed
+-- it is sold into,
 -- the document somebody picked up and the private word it sends to its owner,
 -- and a final check.
 -- It replaces RUN_ONCE.sql, RUN_THIS_IN_SUPABASE.sql, RUN_MESSAGE_MARKS.sql,
@@ -17,7 +19,7 @@
 -- Built 2026-10-14 from schema.sql + all migrations, in order.
 -- ===================================================================
 
--- ==================== PART 1/23: schema.sql ===========================
+-- ==================== PART 1/24: schema.sql ===========================
 -- ============================================================
 -- CAMPUS CONNECT
 -- Social networking database for university students
@@ -1557,7 +1559,7 @@ $$;
 
 NOTIFY pgrst, 'reload schema';
 
--- ================ PART 2/23: migrations/20261011_profile_gender.sql ================
+-- ================ PART 2/24: migrations/20261011_profile_gender.sql ================
 BEGIN;
 
 ALTER TABLE public.profiles
@@ -1579,7 +1581,7 @@ $$;
 
 COMMIT;
 
--- ================ PART 3/23: migrations/20261011_social_access_controls.sql ================
+-- ================ PART 3/24: migrations/20261011_social_access_controls.sql ================
 BEGIN;
 
 CREATE TABLE IF NOT EXISTS public.user_blocks (
@@ -1932,7 +1934,7 @@ CREATE POLICY "Users delete own private social media"
 
 COMMIT;
 
--- ================ PART 4/23: migrations/20261011_student_interactions_and_calls.sql ================
+-- ================ PART 4/24: migrations/20261011_student_interactions_and_calls.sql ================
 BEGIN;
 
 ALTER TABLE public.profiles
@@ -2045,7 +2047,7 @@ $migration$;
 
 COMMIT;
 
--- ================ PART 5/23: migrations/20261012_friendships_attachments_notification_preferences.sql ================
+-- ================ PART 5/24: migrations/20261012_friendships_attachments_notification_preferences.sql ================
 BEGIN;
 
 -- Explicit friend requests are separate from the existing one-way follow graph.
@@ -2233,7 +2235,7 @@ REVOKE ALL ON FUNCTION public.notify_friend_request() FROM PUBLIC, anon, authent
 
 COMMIT;
 
--- ================ PART 6/23: migrations/20261012_respond_to_chat_invitations.sql ================
+-- ================ PART 6/24: migrations/20261012_respond_to_chat_invitations.sql ================
 BEGIN;
 
 -- Let a recipient accept or decline a one-way follow invitation. Accepting
@@ -2340,7 +2342,7 @@ $migration$;
 
 COMMIT;
 
--- ================ PART 7/23: migrations/20261013_find_people.sql ================
+-- ================ PART 7/24: migrations/20261013_find_people.sql ================
 -- ============================================================
 -- STEP 1 / FINDING PEOPLE
 -- Makes members discoverable by default, lets a user claim a unique
@@ -2513,7 +2515,7 @@ SELECT 'everyone_discoverable',
 FROM public.profiles
 WHERE is_discoverable IS DISTINCT FROM TRUE;
 
--- ================ PART 8/23: migrations/20261014_roles_and_admin.sql ================
+-- ================ PART 8/24: migrations/20261014_roles_and_admin.sql ================
 -- ============================================================
 -- CAMPUS CONNECT — ROLES, APPROVAL, AND ADMIN
 -- Kabarak University: Student / Lecturer / Security / Admin.
@@ -3012,7 +3014,7 @@ SELECT 'at_least_one_admin',
        CASE WHEN COUNT(*) > 0 THEN 'ok' ELSE 'NONE YET (run section 9)' END
 FROM public.profiles WHERE role = 'admin';
 
--- ============ PART 9/23: migrations/20261014_message_edit_delete.sql ============
+-- ============ PART 9/24: migrations/20261014_message_edit_delete.sql ============
 -- ============================================================
 -- MESSAGE EDIT + DELETE (run this whole file in Supabase SQL Editor)
 -- Rules enforced inside the database, not just the app:
@@ -3116,7 +3118,7 @@ CREATE TRIGGER protect_message_fields_trigger
     EXECUTE FUNCTION public.protect_message_fields();
 
 
--- ============ PART 10/23: migrations/20261015_programmes_units_classes.sql ============
+-- ============ PART 10/24: migrations/20261015_programmes_units_classes.sql ============
 -- ============================================================
 -- CAMPUS CONNECT — PROGRAMMES, UNITS, AND CLASS TIMETABLES
 -- Kabarak University course system:
@@ -3385,7 +3387,7 @@ INSERT INTO public.programmes (school, name, level, max_year, campus, specializa
     ('School of Pharmacy', 'Bachelor of Pharmacy', 'undergraduate', 5, 'Main', '')
 ON CONFLICT (school, name) DO NOTHING;
 
--- ==================== PART 11/23: friend names (contact_names) ==========
+-- ==================== PART 11/24: friend names (contact_names) ==========
 CREATE TABLE IF NOT EXISTS public.contact_names (
     author_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
     peer_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
@@ -3531,7 +3533,7 @@ ALTER TABLE public.messages
 
 COMMIT;
 
--- ============ PART 12/23: migrations/20261016_lecturer_credentials.sql ============
+-- ============ PART 12/24: migrations/20261016_lecturer_credentials.sql ============
 -- ============================================================
 -- CAMPUS CONNECT — LECTURER CREDENTIALS, STUDY MODE, STAFF LOG
 -- Kabarak University rules this adds:
@@ -4156,7 +4158,7 @@ GRANT SELECT, INSERT, UPDATE ON public.lecturer_submissions TO authenticated;
 
 NOTIFY pgrst, 'reload schema';
 
--- ============ PART 13/23: migrations/20261016_one_number_one_account.sql ============
+-- ============ PART 13/24: migrations/20261016_one_number_one_account.sql ============
 
 -- ============================================================
 -- CAMPUS CONNECT — ONE NUMBER, ONE ACCOUNT
@@ -4506,7 +4508,7 @@ ALTER TABLE public.admin_action_log
 NOTIFY pgrst, 'reload schema';
 
 
--- ============ PART 14/23: migrations/20261017_bulletins.sql ============
+-- ============ PART 14/24: migrations/20261017_bulletins.sql ============
 
 -- ============================================================
 -- CAMPUS CONNECT — THE BULLETIN BOARD
@@ -4594,7 +4596,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON public.bulletins TO authenticated;
 NOTIFY pgrst, 'reload schema';
 
 
--- ============ PART 15/23: migrations/20261017_companies.sql ============
+-- ============ PART 15/24: migrations/20261017_companies.sql ============
 
 -- ============================================================
 -- CAMPUS CONNECT — THE COMPANY DIRECTORY
@@ -4787,7 +4789,7 @@ ALTER TABLE public.bulletins
 NOTIFY pgrst, 'reload schema';
 
 
--- ============ PART 16/23: migrations/20261017_realtime_broadcast.sql ============
+-- ============ PART 16/24: migrations/20261017_realtime_broadcast.sql ============
 
 -- PART 16: realtime broadcast for the typing / recording indicators.
 --
@@ -4861,7 +4863,7 @@ $do$;
 NOTIFY pgrst, 'reload schema';
 
 
--- ============ PART 17/23: migrations/20261017_private_groups.sql ============
+-- ============ PART 17/24: migrations/20261017_private_groups.sql ============
 
 -- PART 17: private group chats, the WhatsApp shape.
 --
@@ -5094,7 +5096,7 @@ GRANT EXECUTE ON FUNCTION public.mark_group_read(UUID) TO authenticated;
 NOTIFY pgrst, 'reload schema';
 
 
--- ============ PART 18/23: migrations/20261017_push_tokens.sql ============
+-- ============ PART 18/24: migrations/20261017_push_tokens.sql ============
 
 -- PART 18: the device list behind push alerts.
 --
@@ -5198,7 +5200,7 @@ GRANT EXECUTE ON FUNCTION public.forget_device_token(TEXT) TO authenticated;
 NOTIFY pgrst, 'reload schema';
 
 
--- ============ PART 19/23: migrations/20261018_campus_identity.sql ============
+-- ============ PART 19/24: migrations/20261018_campus_identity.sql ============
 
 -- ============================================================
 -- CAMPUS CONNECT — ONE PERSON, ONE SCHOOL, HIS OWN PROGRAMME
@@ -5594,7 +5596,7 @@ SELECT 'one person trigger',
     ) THEN 'ok' ELSE 'MISSING' END;
 
 
--- ============ PART 20/23: migrations/20261019_chat_organize.sql ============
+-- ============ PART 20/24: migrations/20261019_chat_organize.sql ============
 
 -- ============================================================
 -- CAMPUS CONNECT — CHATS YOU ARCHIVE, MUTE, LOCK OR LABEL
@@ -5725,7 +5727,7 @@ REVOKE ALL ON public.conversation_settings FROM anon;
 NOTIFY pgrst, 'reload schema';
 
 
--- ============ PART 21/23: migrations/20261020_phone_identity.sql ============
+-- ============ PART 21/24: migrations/20261020_phone_identity.sql ============
 -- ============================================================
 -- PART 21: A PHONE NUMBER IS AN ADDRESS
 -- Campus Connect now lets a student, a lecturer or a security guard join with
@@ -6197,7 +6199,7 @@ SELECT 'one number per account',
        ) = 0 THEN 'ok' ELSE 'FAILED: two accounts already share one number' END;
 
 
--- ============ PART 22/23: migrations/20261020_campus_services.sql ============
+-- ============ PART 22/24: migrations/20261020_campus_services.sql ============
 -- ============================================================
 -- CAMPUS CONNECT — THE CAMPUS SERVICES DEPARTMENTS
 -- A university is more than a chat. A student also needs a bed, a meal,
@@ -7410,7 +7412,7 @@ SELECT 'register: an authenticated account may open it',
             THEN 'ok' ELSE 'MISSING (a lecturer cannot open a class register)' END;
 
 
--- ============ PART 23/23: migrations/20261025_found_items.sql ============
+-- ============ PART 23/24: migrations/20261025_found_items.sql ============
 -- ============================================================
 -- PART 23: SOMEBODY PICKED UP A DOCUMENT
 -- A student ID is lying on the road. Whoever picks it up photographs it,
@@ -8003,7 +8005,6 @@ WHERE schemaname = 'public' AND tablename = 'found_items'
 ORDER BY check_name;
 
 
-
 -- FINAL CHECK: every row should read ok
 -- ===================================================================
 SELECT 'publication: ' || t.table_name AS check_name,
@@ -8086,4 +8087,258 @@ FROM (VALUES ('report_found_item'), ('my_found_items'), ('seen_found_item'),
              ('my_found_reports'), ('school_found_items'), ('set_found_item_result')) AS f(function_name)
 LEFT JOIN information_schema.routines AS x
        ON x.routine_schema = 'public' AND x.routine_name = f.function_name
+ORDER BY check_name;
+
+-- ============ PART 24/24: migrations/20261106_promotions.sql ============
+-- ============================================================
+-- CAMPUS CONNECT — PAID PLACEMENTS FOR LOCAL BUSINESSES
+-- A hostel, a print shop or a food vendor pays the builder of this app
+-- directly (M-Pesa Send Money, agreed by hand), and the builder then puts
+-- that business at the front of the feed for a set number of days.
+--   * nothing here takes money. There is no gateway, no card, no silent
+--     deduction, no percent of anything. The payment happens outside the
+--     app, between two people who both said yes.
+--   * the row is the advertisement, not a post. A student's own post is
+--     never marked promoted, because that would let somebody buy a place
+--     in front of a classmate's words without the classmate agreeing.
+--   * everyone signed in may read the live ones; only an admin may write,
+--     so a promotion cannot be created or edited by the business itself
+--     through the app.
+--   * a window of dates is stored, not a flag. The feed shows a placement
+--     only while NOW() is inside it, so an ad retires itself at the moment
+--     the week he sold is over, whether or not anybody remembers to switch
+--     it off.
+--   * school_key is free text on purpose, the same way profiles.company
+--     is: a placement for the whole country has an empty key, a placement
+--     sold for one campus carries that campus spelled the way the app
+--     spells it. A blank is "everywhere", never "nobody".
+-- Idempotent: safe to run more than once.
+-- ============================================================
+
+
+-- ------------------------------------------------------------
+-- 1. THE TWO HELPS THIS TABLE NEEDS
+-- Both already exist in the main schema, so this is a re-declaration of
+-- the definitions that are already there, in exactly those words. It is
+-- here so that this one file can be pasted on its own and still work.
+-- ------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.set_updated_at()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SET search_path = ''
+AS $$
+BEGIN
+    NEW.updated_at = NOW();
+    RETURN NEW;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.is_admin()
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT COALESCE(
+        (SELECT p.role = 'admin' FROM public.profiles AS p WHERE p.id = auth.uid()),
+        FALSE
+    );
+$$;
+
+REVOKE ALL ON FUNCTION public.is_admin() FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.is_admin() TO authenticated;
+
+
+-- ------------------------------------------------------------
+-- 2. THE PLACEMENTS
+-- ------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS public.promotions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    business TEXT NOT NULL CHECK (char_length(BTRIM(business)) BETWEEN 2 AND 80),
+    headline TEXT NOT NULL CHECK (char_length(BTRIM(headline)) BETWEEN 4 AND 120),
+    body TEXT CHECK (body IS NULL OR char_length(BTRIM(body)) <= 600),
+    image_url TEXT CHECK (image_url IS NULL OR char_length(BTRIM(image_url)) <= 2048),
+    contact TEXT CHECK (contact IS NULL OR char_length(BTRIM(contact)) <= 40),
+    link TEXT CHECK (link IS NULL OR link ~ '^https?://'),
+    school_key TEXT NOT NULL DEFAULT '' CHECK (char_length(BTRIM(school_key)) <= 120),
+    starts_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    ends_at TIMESTAMPTZ NOT NULL,
+    price_note TEXT CHECK (price_note IS NULL OR char_length(BTRIM(price_note)) <= 200),
+    created_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    -- A window that has already closed is kept, never deleted: it is the
+    -- record of a week somebody paid for.
+    CONSTRAINT promotions_window_makes_sense CHECK (ends_at > starts_at),
+    -- An ad with neither a phone number nor a link tells the student
+    -- nothing he can act on, so it is not allowed in.
+    CONSTRAINT promotions_reachable CHECK (
+        BTRIM(COALESCE(contact, '')) <> '' OR BTRIM(COALESCE(link, '')) <> ''
+    )
+);
+
+COMMENT ON TABLE public.promotions IS
+    'Placements sold by hand and shown at the front of the feed while their date window is open.';
+COMMENT ON COLUMN public.promotions.school_key IS
+    'Empty means every campus. Otherwise the school this placement was sold to, spelled the way the app spells it.';
+COMMENT ON COLUMN public.promotions.price_note IS
+    'What he agreed with the business - a private note, never shown to a student.';
+
+-- The feed asks one question of this table: what is live right now.
+CREATE INDEX IF NOT EXISTS promotions_live_idx
+    ON public.promotions (ends_at DESC, starts_at DESC);
+
+
+-- ------------------------------------------------------------
+-- 3. KEEP updated_at HONEST
+-- ------------------------------------------------------------
+
+DROP TRIGGER IF EXISTS promotions_set_updated_at ON public.promotions;
+CREATE TRIGGER promotions_set_updated_at
+    BEFORE UPDATE ON public.promotions
+    FOR EACH ROW
+    EXECUTE FUNCTION public.set_updated_at();
+
+
+-- ------------------------------------------------------------
+-- 4. WHO MAY SEE AND WRITE
+-- Reading is for every signed-in account, because an advertisement in a
+-- student app is still content the student is meant to look at. Writing
+-- is for an admin alone.
+-- ------------------------------------------------------------
+
+ALTER TABLE public.promotions ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS promotions_readable ON public.promotions;
+CREATE POLICY promotions_readable ON public.promotions
+    FOR SELECT TO authenticated
+    USING (TRUE);
+
+DROP POLICY IF EXISTS promotions_admin_add ON public.promotions;
+CREATE POLICY promotions_admin_add ON public.promotions
+    FOR INSERT TO authenticated
+    WITH CHECK (public.is_admin() AND created_by = auth.uid());
+
+DROP POLICY IF EXISTS promotions_admin_edit ON public.promotions;
+CREATE POLICY promotions_admin_edit ON public.promotions
+    FOR UPDATE TO authenticated
+    USING (public.is_admin())
+    WITH CHECK (public.is_admin());
+
+DROP POLICY IF EXISTS promotions_admin_remove ON public.promotions;
+CREATE POLICY promotions_admin_remove ON public.promotions
+    FOR DELETE TO authenticated
+    USING (public.is_admin());
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.promotions TO authenticated;
+
+
+-- ------------------------------------------------------------
+-- 5. WHAT IS LIVE FOR THIS CAMPUS
+-- One call instead of a client-side filter, because the clock that must
+-- decide when a paid week ends is the database clock, not the clock of
+-- whichever phone happens to be open. SECURITY INVOKER is deliberate and
+-- is the default: the policies above still read as the student asking.
+-- ------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.live_promotions(p_school_key TEXT)
+RETURNS SETOF public.promotions
+LANGUAGE sql
+STABLE
+SET search_path = ''
+AS $$
+    SELECT p.*
+    FROM public.promotions AS p
+    WHERE p.starts_at <= NOW()
+      AND p.ends_at > NOW()
+      AND (BTRIM(COALESCE(p.school_key, '')) = ''
+           OR BTRIM(COALESCE(p.school_key, '')) = BTRIM(COALESCE(p_school_key, '')))
+    ORDER BY p.starts_at DESC
+    LIMIT 4
+$$;
+
+COMMENT ON FUNCTION public.live_promotions(TEXT) IS
+    'The placements a student is allowed to see at this moment, newest sale first.';
+
+GRANT EXECUTE ON FUNCTION public.live_promotions(TEXT) TO authenticated;
+
+
+-- ------------------------------------------------------------
+-- 6. WHAT ONE ADMIN OPERATION LOOKS LIKE
+-- Retiring early is an UPDATE of ends_at, not a DELETE, so the history of
+-- what was sold stays in the table.
+-- ------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.retire_promotion(p_promotion_id UUID)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+BEGIN
+    IF NOT public.is_admin() THEN
+        RAISE EXCEPTION 'Only an admin may retire a placement.'
+            USING ERRCODE = '42501';
+    END IF;
+
+    UPDATE public.promotions
+       SET ends_at = NOW()
+     WHERE id = p_promotion_id
+       AND ends_at > NOW();
+
+    IF NOT FOUND THEN
+        RAISE EXCEPTION 'That placement is not running.'
+            USING ERRCODE = 'P0002';
+    END IF;
+
+    RETURN TRUE;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION public.retire_promotion(UUID) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.retire_promotion(UUID) TO authenticated;
+
+
+-- ------------------------------------------------------------
+-- 7. PROOF THIS FILE RAN
+-- ------------------------------------------------------------
+
+SELECT 'promotions table: ' ||
+       CASE WHEN to_regclass('public.promotions') IS NOT NULL
+            THEN 'ok' ELSE 'MISSING (paid placements cannot be shown)' END
+AS check_name
+UNION ALL
+SELECT 'promotions has a live window: ' ||
+       CASE WHEN EXISTS (
+           SELECT 1 FROM pg_constraint
+           WHERE conrelid = 'public.promotions'::regclass
+             AND conname = 'promotions_window_makes_sense')
+            THEN 'ok' ELSE 'MISSING (a placement could be sold with no end)' END
+UNION ALL
+SELECT 'promotions readable by a member: ' ||
+       CASE WHEN EXISTS (
+           SELECT 1 FROM pg_policies
+           WHERE schemaname = 'public' AND tablename = 'promotions'
+             AND policyname = 'promotions_readable')
+            THEN 'ok' ELSE 'MISSING (students will see no placements)' END
+UNION ALL
+SELECT 'promotions admin-only writes: ' ||
+       CASE WHEN EXISTS (
+           SELECT 1 FROM pg_policies
+           WHERE schemaname = 'public' AND tablename = 'promotions'
+             AND policyname = 'promotions_admin_edit')
+            THEN 'ok' ELSE 'MISSING (any account could sell a placement)' END
+UNION ALL
+SELECT 'function: live_promotions(text): ' ||
+       CASE WHEN has_function_privilege('authenticated',
+               'public.live_promotions(text)', 'EXECUTE')
+            THEN 'ok' ELSE 'MISSING (the feed cannot ask what is live)' END
+UNION ALL
+SELECT 'function: retire_promotion(uuid): ' ||
+       CASE WHEN has_function_privilege('authenticated',
+               'public.retire_promotion(uuid)', 'EXECUTE')
+            THEN 'ok' ELSE 'MISSING (an admin cannot retire a placement)' END
 ORDER BY check_name;

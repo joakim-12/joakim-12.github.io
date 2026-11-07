@@ -643,6 +643,26 @@
     .campus-chip { width: auto; padding: 6px 14px; border: 1px solid color-mix(in srgb, var(--blue) 45%, transparent); border-radius: 999px; background: color-mix(in srgb, var(--blue) 12%, var(--surface)); color: var(--blue); font-size: .82rem; font-weight: 600; }
     .campus-chip.unknown { border-color: rgb(255 179 71 / 55%); background: rgb(255 179 71 / 14%); color: #b26a00; }
     body.dark .campus-chip.unknown { color: #ffcc80; }
+
+    /* A placement a hostel or a print shop paid for, sold by hand outside this
+       app. It sits above the students' own posts and says in its own words
+       that it is an advertisement, so nobody has to work out which is which. */
+    .promoted-list { display: grid; gap: 10px; margin: 0 2px 12px; }
+    .promoted-card { padding: 14px; border: 1px solid color-mix(in srgb, var(--blue) 34%, var(--border)); border-radius: 14px; background: var(--surface); }
+    .promoted-flag { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--blue); border: 1px solid color-mix(in srgb, var(--blue) 45%, transparent); background: color-mix(in srgb, var(--blue) 12%, var(--surface)); }
+    .promoted-business { margin: 8px 0 2px; font-size: 14px; font-weight: 700; }
+    .promoted-headline { margin: 0 0 6px; font-size: 17px; }
+    .promoted-body { margin: 0 0 8px; color: var(--muted); font-size: 14px; overflow-wrap: anywhere; }
+    .promoted-image { display: block; width: 100%; max-height: 420px; object-fit: cover; border-radius: 10px; margin: 8px 0; }
+    .promoted-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .promoted-actions a { display: inline-block; padding: 8px 14px; border-radius: 10px; font-size: 14px; font-weight: 600; text-decoration: none; color: var(--blue); border: 1px solid color-mix(in srgb, var(--blue) 40%, transparent); background: color-mix(in srgb, var(--blue) 10%, var(--surface)); overflow-wrap: anywhere; }
+    .promoted-closes { margin-left: auto; font-size: 12px; color: var(--muted); }
+    .promotion-list { display: grid; gap: 10px; }
+    .promotion-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding: 10px; border: 1px solid var(--border); border-radius: 10px; }
+    .promotion-row .promotion-meta { flex: 1 1 200px; font-size: 14px; color: var(--muted); overflow-wrap: anywhere; }
+    .promotion-form { display: grid; gap: 8px; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+    .promotion-form label { font-size: 13px; }
+    .promotion-form .promotion-wide { grid-column: 1 / -1; }
     .bulletin-body { display: grid; gap: 10px; margin-top: 4px; }
     .bulletin-item { padding: 12px; border: 1px solid var(--border); border-radius: 12px; background: color-mix(in srgb, var(--text) 3%, var(--surface)); }
     .bulletin-item h3 { margin: 0 0 4px; font-size: 15px; font-weight: 700; }
@@ -1332,14 +1352,14 @@
       .you-details { margin-left: auto; margin-right: auto; max-width: 620px; }
     }
   </style>
-  <script type="module" crossorigin src="/assets/main-Du0u1VVY.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/pwa-BJ5hHttc.js">
-  <link rel="modulepreload" crossorigin href="/assets/offline-banner-DqbNMHqZ.js">
-  <link rel="modulepreload" crossorigin href="/assets/offline-chat-DfAd5VHe.js">
-  <link rel="modulepreload" crossorigin href="/assets/profile-identity-CwzUdFVT.js">
+  <script type="module" crossorigin src="/assets/main-CNsBxqYA.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/pwa-We62OCdk.js">
+  <link rel="modulepreload" crossorigin href="/assets/offline-banner-kKPYqale.js">
+  <link rel="modulepreload" crossorigin href="/assets/offline-chat-DatYjBOk.js">
+  <link rel="modulepreload" crossorigin href="/assets/profile-identity-Ca2trUFN.js">
   <link rel="modulepreload" crossorigin href="/assets/offline-store-DtZovh2O.js">
-  <link rel="modulepreload" crossorigin href="/assets/company-directory-DB22J11B.js">
-  <link rel="modulepreload" crossorigin href="/assets/staff-verification-CZIjf6vB.js">
+  <link rel="modulepreload" crossorigin href="/assets/company-directory-CcSTY6JP.js">
+  <link rel="modulepreload" crossorigin href="/assets/staff-verification-0N1eX3qx.js">
   <link rel="stylesheet" crossorigin href="/assets/pwa-BFBmpa7B.css">
 </head>
 
@@ -1716,7 +1736,7 @@
           <h2 data-i18n="About Campus Connect">About Campus Connect</h2>
           <p data-i18n="Share updates, find people, chat and call on campus.">Share updates, find people, chat and call on campus.</p>
           <p class="app-owner-name">Developed by Josh Chimal Akim · BSc Computer Science, Kabarak University</p>
-          <p class="muted" id="appVersionLine">Campus Connect v1.33</p>
+          <p class="muted" id="appVersionLine">Campus Connect v1.35</p>
           <p class="muted" id="storageLine">Campus Connect keeps its media on this phone.</p>
           <p class="muted"><small id="storageNote"></small></p>
           <button type="button" class="secondary" id="clearSavedMedia" hidden data-i18n="Clear saved media">Clear saved media</button>
@@ -1871,6 +1891,36 @@
           <button id="adminLookupButton" type="button" data-i18n="Find member">Find member</button>
         </div>
         <div id="adminMemberResult" class="admin-member-result" hidden></div>
+
+        <h3 data-i18n="Paid placements">Paid placements</h3>
+        <p class="muted" data-i18n="A hostel, a print shop or a food vendor pays you directly, outside this app. What you write here is the card that goes to the front of the feed, and it closes itself when the last day is over. Nothing here touches anybody's money.">
+          A hostel, a print shop or a food vendor pays you directly, outside this app. What you write here is the card that goes to the front of the feed, and it closes itself when the last day is over. Nothing here touches anybody's money.
+        </p>
+        <div id="promotionList" class="promotion-list">
+          <p class="muted" data-i18n="Loading...">Loading...</p>
+        </div>
+        <div class="promotion-form">
+          <label for="promotionBusiness" data-i18n="Business">Business</label>
+          <input id="promotionBusiness" type="text" maxlength="80" autocomplete="off" spellcheck="false">
+          <label for="promotionHeadline" data-i18n="Headline">Headline</label>
+          <input id="promotionHeadline" type="text" maxlength="120" autocomplete="off">
+          <label for="promotionBody" data-i18n="What you are offering">What you are offering</label>
+          <textarea id="promotionBody" class="promotion-wide" maxlength="600" rows="3"></textarea>
+          <label for="promotionContact" data-i18n="Phone or WhatsApp">Phone or WhatsApp</label>
+          <input id="promotionContact" type="tel" maxlength="40" autocomplete="off" spellcheck="false">
+          <label for="promotionLink" data-i18n="Website or booking link">Website or booking link</label>
+          <input id="promotionLink" type="text" maxlength="2048" autocomplete="off" spellcheck="false">
+          <label for="promotionSchool" data-i18n="Only this campus (blank shows it everywhere)">Only this campus (blank shows it everywhere)</label>
+          <input id="promotionSchool" type="text" maxlength="120" autocomplete="off">
+          <label for="promotionDays" data-i18n="Days on the feed">Days on the feed</label>
+          <input id="promotionDays" type="number" min="1" max="365" step="1" value="7">
+          <label for="promotionPrice" data-i18n="What was agreed (only you see this)">What was agreed (only you see this)</label>
+          <input id="promotionPrice" type="text" maxlength="200" autocomplete="off">
+          <label for="promotionPicture" data-i18n="Picture (optional)">Picture (optional)</label>
+          <input id="promotionPicture" type="file" accept="image/*">
+        </div>
+        <button id="promotionSaveButton" type="button" data-i18n="Put it on the feed">Put it on the feed</button>
+
         <p id="adminStatus" class="status" role="status"></p>
       </section>
 
@@ -2001,6 +2051,7 @@
           Refresh feed
         </button>
         <p id="feedStatus" class="status" role="status"></p>
+        <div id="promotedList" class="promoted-list" hidden></div>
         <div id="feed"></div>
       </section>
     </section>
