@@ -1,0 +1,1 @@
+System.register([],function(e,t){"use strict";return{execute:function(){e("s",function(e){var t;return"member"===String((null==e||null===(t=e.user_metadata)||void 0===t?void 0:t.account_kind)||"").toLowerCase()&&(window.location.replace("/#bulletin"),!0)})}}});
