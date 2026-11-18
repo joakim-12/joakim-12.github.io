@@ -97,6 +97,7 @@
             font: inherit;
             font-size: 14px;
         }
+        .panel input[type="checkbox"] { width: auto; margin: 0 6px 0 0; vertical-align: middle; }
         .panel textarea { min-height: 74px; resize: vertical; }
         .panel button[type="submit"], .panel button.go {
             margin-top: 12px;
@@ -223,6 +224,7 @@
             <label><input type="checkbox" id="switch-accommodation"> <span data-i18n="Hostels and beds">Hostels and beds</span></label>
             <label><input type="checkbox" id="switch-catering"> <span data-i18n="Catering and meal plans">Catering and meal plans</span></label>
             <label><input type="checkbox" id="switch-chaplaincy"> <span data-i18n="Chaplaincy and the year's programme">Chaplaincy and the year's programme</span></label>
+            <label><input type="checkbox" id="switch-attendance"> <span data-i18n="Classes and attendance register">Classes and attendance register</span></label>
             <button class="go" type="button" id="switch-save" data-i18n="Save these switches">Save these switches</button>
             <p data-i18n="Only the office of that school, or an admin, can change them. A school with no row here offers nothing until it is switched on.">
                 Only the office of that school, or an admin, can change them. A school with no row here offers nothing
@@ -230,6 +232,19 @@
             </p>
             <p id="switch-status" class="status" role="status"></p>
         </details>
+
+        <section id="attendance-section" hidden>
+            <article class="uni-card">
+                <div class="uni-head">
+                    <h3 class="uni-name" data-i18n="Classes and attendance">Classes and attendance</h3>
+                    <span class="uni-meta" data-i18n="Timetable · units · class register">Timetable · units · class register</span>
+                </div>
+                <p class="uni-note" data-i18n="Open your course timetable, see your units and lecturers, and check in to class with the code from your lecturer.">
+                    Open your course timetable, see your units and lecturers, and check in to class with the code from your lecturer.
+                </p>
+                <a class="row-button go" href="/classes.html" data-i18n="Open classes">Open classes</a>
+            </article>
+        </section>
 
         <section id="bed-section" hidden>
             <div class="panel booking-guide">
