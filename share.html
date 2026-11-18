@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#17152c">
+  <meta name="description" content="A post was shared with you on Campus Connect. Open it in the campus community app.">
+  <meta property="og:site_name" content="Campus Connect">
+  <meta property="og:title" content="A post was shared with you · Campus Connect">
+  <meta property="og:description" content="Open Campus Connect to view this shared campus post.">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="https://joakim-12.github.io/icons/icon-512.png">
+  <meta property="og:image:alt" content="Campus Connect app logo">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="A post was shared with you · Campus Connect">
+  <meta name="twitter:description" content="Open Campus Connect to view this shared campus post.">
+  <meta name="twitter:image" content="https://joakim-12.github.io/icons/icon-512.png">
+  <link rel="icon" type="image/png" href="/icons/icon-192.png">
+  <title>A post was shared with you · Campus Connect</title>
+  <style>
+    :root { color-scheme: dark; font: 16px/1.5 system-ui, sans-serif; background: #111126; color: #f5f3ff; }
+    body { min-height: 100svh; margin: 0; display: grid; place-items: center; padding: 24px; box-sizing: border-box; }
+    main { width: min(100%, 390px); text-align: center; }
+    img { width: 92px; height: 92px; border-radius: 23px; box-shadow: 0 8px 28px #0006; }
+    h1 { margin: 18px 0 6px; font-size: 1.7rem; }
+    p { margin: 0 auto 24px; color: #c5c2d8; }
+    a { display: inline-block; padding: 13px 22px; border-radius: 14px; background: #6254d9; color: white; font-weight: 700; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <main>
+    <img src="/icons/icon-192.png" alt="Campus Connect logo" width="92" height="92">
+    <h1>Campus Connect</h1>
+    <p id="shareMessage">A campus post was shared with you.</p>
+    <a id="openPost" href="/">Open in Campus Connect</a>
+  </main>
+  <script>
+    const params = new URLSearchParams(location.search);
+    const postId = params.get('post');
+    if (postId && /^[\w-]{1,100}$/.test(postId)) {
+      const route = params.get('audience') === 'world' ? '/world.html' : '/';
+      document.getElementById('openPost').href = route + '#post-' + encodeURIComponent(postId);
+    } else {
+      document.getElementById('shareMessage').textContent = 'Share updates, find people, chat and connect on campus.';
+    }
+  </script>
+</body>
+</html>
