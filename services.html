@@ -322,6 +322,24 @@
             <div class="section-title" data-i18n="Catering">Catering</div>
             <div id="meal-list"></div>
 
+            <div class="uni-card" id="meal-subscription-panel">
+                <h3 class="uni-name">Request a meal-plan subscription</h3>
+                <p>Choose a full-board or half-board plan. The catering office will review your request.</p>
+                <form id="meal-subscription-form">
+                    <label for="meal-subscription-plan">Meal plan</label>
+                    <select id="meal-subscription-plan" required></select>
+                    <label for="meal-subscription-semester">Semester</label>
+                    <input id="meal-subscription-semester" type="text" maxlength="40" placeholder="2026/2027-1" required>
+                    <button class="go" type="submit">Request subscription</button>
+                </form>
+                <p id="meal-subscription-status" class="status" role="status"></p>
+                <div id="meal-subscription-list"></div>
+                <details class="panel">
+                    <summary>Catering office: subscription requests</summary>
+                    <div id="meal-subscription-office-list"></div>
+                </details>
+            </div>
+
             <details id="meal-add-panel" class="panel" hidden>
                 <summary data-i18n="Put a plan on the catering board">Put a plan on the catering board</summary>
                 <form id="meal-form">
@@ -493,6 +511,7 @@
   <script nomodule>!function(){var e=document,t=e.createElement("script");if(!("noModule"in t)&&"onbeforeload"in t){var n=!1;e.addEventListener("beforeload",(function(e){if(e.target===t)n=!0;else if(!e.target.hasAttribute("nomodule")||!n)return;e.preventDefault()}),!0),t.type="module",t.src=".",e.head.appendChild(t),t.remove()}}();</script>
   <script nomodule crossorigin id="vite-legacy-polyfill" src="/assets/polyfills-legacy-CWJMBqWU.js"></script>
   <script nomodule crossorigin id="vite-legacy-entry" data-src="/assets/services-legacy-CInO0woo.js">System.import(document.getElementById('vite-legacy-entry').getAttribute('data-src'))</script>
+  <script type="module" src="/assets/meal-subscriptions.js"></script>
 </body>
 
 </html>
