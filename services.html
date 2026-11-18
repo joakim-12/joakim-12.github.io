@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <meta name="theme-color" content="#075b57">
+    <meta name="theme-color" content="#493fb5">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="campus connect">
     <meta name="description" content="The departments of your school inside the app: a hostel bed, a meal plan, the year's church programme and the class register.">
@@ -15,24 +15,24 @@
     <style>
         :root {
             color-scheme: light;
-            --page: #f0f2f5;
+            --page: #f2f0ff;
             --panel: #fff;
-            --text: #111b21;
+            --text: #1b1a35;
             --muted: #667781;
-            --border: #e9edef;
-            --primary: #00a884;
-            --input: #f0f2f5;
+            --border: #dcd8f4;
+            --primary: #6254d9;
+            --input: #f2f0ff;
         }
 
         body.dark-mode {
             color-scheme: dark;
-            --page: #0b141a;
-            --panel: #111b21;
-            --text: #e9edef;
+            --page: #111126;
+            --panel: #1b1a35;
+            --text: #dcd8f4;
             --muted: #8696a0;
-            --border: #2f3b40;
-            --primary: #00a884;
-            --input: #2a3942;
+            --border: #343252;
+            --primary: #6254d9;
+            --input: #24233e;
         }
 
         * { box-sizing: border-box; }
@@ -82,7 +82,7 @@
 
         .search-bar svg { width: 18px; height: 18px; fill: none; stroke: var(--muted); stroke-width: 2; flex: 0 0 auto; }
         .search-bar input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text); font: inherit; font-size: 15px; }
-        .search-bar button { padding: 6px 12px; border: 0; border-radius: 999px; background: var(--primary); color: #04150f; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
+        .search-bar button { padding: 6px 12px; border: 0; border-radius: 999px; background: var(--primary); color: #ffffff; font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
 
         .panel { margin: 0 0 14px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 14px; background: var(--panel); }
         .panel summary { font-weight: 700; cursor: pointer; }
@@ -104,7 +104,7 @@
             border: 0;
             border-radius: 999px;
             background: var(--primary);
-            color: #04150f;
+            color: #ffffff;
             font: inherit;
             font-weight: 700;
             cursor: pointer;
@@ -137,11 +137,14 @@
         .uni-note { margin: 10px 0 0; color: var(--muted); font-size: 12.5px; line-height: 1.5; }
 
         .kind-chip { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px; border-radius: 999px; font-size: 11.5px; font-weight: 700; letter-spacing: .02em; white-space: nowrap; }
-        .kind-men { background: color-mix(in srgb, #2582d8 16%, var(--panel)); color: #1668b3; }
+        .kind-men { background: color-mix(in srgb, #6254d9 16%, var(--panel)); color: #5345c6; }
         .kind-women { background: color-mix(in srgb, #c9457f 16%, var(--panel)); color: #a5306a; }
-        .kind-mixed { background: color-mix(in srgb, #7a5bd0 16%, var(--panel)); color: #5a3fb0; }
-        .kind-site { background: color-mix(in srgb, var(--primary) 16%, var(--panel)); color: #046c56; }
+        .kind-mixed { background: color-mix(in srgb, #6254d9 16%, var(--panel)); color: #5345c6; }
+        .kind-site { background: color-mix(in srgb, var(--primary) 16%, var(--panel)); color: #5345c6; }
 
+        .booking-guide { margin: 12px 0; line-height: 1.55; }
+        .booking-guide ol { margin: 8px 0; padding-left: 22px; }
+        .booking-guide p { margin: 8px 0 0; color: var(--muted); font-size: 13px; }
         .room-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px; padding-top: 10px; border-top: 1px dashed var(--border); }
         .room-label { font-size: 14px; font-weight: 600; }
         .room-meta { flex: 1; min-width: 120px; color: var(--muted); font-size: 12.5px; }
@@ -160,22 +163,24 @@
             font-size: 13px;
             cursor: pointer;
         }
-        .uni-card button.go, .row-button.go { border: 0; background: var(--primary); color: #04150f; font-weight: 700; }
+        .uni-card button.go, .row-button.go { border: 0; background: var(--primary); color: #ffffff; font-weight: 700; }
         .uni-card button[disabled] { opacity: .55; cursor: default; }
 
         .state { padding: 18px 4px; color: var(--muted); font-size: 14px; text-align: center; }
         .status { margin: 10px 0 0; font-size: 13px; }
         .status.error { color: #d12c2c; }
-        .status.success { color: #046c56; }
+        .status.success { color: #5345c6; }
         .footnote { margin: 18px 0 8px; color: var(--muted); font-size: 12.5px; line-height: 1.6; }
         [hidden] { display: none !important; }
     </style>
-  <script type="module" crossorigin src="/assets/services-DUEoSLWG.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/pwa-We62OCdk.js">
-  <link rel="modulepreload" crossorigin href="/assets/offline-banner-kKPYqale.js">
-  <link rel="modulepreload" crossorigin href="/assets/offline-store-DtZovh2O.js">
-  <link rel="modulepreload" crossorigin href="/assets/found-items-Cvx5UDb0.js">
-  <link rel="stylesheet" crossorigin href="/assets/pwa-BFBmpa7B.css">
+  <script type="module" crossorigin src="/assets/services-ujW0hgcd.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/supabase-BZASSCr-.js">
+  <link rel="modulepreload" crossorigin href="/assets/offline-banner-FNj5sJXW.js">
+  <link rel="modulepreload" crossorigin href="/assets/offline-store-DwnENRt3.js">
+  <link rel="modulepreload" crossorigin href="/assets/found-items-BEfO60nN.js">
+  <link rel="stylesheet" crossorigin href="/assets/offline-banner-BFBmpa7B.css">
+  <script type="module">import.meta.url;import("_").catch(()=>1);(async function*(){})().next();if(location.protocol!="file:"){window.__vite_is_modern_browser=true}</script>
+  <script type="module">!function(){if(window.__vite_is_modern_browser)return;console.warn("vite: loading legacy chunks, syntax error above and the same error below should be ignored");var e=document.getElementById("vite-legacy-polyfill"),n=document.createElement("script");n.src=e.src,n.onload=function(){System.import(document.getElementById('vite-legacy-entry').getAttribute('data-src'))},document.body.appendChild(n)}();</script>
 </head>
 
 <body>
@@ -227,7 +232,18 @@
         </details>
 
         <section id="bed-section" hidden>
-            <div id="my-bed-heading" class="section-title" data-i18n="Your bed requests">Your bed requests</div>
+            <div class="panel booking-guide">
+                <strong>Book a hostel room</strong>
+                <ol>
+                    <li data-i18n="Sign in with your student account">Sign in with your student account.</li>
+                    <li data-i18n="Choose a hostel and semester, then select a room marked available">Choose a hostel and semester, then select a room marked available.</li>
+                    <li data-i18n="Confirm your booking. The room is reserved immediately, and you can cancel it from Your bookings.">Confirm your booking. The room is reserved immediately, and you can cancel it from Your bookings.</li>
+                </ol>
+                <p>
+                    Men's hostels Turkana, Bogoria, Baringo and Elementeita have 90 rooms each. Women's hostels Sote A, Sote B, Kabon, Central and Lena Moi have 142 rooms each. The housing office sets which rooms have capacity for two or three students.
+                </p>
+            </div>
+            <div id="my-bed-heading" class="section-title" data-i18n="Your bookings">Your bookings</div>
             <div id="my-bed-list"></div>
 
             <div class="section-title" id="hostel-heading" data-i18n="Hostels of this school">Hostels of this school</div>
@@ -455,6 +471,9 @@
         </p>
     </main>
 
+  <script nomodule>!function(){var e=document,t=e.createElement("script");if(!("noModule"in t)&&"onbeforeload"in t){var n=!1;e.addEventListener("beforeload",(function(e){if(e.target===t)n=!0;else if(!e.target.hasAttribute("nomodule")||!n)return;e.preventDefault()}),!0),t.type="module",t.src=".",e.head.appendChild(t),t.remove()}}();</script>
+  <script nomodule crossorigin id="vite-legacy-polyfill" src="/assets/polyfills-legacy-CWJMBqWU.js"></script>
+  <script nomodule crossorigin id="vite-legacy-entry" data-src="/assets/services-legacy-CInO0woo.js">System.import(document.getElementById('vite-legacy-entry').getAttribute('data-src'))</script>
 </body>
 
 </html>

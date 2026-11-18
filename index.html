@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <meta name="theme-color" content="#075b57">
+  <meta name="theme-color" content="#5751d8">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-title" content="campus connect">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -14,21 +14,21 @@
 
   <style>
     :root {
-      --blue: #00a884;
-      --background: #f0f2f5;
+      --blue: #6254d9;
+      --background: #f2f0ff;
       --surface: #ffffff;
-      --text: #111b21;
+      --text: #1b1a35;
       --muted: #667781;
-      --border: #e9edef;
+      --border: #dcd8f4;
     }
 
     body.dark {
-      --blue: #00a884;
-      --background: #0b141a;
-      --surface: #111b21;
-      --text: #e9edef;
+      --blue: #6254d9;
+      --background: #111126;
+      --surface: #1b1a35;
+      --text: #dcd8f4;
       --muted: #8696a0;
-      --border: #2f3b40;
+      --border: #343252;
     }
 
     * {
@@ -315,10 +315,10 @@
       height: 72px;
       place-items: center;
       overflow: hidden;
-      border: 3px solid #25d366;
+      border: 3px solid #7b6df0;
       border-radius: 50%;
-      background: #e8f7ef;
-      color: #128c54;
+      background: #e9e6ff;
+      color: #5345c6;
       font-size: 24px;
       font-weight: bold;
     }
@@ -375,6 +375,25 @@
       max-width: 100%;
     }
     .post-video-wrap .post-video { width: 100%; }
+    .post-media-carousel { position: relative; width: 100%; overflow: hidden; background: #080812; }
+    .post-media-track { display: flex; width: 100%; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; overscroll-behavior-x: contain; }
+    .post-media-track::-webkit-scrollbar { display: none; }
+    .post-media-slide { position: relative; flex: 0 0 100%; min-width: 100%; scroll-snap-align: start; }
+    .post-media-slide img, .post-media-slide video { display: block; width: 100%; max-height: 74vh; aspect-ratio: 4 / 5; object-fit: contain; background: #080812; }
+    .post-media-count { position: absolute; z-index: 2; top: 12px; right: 12px; padding: 5px 9px; border-radius: 999px; background: #111126b8; color: #fff; font-size: 12px; font-weight: 700; }
+    .post-media-nav { position: absolute; z-index: 2; top: 50%; display: grid; width: 32px; height: 32px; place-items: center; padding: 0 0 3px; border: 0; border-radius: 50%; background: #11112699; color: #fff; font-size: 27px; line-height: 1; transform: translateY(-50%); cursor: pointer; }
+    .post-media-prev { left: 9px; }
+    .post-media-next { right: 9px; }
+    .post-media-dots { position: absolute; z-index: 2; right: 0; bottom: 10px; left: 0; display: flex; justify-content: center; gap: 5px; pointer-events: none; }
+    .post-media-dots i { width: 6px; height: 6px; border-radius: 50%; background: #ffffff80; }
+    .post-media-dots i.is-active { background: #fff; }
+    .post-media-picker { display: grid; gap: 10px; }
+    .post-media-picker-note { margin: 0; color: var(--muted); font-size: 13px; }
+    .post-media-previews { display: flex; gap: 8px; overflow-x: auto; padding: 2px 0 8px; }
+    .post-media-preview { position: relative; width: 76px; height: 96px; flex: 0 0 76px; overflow: hidden; border: 1px solid var(--border); border-radius: 10px; background: var(--background); }
+    .post-media-preview img, .post-media-preview video { width: 100%; height: 100%; object-fit: cover; }
+    .post-media-preview-number { position: absolute; bottom: 5px; left: 5px; padding: 2px 6px; border-radius: 999px; background: #111126bf; color: #fff; font-size: 11px; }
+    .post-media-preview-remove { position: absolute; top: 4px; right: 4px; display: grid; width: 24px; height: 24px; place-items: center; padding: 0; border: 0; border-radius: 50%; background: #111126d9; color: #fff; font-size: 16px; line-height: 1; cursor: pointer; }
     .post-video-mute {
       position: absolute;
       right: 10px;
@@ -458,7 +477,7 @@
       z-index: 20;
       left: 50%;
       display: grid;
-      grid-template-columns: repeat(4, minmax(0, 1fr));
+      grid-template-columns: repeat(5, minmax(0, 1fr));
       width: min(560px, calc(100% - 24px));
       min-height: 66px;
       padding: 6px;
@@ -491,7 +510,7 @@
 
     .bottom-nav a:hover,
     .bottom-nav a.active {
-      color: #00a884;
+      color: #6254d9;
     }
 
     .bottom-nav svg {
@@ -506,21 +525,21 @@
 
     /* Instagram surfaces: white/black page, hairline dividers, blue accent. */
     :root {
-      --blue: #0095f6;
-      --background: #fafafa;
+      --blue: #6254d9;
+      --background: #f6f4ff;
       --surface: #ffffff;
-      --text: #000000;
+      --text: #111126;
       --muted: #737373;
-      --border: #dbdbdb;
+      --border: #dcd8f4;
     }
 
     body.dark {
-      --blue: #0095f6;
-      --background: #000000;
-      --surface: #121212;
+      --blue: #6254d9;
+      --background: #111126;
+      --surface: #1b1a35;
       --text: #ffffff;
       --muted: #a8a8a8;
-      --border: #262626;
+      --border: #343252;
     }
 
     body {
@@ -569,7 +588,7 @@
     .story-ring.seen { background: var(--border); }
     .story-thumb { display: grid; width: 100%; height: 100%; place-items: center; overflow: hidden; border: 3px solid var(--surface); border-radius: 50%; background: color-mix(in srgb, var(--text) 10%, var(--surface)); color: var(--text); font-size: 23px; font-weight: 600; }
     .story-thumb img { width: 100%; height: 100%; object-fit: cover; }
-    .story-add-badge { position: absolute; right: -2px; bottom: 3px; display: grid; width: 22px; height: 22px; place-items: center; border: 2.5px solid var(--surface); border-radius: 50%; background: #0095f6; color: #fff; font-size: 13px; font-weight: 700; line-height: 1; }
+    .story-add-badge { position: absolute; right: -2px; bottom: 3px; display: grid; width: 22px; height: 22px; place-items: center; border: 2.5px solid var(--surface); border-radius: 50%; background: #6254d9; color: #fff; font-size: 13px; font-weight: 700; line-height: 1; }
     .story-label { width: 100%; overflow: hidden; color: var(--text); font-size: 13px; font-weight: 500; text-align: center; text-overflow: ellipsis; white-space: nowrap; }
 
     /* Instagram-style full-screen status viewer (dark like Instagram). */
@@ -591,7 +610,7 @@
     .story-bar.active > i { animation: story-fill var(--story-duration, 6s) linear forwards; }
     @keyframes story-fill { to { transform: scaleX(1); } }
     .story-head { position: absolute; top: 18px; right: 0; left: 0; z-index: 4; display: flex; align-items: center; gap: 10px; padding: 6px 10px 18px; background: linear-gradient(rgb(0 0 0 / 62%), transparent); }
-    .story-head-thumb { display: grid; width: 34px; height: 34px; flex: 0 0 34px; place-items: center; overflow: hidden; border-radius: 50%; background: #262626; color: #fff; font-size: 14px; font-weight: 700; }
+    .story-head-thumb { display: grid; width: 34px; height: 34px; flex: 0 0 34px; place-items: center; overflow: hidden; border-radius: 50%; background: #343252; color: #fff; font-size: 14px; font-weight: 700; }
     .story-head-thumb img { width: 100%; height: 100%; object-fit: cover; }
     .story-head-meta { display: grid; flex: 1; min-width: 0; margin-right: auto; gap: 1px; }
     .story-head-name { overflow: hidden; font-size: 16px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; text-shadow: 0 1px 6px rgb(0 0 0 / 55%); }
@@ -676,6 +695,9 @@
     .bulletin-write textarea { min-height: 96px; }
     .bulletin-item.note { border-style: dashed; background: transparent; }
     .bulletin-item.note h3 { font-size: 14px; color: var(--muted); }
+    .bulletin-media { margin-top: 8px; }
+    .bulletin-media-frame { position: relative; overflow: hidden; border-radius: 10px; background: #000; }
+    .bulletin-media-frame img, .bulletin-media-frame video { display: block; width: 100%; max-height: 420px; object-fit: contain; }
     /* An account outside the university reads the board and nothing else. */
     body.bulletin-only #stories,
     body.bulletin-only #adminPanel,
@@ -692,7 +714,7 @@
     #feed > .campus-other-heading { width: auto; align-self: auto; margin: 14px 2px 6px; padding: 10px 0 0; border-radius: 0; border-top: 1px solid var(--border); background: none; font-size: .76rem; letter-spacing: .3px; text-transform: uppercase; }
     .ig-post { padding: 0 0 12px; margin-bottom: 16px; border-bottom: 1px solid var(--border); background: var(--surface); }
     .ig-post-head { display: flex; align-items: center; gap: 10px; padding: 10px 12px; }
-    .ig-post-avatar { display: grid; width: 34px; height: 34px; flex: 0 0 34px; place-items: center; overflow: hidden; border-radius: 50%; background: color-mix(in srgb, var(--text) 12%, var(--surface)); color: var(--text); font-size: 14px; font-weight: 700; }
+    .ig-post-avatar { display: grid; width: 34px; height: 34px; flex: 0 0 34px; place-items: center; overflow: hidden; border: 0; padding: 0; border-radius: 50%; background: color-mix(in srgb, var(--text) 12%, var(--surface)); color: var(--text); font-size: 14px; font-weight: 700; cursor: pointer; }
     .ig-post-avatar img { width: 100%; height: 100%; object-fit: cover; }
     .ig-post-headline { display: grid; flex: 1; min-width: 0; gap: 1px; }
     .ig-post-author { overflow: hidden; font-size: 14px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
@@ -745,6 +767,72 @@
     .ig-comment-form input { flex: 1; padding: 6px 0; border: 0; background: transparent; font-size: 14px; }
     .ig-comment-form input:focus { border-color: transparent; outline: none; box-shadow: none; }
     .ig-send { padding: 6px 2px; border: 0; background: none; color: var(--blue); font-size: 14px; font-weight: 600; cursor: pointer; }
+
+    /* Reels use the existing post records, privacy rules, reactions, comments,
+       saved-post list and share links in a full-screen vertical viewer. */
+    #reelsScreen { display: none; position: relative; width: 100%; height: 100dvh; overflow: hidden; background: #050505; color: #fff; }
+    body.reels-mode > header { display: none; }
+    body.reels-mode main.container { position: fixed; inset: 0; width: auto; max-width: none; margin: 0; padding: 0; }
+    body.reels-mode #appSection { display: block; margin: 0; padding: 0; }
+    body.reels-mode #appSection > :not(#reelsScreen) { display: none !important; }
+    body.reels-mode #reelsScreen { display: block; }
+    .reels-status { position: absolute; z-index: 2; top: 50%; right: 22px; left: 22px; margin: 0; color: #fff; text-align: center; transform: translateY(-50%); }
+    .reels-list { width: 100%; height: 100%; overflow-y: auto; overscroll-behavior-y: contain; scroll-snap-type: y mandatory; scrollbar-width: none; }
+    .reels-list::-webkit-scrollbar { display: none; }
+    .reel-card { position: relative; width: 100%; height: 100dvh; min-height: 520px; overflow: hidden; isolation: isolate; background: #050505; color: #fff; scroll-snap-align: start; scroll-snap-stop: always; }
+    .reel-video-wrap { position: absolute; z-index: 0; inset: 0; width: 100%; height: 100%; max-width: none; overflow: hidden; }
+    .reel-video { position: absolute; inset: 0; display: block; width: 100%; height: 100%; max-height: none; margin: 0; border-radius: 0; object-fit: cover; background: #050505; }
+    .reel-shade { position: absolute; inset: 0; z-index: 1; pointer-events: none; background: linear-gradient(180deg, rgb(0 0 0 / 64%), transparent 23%, transparent 54%, rgb(0 0 0 / 76%)); }
+    .reel-head { position: absolute; z-index: 2; top: max(12px, env(safe-area-inset-top)); right: 12px; left: 12px; display: flex; align-items: center; gap: 9px; min-width: 0; color: #fff; }
+    .reel-author-ring { display: grid; width: 42px; height: 42px; flex: 0 0 42px; place-items: center; padding: 2px; border-radius: 50%; background: conic-gradient(#f9ce34, #ee2a7b 45%, #6228d7 75%, #f9ce34); }
+    .reel-author-avatar { display: grid; width: 100%; height: 100%; place-items: center; overflow: hidden; border: 2px solid #111; padding: 0; border-radius: 50%; background: #343434; color: #fff; font-size: 15px; font-weight: 700; cursor: pointer; }
+    .reel-author-avatar img { width: 100%; height: 100%; object-fit: cover; }
+    .profile-photo-dialog { width: min(92vw, 520px); max-width: 520px; max-height: 92vh; padding: 16px; overflow: auto; border: 1px solid var(--border); border-radius: 24px; background: var(--surface); color: var(--text); }
+    .profile-photo-dialog::backdrop { background: rgb(0 0 0 / 72%); backdrop-filter: blur(4px); }
+    .profile-photo-dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+    .profile-photo-dialog-head h2 { margin: 0; overflow-wrap: anywhere; font-size: 1.1rem; }
+    .profile-photo-close { display: grid; width: 40px; height: 40px; flex: 0 0 40px; place-items: center; border: 0; border-radius: 50%; background: color-mix(in srgb, var(--text) 10%, var(--surface)); color: var(--text); font-size: 23px; cursor: pointer; }
+    .profile-photo-large { display: block; width: min(76vw, 440px); aspect-ratio: 1; max-height: 68vh; margin: 0 auto; border-radius: 50%; background: color-mix(in srgb, var(--text) 8%, var(--surface)); object-fit: cover; }
+    .profile-photo-empty { margin: 20px 0 8px; color: var(--muted); text-align: center; }
+    .reel-headline { display: grid; flex: 1; min-width: 0; gap: 3px; text-shadow: 0 1px 4px rgb(0 0 0 / 70%); }
+    .reel-username, .reel-audio { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .reel-username { font-size: 14px; font-weight: 750; }
+    .reel-audio { font-size: 12px; }
+    .reel-head-action { display: grid; width: 38px; height: 38px; flex: 0 0 38px; place-items: center; border: 0; border-radius: 50%; background: rgb(0 0 0 / 20%); color: #fff; cursor: pointer; }
+    .reel-head-action svg { width: 25px; height: 25px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; }
+    .reel-actions { position: absolute; z-index: 2; right: 10px; bottom: calc(96px + env(safe-area-inset-bottom)); display: grid; justify-items: center; gap: 16px; }
+    .reel-like-burst { position: absolute; z-index: 3; top: 50%; left: 50%; display: grid; width: 104px; height: 104px; place-items: center; color: #fff; opacity: 0; pointer-events: none; transform: translate(-50%, -50%) scale(.35); }
+    .reel-like-burst svg { width: 100%; height: 100%; fill: #ff304f; stroke: #fff; stroke-width: 1.5; filter: drop-shadow(0 2px 12px #0008); }
+    .reel-like-burst.play { animation: reel-like-pop .8s ease-out forwards; }
+    @keyframes reel-like-pop { 0% { opacity: 0; transform: translate(-50%, -50%) scale(.35); } 22% { opacity: 1; transform: translate(-50%, -50%) scale(1.16); } 42% { transform: translate(-50%, -50%) scale(.94); } 65% { opacity: 1; transform: translate(-50%, -50%) scale(1); } 100% { opacity: 0; transform: translate(-50%, -50%) scale(1); } }
+    .reel-action { display: grid; justify-items: center; gap: 2px; min-width: 42px; padding: 0; border: 0; background: none; color: #fff; font: inherit; cursor: pointer; text-shadow: 0 1px 4px rgb(0 0 0 / 75%); }
+    .reel-action svg { width: 29px; height: 29px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .reel-action.is-on { color: #ff4d73; }
+    .reel-action.is-on svg { fill: currentColor; }
+    .reel-action-count { min-height: 14px; font-size: 11px; font-weight: 750; }
+    .reel-caption { position: absolute; z-index: 2; right: 60px; bottom: calc(84px + env(safe-area-inset-bottom)); left: 14px; margin: 0; color: #fff; font-size: 14px; line-height: 1.4; text-shadow: 0 1px 4px rgb(0 0 0 / 85%); overflow-wrap: anywhere; }
+    .reel-caption .ig-caption-author { display: inline; }
+    .reel-caption .ig-caption-short, .reel-caption .ig-caption-full { display: inline; }
+    .reel-caption .ig-more { color: rgb(255 255 255 / 80%); }
+    .reel-comments { position: absolute; z-index: 4; right: 0; bottom: 0; left: 0; display: none; max-height: 52%; padding: 14px 14px calc(74px + env(safe-area-inset-bottom)); overflow-y: auto; border-radius: 18px 18px 0 0; background: var(--surface); color: var(--text); }
+    .reel-card.reel-comments-open .reel-comments { display: block; }
+    .reel-comments .ig-comments { display: grid; gap: 8px; }
+    .reel-comments .ig-comments.hidden { display: grid; }
+    .reel-comments .ig-comment { margin: 0; }
+    .reel-comments .ig-comment-form { position: fixed; z-index: 5; right: 0; bottom: calc(60px + env(safe-area-inset-bottom)); left: 0; display: none; padding: 8px 12px; background: var(--surface); }
+    .reel-card.reel-comments-open .reel-comment-form { display: flex; }
+    .reel-comment-close { position: sticky; top: 0; float: right; border: 0; background: none; color: var(--text); font-size: 22px; cursor: pointer; }
+    .reel-ended { position: absolute; z-index: 3; inset: 0; display: none; align-content: center; justify-items: center; gap: 12px; background: rgb(0 0 0 / 44%); }
+    .reel-card.ended .reel-ended { display: grid; }
+    .reel-ended button { border: 0; border-radius: 24px; background: #fff; color: #111; font: inherit; font-weight: 750; cursor: pointer; }
+    .reel-watch-more { display: flex; align-items: center; gap: 8px; padding: 13px 18px; }
+    .reel-watch-again { padding: 6px 12px; background: transparent !important; color: #fff !important; text-shadow: 0 1px 4px #000; }
+    .reel-list-empty { display: grid; height: 100%; padding: 24px; place-items: center; color: #fff; text-align: center; }
+    @media (min-width: 700px) {
+      body.reels-mode #reelsScreen { display: grid; place-items: center; }
+      .reels-list { width: min(100%, 480px); border-radius: 10px; }
+      .reel-card { height: 100dvh; }
+    }
     .post-menu-dialog { width: min(340px, 92vw); padding: 8px; border: 0; border-radius: 14px; background: var(--surface); color: var(--text); }
     .post-menu-dialog::backdrop { background: rgb(0 0 0 / 55%); }
     .post-menu-options { display: grid; }
@@ -758,17 +846,16 @@
     .you-saved-empty { color: var(--muted); font-size: 14px; }
     #profile .owner-about { margin: 4px 14px 22px; padding: 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface); font-size: 14px; }
     #profile .owner-about h2 { margin: 0 0 6px; font-size: 16px; }
-    .boost-status { display: block; width: 100%; margin: 8px 0 4px; padding: 12px 14px; border: 0; border-radius: 999px; background: color-mix(in srgb, var(--text) 7%, var(--surface)); color: var(--text); font-size: 15px; font-weight: 600; cursor: pointer; }
-    .boost-status:hover { background: color-mix(in srgb, var(--blue) 14%, var(--surface)); }
-    .boost-status.is-boosted { background: color-mix(in srgb, var(--blue) 22%, var(--surface)); }
-    .story-card.boosted .story-ring { animation: story-boost 2.2s ease-in-out infinite; }
-    @keyframes story-boost {
-      0%, 100% { box-shadow: 0 0 0 0 rgb(0 149 246 / 45%); }
-      50% { box-shadow: 0 0 0 7px rgb(0 149 246 / 0%); }
-    }
     .status-audience { display: flex; align-items: center; gap: 6px; margin: 2px 0 10px; color: var(--muted); font-size: 13px; font-weight: 500; }
     .status-audience svg { flex: 0 0 auto; width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
     .updates-divider { height: 1px; margin: 14px 0; background: var(--border); }
+    .post-composer { padding: 0; overflow: hidden; }
+    .post-composer > summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 54px; padding: 14px 16px; color: var(--text); font-weight: 750; cursor: pointer; }
+    .post-composer > summary::marker { color: var(--blue); }
+    .post-composer-hint { color: var(--muted); font-size: 12px; font-weight: 500; text-align: right; }
+    .post-composer-content { padding: 0 16px 16px; }
+    .post-composer[open] > summary { border-bottom: 1px solid var(--border); margin-bottom: 14px; }
+    .post-audience-note { margin: 4px 0 12px; color: var(--muted); font-size: 13px; }
     .explore-pill { padding: 7px 16px; border: 0; border-radius: 999px; background: color-mix(in srgb, var(--text) 8%, var(--surface)); color: var(--text); font-size: 13px; font-weight: 700; cursor: pointer; }
     .explore-pill:hover { background: color-mix(in srgb, var(--blue) 16%, var(--surface)); }
     .channels-list { display: grid; }
@@ -782,7 +869,7 @@
     .channel-meta { display: grid; gap: 5px; justify-items: end; }
     .channel-time { font-size: 12px; font-weight: 600; color: var(--blue); }
     .channel-time.read { color: var(--muted); font-weight: 400; }
-    .channel-unread { min-width: 20px; padding: 1px 5px; border-radius: 999px; background: #0095f6; color: #fff; font-size: 11px; font-weight: 700; text-align: center; }
+    .channel-unread { min-width: 20px; padding: 1px 5px; border-radius: 999px; background: #6254d9; color: #fff; font-size: 11px; font-weight: 700; text-align: center; }
     .channels-empty { padding: 12px 2px; color: var(--muted); font-size: 14px; }
     .story-form-dialog { width: min(460px, 94vw); padding: 20px; border: 0; border-radius: 16px; background: var(--surface); color: var(--text); }
     .story-form-dialog::backdrop { background: rgb(0 0 0 / 65%); }
@@ -1231,7 +1318,7 @@
       min-width: 18px;
       padding: 1px 5px;
       border-radius: 999px;
-      background: #25a244;
+      background: #6254d9;
       color: #fff;
       font-size: 10px;
       font-weight: 700;
@@ -1305,44 +1392,6 @@
 
     .fees-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 16px 0 6px; }
 
-    .home-fees-pill {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      width: 100%;
-      margin: 0 0 14px;
-      padding: 14px 16px;
-      border: 1px solid var(--border);
-      border-radius: 16px;
-      background: var(--surface);
-      color: var(--text);
-      font: inherit;
-      font-size: 16px;
-      font-weight: 700;
-      text-align: left;
-      cursor: pointer;
-    }
-
-    .home-fees-pill:hover { background: color-mix(in srgb, var(--blue) 8%, var(--surface)); }
-
-    .home-fees-pill svg {
-      flex: 0 0 26px;
-      width: 26px;
-      height: 26px;
-      fill: none;
-      stroke: var(--blue);
-      stroke-width: 1.8;
-      stroke-linecap: round;
-      stroke-linejoin: round;
-    }
-
-    .home-fees-pill span:last-child {
-      margin-left: auto;
-      color: var(--muted);
-      font-size: 20px;
-      font-weight: 600;
-    }
-
     @media (min-width: 720px) {
       .you-avatar { width: 148px; height: 148px; }
       .you-group,
@@ -1352,15 +1401,17 @@
       .you-details { margin-left: auto; margin-right: auto; max-width: 620px; }
     }
   </style>
-  <script type="module" crossorigin src="/assets/main-BEqeW7UB.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/pwa-We62OCdk.js">
-  <link rel="modulepreload" crossorigin href="/assets/offline-banner-kKPYqale.js">
-  <link rel="modulepreload" crossorigin href="/assets/offline-chat-CGtU3va7.js">
-  <link rel="modulepreload" crossorigin href="/assets/profile-identity-Ca2trUFN.js">
-  <link rel="modulepreload" crossorigin href="/assets/offline-store-DtZovh2O.js">
-  <link rel="modulepreload" crossorigin href="/assets/company-directory-CcSTY6JP.js">
-  <link rel="modulepreload" crossorigin href="/assets/staff-verification-0N1eX3qx.js">
-  <link rel="stylesheet" crossorigin href="/assets/pwa-BFBmpa7B.css">
+  <script type="module" crossorigin src="/assets/main-D6G_J0ZQ.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/supabase-BZASSCr-.js">
+  <link rel="modulepreload" crossorigin href="/assets/offline-banner-FNj5sJXW.js">
+  <link rel="modulepreload" crossorigin href="/assets/profile-identity-NgoVhTRF.js">
+  <link rel="modulepreload" crossorigin href="/assets/chat-organize-BEQFNYJd.js">
+  <link rel="modulepreload" crossorigin href="/assets/offline-store-DwnENRt3.js">
+  <link rel="modulepreload" crossorigin href="/assets/company-directory-Bb5cvSif.js">
+  <link rel="modulepreload" crossorigin href="/assets/staff-verification-44B0tBi-.js">
+  <link rel="stylesheet" crossorigin href="/assets/offline-banner-BFBmpa7B.css">
+  <script type="module">import.meta.url;import("_").catch(()=>1);(async function*(){})().next();if(location.protocol!="file:"){window.__vite_is_modern_browser=true}</script>
+  <script type="module">!function(){if(window.__vite_is_modern_browser)return;console.warn("vite: loading legacy chunks, syntax error above and the same error below should be ignored");var e=document.getElementById("vite-legacy-polyfill"),n=document.createElement("script");n.src=e.src,n.onload=function(){System.import(document.getElementById('vite-legacy-entry').getAttribute('data-src'))},document.body.appendChild(n)}();</script>
 </head>
 
 <body>
@@ -1369,10 +1420,7 @@
       <h1>campus connect</h1>
     </div>
     <div class="header-actions">
-      <a href="/messages.html" class="secondary"
-         style="display:inline-flex;align-items:center;padding:10px 14px;border-radius:7px;" data-i18n="💬 Chats">
-        💬 Chats
-      </a>
+      <a class="world-posts-link" href="/world.html" data-i18n="World posts">World posts</a>
       <details class="settings-menu">
         <summary data-i18n="⚙ Settings">⚙ Settings</summary>
         <div class="settings-panel">
@@ -1398,14 +1446,6 @@
             <option value="ru">Русский</option>
           </select>
           <button id="install-app-button" class="secondary" type="button" data-install-app data-i18n="Install app">Install app</button>
-          <button class="secondary" type="button" data-share-app data-i18n="Share app">Share app</button>
-          <a href="/#profile" data-i18n="About">About</a>
-          <a href="/#stories" data-destination="updates" data-i18n="Updates">Updates</a>
-          <strong data-i18n="Quick access">Quick access</strong>
-          <a href="https://www.youtube.com/" target="_blank" rel="noopener noreferrer" data-i18n="YouTube">YouTube</a>
-          <a href="https://www.google.com/" target="_blank" rel="noopener noreferrer" data-i18n="Google">Google</a>
-          <a href="https://www.meta.ai/" target="_blank" rel="noopener noreferrer" data-i18n="Meta AI">Meta AI</a>
-          <button id="themeButton" class="secondary" type="button" data-i18n="🌙 Theme">🌙 Theme</button>
           <button id="biometric-lock-toggle" class="secondary" type="button" hidden>Turn on biometric app lock</button>
           <small>Biometric lock is a device convenience and cannot prevent viruses or protect a compromised device.</small>
         </div>
@@ -1440,17 +1480,21 @@
         <label for="loginMethod" data-i18n="Sign-in method">Sign-in method</label>
         <select id="loginMethod">
           <option value="email-password" data-i18n="Email and password">Email and password</option>
-          <option value="email-link" data-i18n="Email sign-in link">Email sign-in link</option>
-          <option value="phone" data-i18n="Phone number">Phone number</option>
+          <option value="phone" data-i18n="Phone number and password">Phone number and password</option>
         </select>
 
         <div id="emailLoginFields">
           <label for="loginEmail" data-i18n="Email">Email</label>
           <input id="loginEmail" type="email" autocomplete="email" required>
         </div>
+        <div id="registrationLoginFields" class="hidden">
+          <label for="loginRegistrationNumber" data-i18n="Student registration number">Student registration number</label>
+          <input id="loginRegistrationNumber" type="text" maxlength="32" spellcheck="false" autocomplete="off">
+        </div>
         <div id="passwordLoginFields">
           <label for="loginPassword" data-i18n="Password">Password</label>
           <input id="loginPassword" type="password" autocomplete="current-password" required>
+          <small data-i18n="Use the password you set for Campus Connect.">Use the password you set for Campus Connect.</small>
         </div>
         <div id="phoneLoginFields" class="hidden">
           <label for="loginPhoneCountryCode" data-i18n="Country calling code">Country calling code</label>
@@ -1461,6 +1505,13 @@
                    placeholder="712345678" maxlength="14" pattern="[0-9]{4,14}" aria-label="Phone number" data-i18n-aria-label="Phone number">
           </div>
           <p class="muted" data-i18n="Enter your phone number without its country code.">Enter your phone number without its country code.</p>
+        </div>
+        <div id="phoneLoginCodeFields" class="hidden">
+          <label for="loginPhoneCode" data-i18n="SMS verification code">SMS verification code</label>
+          <input id="loginPhoneCode" type="text" inputmode="numeric" autocomplete="one-time-code"
+                 maxlength="6" pattern="[0-9]{6}" aria-describedby="loginPhoneCodeHint">
+          <p class="muted" id="loginPhoneCodeHint" data-i18n="Enter the SMS verification code sent to your phone.">Enter the SMS verification code sent to your phone.</p>
+          <p class="auth-help"><button id="resendPhoneLoginCode" type="button" data-i18n="Resend SMS code">Resend SMS code</button></p>
         </div>
 
         <button id="loginSubmitButton" type="submit" data-i18n="Log in">Log in</button>
@@ -1477,11 +1528,13 @@
       </form>
       <form id="registerForm" class="hidden">
         <h3 data-i18n="Create your account">Create your account</h3>
+        <p class="muted" data-i18n="Use one Campus Connect account everywhere. Choose your student, lecturer, staff or company role, then add its registration details here or later in your profile.">Use one Campus Connect account everywhere. Choose your student, lecturer, staff or company role, then add its registration details here or later in your profile.</p>
         <label for="registerMethod" data-i18n="Registration method">Registration method</label>
         <select id="registerMethod">
           <option value="email" data-i18n="Email and password">Email and password</option>
           <option value="phone" data-i18n="Phone number">Phone number</option>
         </select>
+        <p class="muted" data-i18n="Use the same email address or phone number and password when you log in.">Use the same email address or phone number and password when you log in.</p>
 
         <label for="registerName" data-i18n="Full name">Full name</label>
         <input id="registerName" type="text" maxlength="80"
@@ -1496,7 +1549,7 @@
         <div id="emailRegistrationFields">
           <label for="registerEmail" data-i18n="Email">Email</label>
           <input id="registerEmail" type="email" autocomplete="email" required>
-          <p class="muted" data-i18n="Any valid email address from any country is welcome; no school email is required.">Any valid email address from any country is welcome; no school email is required.</p>
+          <p class="muted" data-i18n="Use an email address you can open to confirm your account if asked.">Use an email address you can open to confirm your account if asked.</p>
         </div>
         <div id="phoneRegistrationFields" class="hidden">
           <label for="registerPhoneCountryCode" data-i18n="Country calling code">Country calling code</label>
@@ -1507,6 +1560,13 @@
                    placeholder="712345678" maxlength="14" pattern="[0-9]{4,14}" aria-label="Phone number" data-i18n-aria-label="Phone number">
           </div>
           <p class="muted" data-i18n="Enter your phone number without its country code.">Enter your phone number without its country code.</p>
+        </div>
+        <div id="phoneSignupCodeFields" class="hidden">
+          <label for="registerPhoneCode" data-i18n="SMS verification code">SMS verification code</label>
+          <input id="registerPhoneCode" type="text" inputmode="numeric" autocomplete="one-time-code"
+                 maxlength="6" pattern="[0-9]{6}" aria-describedby="registerPhoneCodeHint">
+          <p class="muted" id="registerPhoneCodeHint" data-i18n="Enter the SMS verification code sent to your phone.">Enter the SMS verification code sent to your phone.</p>
+          <p class="auth-help"><button id="resendPhoneSignupCode" type="button" data-i18n="Resend SMS code">Resend SMS code</button></p>
         </div>
 
         <label for="registerCourse" data-i18n="University, school, course, or organization (optional)">University, school, course, or organization (optional)</label>
@@ -1530,7 +1590,7 @@
             <option value="staff" data-i18n="Staff">Staff</option>
           </select>
           <p class="muted" data-i18n="Write the name as it appears on its letterhead. Once you are signed in, the companies page can match it to the list or add it there.">Write the name as it appears on its letterhead. Once you are signed in, the companies page can match it to the list or add it there.</p>
-          <p class="muted" data-i18n="A company signs in with an email address. It gets its own zone in the feed and may write announcements about its company, but it does not get classes.">A company signs in with an email address. It gets its own zone in the feed and may write announcements about its company, but it does not get classes.</p>
+          <p class="muted" data-i18n="A company signs in with the email address or phone number chosen above. It gets its own zone in the feed and may write announcements about its company, but it does not get classes.">A company signs in with the email address or phone number chosen above. It gets its own zone in the feed and may write announcements about its company, but it does not get classes.</p>
         </div>
 
         <label for="registerRole" data-i18n="I am a">I am a</label>
@@ -1540,9 +1600,11 @@
           <option value="security" data-i18n="Security staff">Security staff</option>
           <option value="company" data-i18n="A company: its director or staff">A company: its director or staff</option>
           <option value="member" data-i18n="Parent, relative or friend of a student">Parent, relative or friend of a student</option>
+          <option value="community" data-i18n="Community member (no campus ID)">Community member (no campus ID)</option>
         </select>
         <p class="muted" id="registerRoleHint" data-i18n="Students start immediately. A lecturer has to show a National ID, a staff ID card and the letter of introduction, and an admin has to accept them before the university system opens.">Students start immediately. A lecturer has to show a National ID, a staff ID card and the letter of introduction, and an admin has to accept them before the university system opens.</p>
-        <p class="muted" id="registerMemberNote" hidden data-i18n="An account outside the university signs in with an email address and reads the bulletin: what is happening in the world, at the university and with the people in it. It does not get chats, posts, statuses or classes, and no student can message it.">An account outside the university signs in with an email address and reads the bulletin: what is happening in the world, at the university and with the people in it. It does not get chats, posts, statuses or classes, and no student can message it.</p>
+        <p class="muted" id="registerMemberNote" hidden data-i18n="An account outside the university signs in with the email address or phone number used to register and reads the bulletin: what is happening in the world, at the university and with the people in it. It does not get chats, posts, statuses or classes, and no student can message it.">An account outside the university signs in with the email address or phone number used to register and reads the bulletin: what is happening in the world, at the university and with the people in it. It does not get chats, posts, statuses or classes, and no student can message it.</p>
+        <p class="muted" id="registerCommunityNote" hidden data-i18n="A community member uses the email address or phone number chosen at registration for the same Campus Connect account. No campus ID or university is needed. If your role changes, add student, lecturer or staff details to this profile instead of creating another app account.">A community member uses the email address or phone number chosen at registration for the same Campus Connect account. No campus ID or university is needed. If your role changes, add student, lecturer or staff details to this profile instead of creating another app account.</p>
 
         <div id="registerNumberFields">
           <label for="registerNumber" id="registerNumberLabel" data-i18n="Your registration number">Your registration number</label>
@@ -1573,21 +1635,22 @@
         <div id="registrationPasswordField">
           <label for="registerPassword" data-i18n="Password (at least 6 characters)">Password (at least 6 characters)</label>
           <input id="registerPassword" type="password" minlength="6" autocomplete="new-password" required>
-          <p class="muted" data-i18n="Use at least 6 characters. Use an email address you can open to confirm your account if asked.">Use at least 6 characters. Use an email address you can open to confirm your account if asked.</p>
+          <p class="muted" data-i18n="Use at least 6 characters. You will use this password with your phone number or email.">Use at least 6 characters. You will use this password with your phone number or email.</p>
         </div>
 
-        <button type="submit" data-i18n="Create account">Create account</button>
+        <button id="registerSubmitButton" type="submit" data-i18n="Create account">Create account</button>
         <p id="registerStatus" class="status" role="status"></p>
       </form>
     </section>
 
     <!-- APPLICATION -->
     <section id="appSection" class="hidden">
-      <section id="profile" class="card you-tab">
+      <section id="profile" class="card you-tab" aria-labelledby="more-title">
         <header class="you-topbar">
           <a class="you-round" href="/messages.html" aria-label="Find people" data-i18n-aria-label="Find people" title="Find people" data-i18n-title="Find people">
             <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8"/><path d="m16 16 5 5"/></svg>
           </a>
+          <h2 id="more-title" data-i18n="More">More</h2>
           <div class="you-pill">
             <button id="youQrButton" class="you-round" type="button" aria-label="My QR code" data-i18n-aria-label="My QR code" title="My QR code" data-i18n-title="My QR code">
               <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/><path d="M8.5 8.5h2v2h-2zM13.5 8.5h2v2h-2zM8.5 13.5h2v2h-2zM13.5 13.5h2v2h-2z"/></svg>
@@ -1605,7 +1668,7 @@
           </button>
           <div class="you-avatar-wrap">
             <div id="youAvatar" class="you-avatar" aria-hidden="true"></div>
-            <button id="youAvatarButton" class="you-avatar-plus" type="button" aria-label="Change profile picture" data-i18n-aria-label="Change profile picture">+</button>
+            <button id="youAvatarButton" class="you-avatar-plus" type="button" aria-label="Change profile picture anytime" data-i18n-aria-label="Change profile picture anytime" title="Change profile picture anytime" data-i18n-title="Change profile picture anytime">+</button>
           </div>
           <button id="youNameRow" class="you-name-row" type="button" aria-expanded="false" aria-controls="youDetails">
             <span id="youName">…</span>
@@ -1659,11 +1722,6 @@
 
         <div class="you-group campus-only">
           <h3 data-i18n="University systems">University systems</h3>
-          <a class="you-row" href="/universities.html">
-            <span class="you-row-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2.5 7.5 12 12l9.5-4.5Z"/><path d="M6 10v5.5c0 1.7 2.7 3 6 3s6-1.3 6-3V10"/><path d="M21.5 7.5v6"/></svg></span>
-            <span class="you-row-label" data-i18n="Student portals, ENT and LMS worldwide">Student portals, ENT and LMS worldwide</span>
-            <svg class="you-row-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
-          </a>
           <a class="you-row" href="/companies.html">
             <span class="you-row-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 21V5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v16"/><path d="M15 10h3a2 2 0 0 1 2 2v9"/><path d="M8 7h4M8 11h4M8 15h4M3 21h18"/></svg></span>
             <span class="you-row-label" data-i18n="Companies of the world">Companies of the world</span>
@@ -1736,7 +1794,7 @@
           <h2 data-i18n="About Campus Connect">About Campus Connect</h2>
           <p data-i18n="Share updates, find people, chat and call on campus.">Share updates, find people, chat and call on campus.</p>
           <p class="app-owner-name">Developed by Josh Chimal Akim · BSc Computer Science, Kabarak University</p>
-          <p class="muted" id="appVersionLine">Campus Connect v1.36</p>
+          <p class="muted" id="appVersionLine">Campus Connect v1.78</p>
           <p class="muted" id="storageLine">Campus Connect keeps its media on this phone.</p>
           <p class="muted"><small id="storageNote"></small></p>
           <button type="button" class="secondary" id="clearSavedMedia" hidden data-i18n="Clear saved media">Clear saved media</button>
@@ -1776,6 +1834,7 @@
             <label for="profileAvatarFile" data-i18n="Profile picture">Profile picture</label>
             <img id="profileAvatarPreview" alt="Profile picture preview" hidden>
             <input id="profileAvatarFile" type="file" accept="image/*">
+            <small data-i18n="Change your profile picture whenever you want. The saved photo appears across your profile, chats and calls.">Change your profile picture whenever you want. The saved photo appears across your profile, chats and calls.</small>
             <label for="profileName" data-i18n="Display name">Display name</label>
             <input id="profileName" type="text" maxlength="100" required>
             <label for="profileUsername" data-i18n="Username">Username</label>
@@ -1855,6 +1914,8 @@
             <label class="contact-sharing-option"><input id="shareProfilePhone" type="checkbox"> <span data-i18n="Show my contact phone to signed-in students">Show my contact phone to signed-in students</span></label>
             <label class="contact-sharing-option"><input id="discoverProfile" type="checkbox"> <span data-i18n="Show my profile in student search">Show my profile in student search</span></label>
             <small data-i18n="Your profile is hidden from student search unless you enable this option. Your profile picture remains visible in chats.">Your profile is hidden from student search unless you enable this option. Your profile picture remains visible in chats.</small>
+            <label class="contact-sharing-option"><input id="allowFollowerStatuses" type="checkbox"> <span data-i18n="Let all my followers see my statuses">Let all my followers see my statuses</span></label>
+            <small data-i18n="Anyone who follows you can view your active statuses, even if you do not follow them back. Blocked accounts remain excluded.">Anyone who follows you can view your active statuses, even if you do not follow them back. Blocked accounts remain excluded.</small>
             <p class="muted" data-i18n="Blocked members">Blocked members</p>
             <a class="you-inline-link" href="/messages.html" data-i18n="Manage blocked members">Manage blocked members</a>
           </fieldset>
@@ -1960,12 +2021,11 @@
             <rect x="5" y="10.5" width="14" height="9.5" rx="2" />
             <path d="M8.5 10.5V8a3.5 3.5 0 0 1 7 0v2.5" />
           </svg>
-          <span data-i18n="Only your friends can see your statuses.">Only your friends can see your statuses.</span>
+          <span id="statusAudienceMessage" data-i18n="Mutual connections and people you've exchanged messages with can see your statuses.">Mutual connections and people you've exchanged messages with can see your statuses.</span>
         </p>
 
         <p id="storyStatus" class="status" role="status" aria-live="polite"></p>
         <div id="storiesList" class="stories-list" aria-label="Student statuses"></div>
-        <button id="boostStatusButton" class="boost-status" type="button" data-i18n="Boost status">Boost status</button>
 
         <div class="updates-divider"></div>
 
@@ -1993,15 +2053,9 @@
         </form>
       </dialog>
 
-      <button id="homeFeesButton" class="home-fees-pill" type="button">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2.5" y="5" width="19" height="14" rx="2.5"/><path d="M2.5 10h19"/></svg>
-        <span data-i18n="Pay school fees">Pay school fees</span>
-        <span aria-hidden="true">›</span>
-      </button>
-
       <section id="bulletin" class="card">
         <h2 data-i18n="Bulletin">Bulletin</h2>
-        <p class="muted" data-i18n="News about the world, the university, the people and the companies in it. A campus or company account writes it, everyone reads it.">News about the world, the university, the people and the companies in it. A campus or company account writes it, everyone reads it.</p>
+        <p class="muted" data-i18n="News about the university, the people and the world. Everyone can share, with a photo or video. Announcements disappear after 24 hours.">News about the university, the people and the world. Everyone can share, with a photo or video. Announcements disappear after 24 hours.</p>
         <div id="bulletinBody" class="bulletin-body"></div>
         <div id="bulletinWrite" class="bulletin-write hidden">
           <h3 data-i18n="Write an announcement">Write an announcement</h3>
@@ -2016,6 +2070,8 @@
           <input id="bulletinTitle" type="text" maxlength="120" autocomplete="off">
           <label for="bulletinBodyInput" data-i18n="What happened?">What happened?</label>
           <textarea id="bulletinBodyInput" maxlength="4000"></textarea>
+          <label for="bulletinMedia" data-i18n="Add a photo or video (optional)">Add a photo or video (optional)</label>
+          <input id="bulletinMedia" type="file" accept="image/*,video/*">
           <label for="bulletinLink" data-i18n="Link (optional)">Link (optional)</label>
           <input id="bulletinLink" type="url" maxlength="400" placeholder="https://">
           <button id="bulletinPublish" type="button" data-i18n="Publish announcement">Publish announcement</button>
@@ -2023,26 +2079,36 @@
         </div>
       </section>
 
-      <section class="card campus-only">
-        <h2 data-i18n="Create a post">Create a post</h2>
+      <details class="card campus-only post-composer">
+        <summary><span data-i18n="Create a post">Create a post</span><span class="post-composer-hint" data-i18n="School · people · world">School · people · world</span></summary>
+        <div class="post-composer-content">
         <form id="postForm">
           <label for="postText" data-i18n="What's happening on campus?">What's happening on campus?</label>
           <textarea id="postText" maxlength="5000"
                     placeholder="Share something with your classmates..." data-i18n-placeholder="Share something with your classmates..."></textarea>
 
-          <label for="mediaUpload" data-i18n="Add a picture or video (optional)">Add a picture or video (optional)</label>
-          <input id="mediaUpload" type="file"
-                 accept="image/*,video/*">
+          <label for="postAudience" data-i18n="Who can see this post?">Who can see this post?</label>
+          <select id="postAudience">
+            <option value="school" data-i18n="My school">My school</option>
+            <option value="people" data-i18n="All Campus Connect members">All Campus Connect members</option>
+            <option value="world" data-i18n="World (public)">World (public)</option>
+          </select>
+          <p id="postAudienceNote" class="post-audience-note" data-i18n="Only people at your school can see this post.">Only people at your school can see this post.</p>
 
-          <p class="muted">
-            Videos can be up to 10 minutes and 500 MiB; pictures can be up to 50 MiB.
-            Uploaded media is publicly viewable, so only share files you are comfortable making public.
-          </p>
+          <div class="post-media-picker">
+            <label for="mediaUpload">Add photos or short videos (up to 10)</label>
+            <input id="mediaUpload" type="file" accept="image/*,video/*" multiple>
+            <p id="postMediaPickerNote" class="post-media-picker-note">Select several items at once. Photos and videos will appear together in a swipeable post.</p>
+            <div id="postMediaPreviews" class="post-media-previews" aria-live="polite"></div>
+          </div>
+
+          <p class="muted" data-i18n="World posts and their photos or videos are public. Other posts are limited to the audience you choose.">World posts and their photos or videos are public. Other posts are limited to the audience you choose.</p>
 
           <button id="publishButton" type="submit">Publish post</button>
           <p id="postStatus" class="status" role="status"></p>
         </form>
-      </section>
+        </div>
+      </details>
 
       <section class="card feed-shell">
         <h2>Student feed</h2>
@@ -2054,6 +2120,11 @@
         <div id="promotedList" class="promoted-list" hidden></div>
         <div id="feed"></div>
       </section>
+
+      <section id="reelsScreen" aria-label="Reels" data-i18n-aria-label="Reels">
+        <p id="reelsStatus" class="reels-status status" role="status" aria-live="polite"></p>
+        <div id="reelsList" class="reels-list" aria-label="Campus Connect Reels"></div>
+      </section>
     </section>
 
   </main>
@@ -2061,22 +2132,26 @@
   <nav class="bottom-nav" aria-label="Main navigation" hidden>
     <a href="/#stories" data-destination="updates">
       <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5.8"/><circle cx="12" cy="12" r="2.5"/></svg>
-      <span>Updates</span>
+      <span data-i18n="Updates">Updates</span>
+    </a>
+    <a href="/#reels" data-destination="reels">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 5 11 7-11 7z"/><path d="M4 4v16"/></svg>
+      <span data-i18n="Reels">Reels</span>
     </a>
     <a href="/messages.html#calls" data-destination="calls">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7.2 3.5 10 7.2 8.4 9.5a15 15 0 0 0 6.1 6.1l2.3-1.6 3.7 2.8-.8 3.3a2 2 0 0 1-2.1 1.5A17.5 17.5 0 0 1 2.4 6.1a2 2 0 0 1 1.5-2.1l3.3-.5Z"/></svg>
-      <span>Calls</span>
+      <span data-i18n="Calls">Calls</span>
     </a>
     <a href="/messages.html" data-destination="chats">
       <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11.5a7.5 7.5 0 0 1-7.5 7.5H5l1.8-3.2A7.5 7.5 0 1 1 20 11.5Z"/><path d="M8 11.5h8M8 14.5h5"/></svg>
-      <span>Chats</span>
+      <span data-i18n="Chats">Chats</span>
       <span id="navChatsBadge" class="bottom-nav-badge hidden"></span>
     </a>
-    <a href="/#profile" data-destination="profile">
+    <a href="/#profile" data-destination="profile" title="More" data-i18n-title="More">
       <span id="navProfilePhoto" class="bottom-nav-photo" aria-hidden="true">
         <svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="3.5"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/></svg>
       </span>
-      <span>Profile</span>
+      <span data-i18n="More">More</span>
     </a>
   </nav>
 
@@ -2159,6 +2234,15 @@
         </form>
       </div>
     </div>
+  </dialog>
+
+  <dialog id="profilePhotoDialog" class="profile-photo-dialog" aria-labelledby="profilePhotoName">
+    <div class="profile-photo-dialog-head">
+      <h2 id="profilePhotoName"></h2>
+      <button id="profilePhotoClose" class="profile-photo-close" type="button" aria-label="Close profile photo">×</button>
+    </div>
+    <img id="profilePhotoLarge" class="profile-photo-large" alt="Profile picture" hidden>
+    <p id="profilePhotoEmpty" class="profile-photo-empty" hidden>This member has not added a profile picture yet.</p>
   </dialog>
 
   <dialog id="passwordResetDialog" class="story-viewer" aria-labelledby="passwordResetTitle">
@@ -2279,16 +2363,20 @@
       var WORDS = {
         en: ["Campus Connect could not start on this phone.",
           "Its web engine is too old for this app. Update Android System WebView in the Play Store, then reopen Campus Connect.",
-          "Reload"],
+          "Reload",
+          "Open Android System WebView in Play Store"],
         fr: ["Campus Connect n'a pas pu démarrer sur ce téléphone.",
           "Son moteur web est trop ancien pour cette application. Mettez à jour Android System WebView dans le Play Store, puis rouvrez Campus Connect.",
-          "Recharger"],
+          "Recharger",
+          "Ouvrir Android System WebView dans Play Store"],
         sw: ["Campus Connect haikuweza kuanza kwenye simu hii.",
           "Injini yake ya wavuti ni ya zamani sana kwa programu hii. Sasisha Android System WebView katika Play Store, kisha ufunue Campus Connect tena.",
-          "Pakia upya"],
+          "Pakia upya",
+          "Fungua Android System WebView kwenye Play Store"],
         es: ["Campus Connect no pudo iniciar en este teléfono.",
           "Su motor web es demasiado viejo para esta aplicación. Actualiza Android System WebView en Play Store y vuelve a abrir Campus Connect.",
-          "Recargar"]
+          "Recargar",
+          "Abrir Android System WebView en Play Store"]
       };
       var tongue = String(navigator.language || "en").slice(0, 2).toLowerCase();
       var lines = WORDS[tongue] || WORDS.en;
@@ -2317,6 +2405,11 @@
         box.appendChild(title);
         box.appendChild(detail);
         box.appendChild(again);
+        var update = document.createElement("a");
+        update.href = "market://details?id=com.google.android.webview";
+        update.textContent = lines[3];
+        update.style.cssText = "display:block;margin-top:12px;color:#fff;font-weight:700;text-decoration:underline";
+        box.appendChild(update);
         document.body.appendChild(box);
       }
 
@@ -2331,5 +2424,8 @@
     })();
   </script>
 
+  <script nomodule>!function(){var e=document,t=e.createElement("script");if(!("noModule"in t)&&"onbeforeload"in t){var n=!1;e.addEventListener("beforeload",(function(e){if(e.target===t)n=!0;else if(!e.target.hasAttribute("nomodule")||!n)return;e.preventDefault()}),!0),t.type="module",t.src=".",e.head.appendChild(t),t.remove()}}();</script>
+  <script nomodule crossorigin id="vite-legacy-polyfill" src="/assets/polyfills-legacy-CWJMBqWU.js"></script>
+  <script nomodule crossorigin id="vite-legacy-entry" data-src="/assets/main-legacy-D6NlyoJ1.js">System.import(document.getElementById('vite-legacy-entry').getAttribute('data-src'))</script>
 </body>
 </html>

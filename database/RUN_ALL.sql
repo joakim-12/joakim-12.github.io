@@ -118,6 +118,8 @@ CREATE TABLE IF NOT EXISTS public.profiles (
 
     is_discoverable BOOLEAN NOT NULL DEFAULT TRUE,
 
+    allow_follower_statuses BOOLEAN NOT NULL DEFAULT FALSE,
+
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -133,6 +135,8 @@ ALTER TABLE public.profiles
     ADD COLUMN IF NOT EXISTS share_phone BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE public.profiles
     ADD COLUMN IF NOT EXISTS is_discoverable BOOLEAN NOT NULL DEFAULT TRUE;
+ALTER TABLE public.profiles
+    ADD COLUMN IF NOT EXISTS allow_follower_statuses BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE public.profiles
     ADD COLUMN IF NOT EXISTS gender TEXT NOT NULL DEFAULT '';
 
@@ -345,6 +349,17 @@ CREATE TABLE IF NOT EXISTS public.posts (
 
     image_url TEXT,
 
+    audience TEXT NOT NULL DEFAULT 'school'
+        CONSTRAINT posts_audience_check
+        CHECK (audience IN ('school', 'people', 'world')),
+
+    media_items JSONB NOT NULL DEFAULT '[]'::JSONB
+        CONSTRAINT posts_media_items_array_check
+        CHECK (
+            jsonb_typeof(media_items) = 'array'
+            AND jsonb_array_length(media_items) <= 10
+        ),
+
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
 
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -354,6 +369,43 @@ CREATE TABLE IF NOT EXISTS public.posts (
         OR image_url IS NOT NULL
     )
 );
+
+ALTER TABLE public.posts
+    ADD COLUMN IF NOT EXISTS media_items JSONB NOT NULL DEFAULT '[]'::JSONB;
+
+ALTER TABLE public.posts
+    ADD COLUMN IF NOT EXISTS audience TEXT NOT NULL DEFAULT 'school';
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'posts_audience_check'
+          AND conrelid = 'public.posts'::regclass
+    ) THEN
+        ALTER TABLE public.posts
+            ADD CONSTRAINT posts_audience_check
+            CHECK (audience IN ('school', 'people', 'world'));
+    END IF;
+END;
+$$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conname = 'posts_media_items_array_check'
+          AND conrelid = 'public.posts'::regclass
+    ) THEN
+        ALTER TABLE public.posts
+            ADD CONSTRAINT posts_media_items_array_check
+            CHECK (
+                jsonb_typeof(media_items) = 'array'
+                AND jsonb_array_length(media_items) <= 10
+            );
+    END IF;
+END;
+$$;
 
 
 -- ============================================================
@@ -1112,6 +1164,13 @@ CREATE TABLE IF NOT EXISTS public.post_reactions (
     PRIMARY KEY (post_id, user_id)
 );
 
+CREATE TABLE IF NOT EXISTS public.post_reposts (
+    post_id UUID NOT NULL REFERENCES public.posts(id) ON DELETE CASCADE,
+    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (post_id, user_id)
+);
+
 INSERT INTO public.post_reactions (post_id, user_id, reaction)
 SELECT post_id, user_id, '❤️'
 FROM public.post_likes
@@ -1205,6 +1264,8 @@ ALTER TABLE public.messages
 
 CREATE INDEX IF NOT EXISTS post_reactions_post_idx
     ON public.post_reactions (post_id, reaction);
+CREATE INDEX IF NOT EXISTS post_reposts_post_idx
+    ON public.post_reposts (post_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS communities_created_idx
     ON public.communities (created_at DESC);
 CREATE INDEX IF NOT EXISTS community_members_user_idx
@@ -1218,12 +1279,14 @@ CREATE INDEX IF NOT EXISTS notifications_unread_idx
     WHERE is_read = FALSE;
 
 ALTER TABLE public.post_reactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.post_reposts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.communities ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.community_members ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.community_messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
 
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.post_reactions TO authenticated;
+GRANT SELECT, INSERT, DELETE ON public.post_reposts TO authenticated;
 GRANT SELECT, UPDATE, DELETE ON public.communities TO authenticated;
 GRANT SELECT, INSERT, DELETE ON public.community_members TO authenticated;
 GRANT SELECT, INSERT, DELETE ON public.community_messages TO authenticated;
@@ -1675,6 +1738,87 @@ AS $$
        );
 $$;
 
+CREATE OR REPLACE FUNCTION public.can_view_story_from_follower(p_author_id UUID, p_viewer_id UUID)
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT COALESCE(
+        p_author_id IS NOT NULL
+        AND p_viewer_id = (SELECT auth.uid())
+        AND p_author_id <> p_viewer_id
+        AND NOT public.is_blocked_between(p_author_id, p_viewer_id)
+        AND EXISTS (
+            SELECT 1
+            FROM public.profiles AS author
+            WHERE author.id = p_author_id
+              AND author.allow_follower_statuses
+        )
+        AND EXISTS (
+            SELECT 1
+            FROM public.follows AS relationship
+            WHERE relationship.follower_id = p_viewer_id
+              AND relationship.following_id = p_author_id
+        ),
+        FALSE
+    );
+$$;
+
+CREATE OR REPLACE FUNCTION public.can_view_story_from_chat(p_author_id UUID, p_viewer_id UUID)
+RETURNS BOOLEAN
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT COALESCE(
+        p_author_id IS NOT NULL
+        AND p_viewer_id = (SELECT auth.uid())
+        AND p_author_id <> p_viewer_id
+        AND NOT public.is_blocked_between(p_author_id, p_viewer_id)
+        AND EXISTS (
+            SELECT 1
+            FROM public.messages AS message
+            WHERE message.sender_id = p_author_id
+              AND message.receiver_id = p_viewer_id
+        )
+        AND EXISTS (
+            SELECT 1
+            FROM public.messages AS message
+            WHERE message.sender_id = p_viewer_id
+              AND message.receiver_id = p_author_id
+        ),
+        FALSE
+    );
+$$;
+
+CREATE OR REPLACE FUNCTION public.get_story_author_profiles(p_user_ids UUID[])
+RETURNS TABLE (id UUID, username TEXT, full_name TEXT, avatar_url TEXT)
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT profile.id, profile.username, profile.full_name, profile.avatar_url
+    FROM public.profiles AS profile
+    WHERE (SELECT auth.uid()) IS NOT NULL
+      AND profile.id = ANY(COALESCE(p_user_ids, ARRAY[]::UUID[]))
+      AND EXISTS (
+          SELECT 1
+          FROM public.stories AS story
+          WHERE story.user_id = profile.id
+            AND story.expires_at > NOW()
+            AND (
+                story.user_id = (SELECT auth.uid())
+                OR public.are_mutual_connections(story.user_id, (SELECT auth.uid()))
+                OR public.can_view_story_from_follower(story.user_id, (SELECT auth.uid()))
+                OR public.can_view_story_from_chat(story.user_id, (SELECT auth.uid()))
+            )
+      );
+$$;
+
 CREATE OR REPLACE FUNCTION public.get_blocked_profiles()
 RETURNS TABLE (id UUID, username TEXT, full_name TEXT)
 LANGUAGE sql
@@ -1713,10 +1857,16 @@ $$;
 
 REVOKE ALL ON FUNCTION public.is_blocked_between(UUID, UUID) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.are_mutual_connections(UUID, UUID) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.can_view_story_from_follower(UUID, UUID) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.can_view_story_from_chat(UUID, UUID) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.get_story_author_profiles(UUID[]) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.get_blocked_profiles() FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.update_last_seen() FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.is_blocked_between(UUID, UUID) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.are_mutual_connections(UUID, UUID) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.can_view_story_from_follower(UUID, UUID) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.can_view_story_from_chat(UUID, UUID) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.get_story_author_profiles(UUID[]) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.get_blocked_profiles() TO authenticated;
 GRANT EXECUTE ON FUNCTION public.update_last_seen() TO authenticated;
 
@@ -1779,6 +1929,8 @@ CREATE POLICY "Authenticated users view stories"
         AND (
             user_id = (SELECT auth.uid())
             OR public.are_mutual_connections(user_id, (SELECT auth.uid()))
+            OR public.can_view_story_from_follower(user_id, (SELECT auth.uid()))
+            OR public.can_view_story_from_chat(user_id, (SELECT auth.uid()))
         )
     );
 
@@ -1812,6 +1964,32 @@ CREATE POLICY "Authenticated users view post reactions"
             WHERE posts.id = post_reactions.post_id
         )
     );
+
+DROP POLICY IF EXISTS "Members view reposts of visible posts" ON public.post_reposts;
+CREATE POLICY "Members view reposts of visible posts"
+    ON public.post_reposts FOR SELECT TO authenticated
+    USING (
+        EXISTS (
+            SELECT 1 FROM public.posts
+            WHERE posts.id = post_reposts.post_id
+        )
+    );
+
+DROP POLICY IF EXISTS "Members repost visible posts as themselves" ON public.post_reposts;
+CREATE POLICY "Members repost visible posts as themselves"
+    ON public.post_reposts FOR INSERT TO authenticated
+    WITH CHECK (
+        user_id = (SELECT auth.uid())
+        AND EXISTS (
+            SELECT 1 FROM public.posts
+            WHERE posts.id = post_reposts.post_id
+        )
+    );
+
+DROP POLICY IF EXISTS "Members remove their own reposts" ON public.post_reposts;
+CREATE POLICY "Members remove their own reposts"
+    ON public.post_reposts FOR DELETE TO authenticated
+    USING (user_id = (SELECT auth.uid()));
 
 DROP POLICY IF EXISTS "Users follow as themselves" ON public.follows;
 CREATE POLICY "Users follow as themselves"
@@ -1921,6 +2099,16 @@ CREATE POLICY "Connections view private social media"
                 )
                 ELSE FALSE
             END
+            OR EXISTS (
+                SELECT 1
+                FROM public.stories AS story
+                WHERE story.media_url = 'private-media:' || storage.objects.name
+                  AND story.expires_at > NOW()
+                  AND (
+                      public.can_view_story_from_follower(story.user_id, (SELECT auth.uid()))
+                      OR public.can_view_story_from_chat(story.user_id, (SELECT auth.uid()))
+                  )
+            )
         )
     );
 
@@ -8003,6 +8191,42 @@ SELECT 'policy: a found item cannot be written from a page',
 FROM pg_policies
 WHERE schemaname = 'public' AND tablename = 'found_items'
 ORDER BY check_name;
+
+-- ==================== PROFILE AVATARS ================================
+-- Profile photos use a dedicated public bucket so other signed-in members can
+-- display them. Each account may write only inside its own UUID folder.
+BEGIN;
+
+INSERT INTO storage.buckets (
+    id, name, public, file_size_limit, allowed_mime_types
+)
+VALUES (
+    'avatars',
+    'avatars',
+    TRUE,
+    10485760,
+    ARRAY['image/*']
+)
+ON CONFLICT (id) DO UPDATE
+SET name = EXCLUDED.name,
+    public = TRUE,
+    file_size_limit = EXCLUDED.file_size_limit,
+    allowed_mime_types = EXCLUDED.allowed_mime_types;
+
+DROP POLICY IF EXISTS "Users upload own avatar" ON storage.objects;
+CREATE POLICY "Users upload own avatar"
+    ON storage.objects FOR INSERT TO authenticated
+    WITH CHECK (
+        bucket_id = 'avatars'
+        AND (storage.foldername(name))[1] = (SELECT auth.uid())::TEXT
+    );
+
+DROP POLICY IF EXISTS "Anyone can view avatars" ON storage.objects;
+CREATE POLICY "Anyone can view avatars"
+    ON storage.objects FOR SELECT TO public
+    USING (bucket_id = 'avatars');
+
+COMMIT;
 
 
 -- FINAL CHECK: every row should read ok

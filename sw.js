@@ -1,4 +1,4 @@
-const CACHE_NAME = "campus-connect-1.36";
+const CACHE_NAME = "campus-connect-1.78-release";
 const MEDIA_CACHE_NAME = "campus-connect-media-v1";
 /* The app is a library now, not a viewer: statuses, stories and chat media
    stay readable on a bus with no network. The pile is bounded by count and
@@ -16,7 +16,6 @@ const APP_SHELL = [
     "/",
     "/messages.html",
     "/classes.html",
-    "/universities.html",
     "/companies.html",
     "/services.html",
     "/bulletin/news.json",
@@ -26,7 +25,7 @@ const APP_SHELL = [
     "/icons/icon-192-maskable.png",
     "/icons/icon-512-maskable.png"
 ];
-const APP_PAGES = new Set(["/", "/messages.html", "/classes.html", "/universities.html", "/companies.html", "/services.html"]);
+const APP_PAGES = new Set(["/", "/messages.html", "/classes.html", "/companies.html", "/services.html"]);
 
 function isSupabaseMedia(url) {
     return /^https?:$/.test(url.protocol) &&

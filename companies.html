@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <meta name="theme-color" content="#075b57">
+    <meta name="theme-color" content="#493fb5">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="campus connect">
     <meta name="description" content="Search companies around the world and put your own profile under the one you work for.">
@@ -15,24 +15,24 @@
     <style>
         :root {
             color-scheme: light;
-            --page: #f0f2f5;
+            --page: #f2f0ff;
             --panel: #fff;
-            --text: #111b21;
+            --text: #1b1a35;
             --muted: #667781;
-            --border: #e9edef;
-            --primary: #00a884;
-            --input: #f0f2f5;
+            --border: #dcd8f4;
+            --primary: #6254d9;
+            --input: #f2f0ff;
         }
 
         body.dark-mode {
             color-scheme: dark;
-            --page: #0b141a;
-            --panel: #111b21;
-            --text: #e9edef;
+            --page: #111126;
+            --panel: #1b1a35;
+            --text: #dcd8f4;
             --muted: #8696a0;
-            --border: #2f3b40;
-            --primary: #00a884;
-            --input: #2a3942;
+            --border: #343252;
+            --primary: #6254d9;
+            --input: #24233e;
         }
 
         * { box-sizing: border-box; }
@@ -102,7 +102,7 @@
             border: 0;
             border-radius: 999px;
             background: var(--primary);
-            color: #04150f;
+            color: #ffffff;
             font: inherit;
             font-weight: 700;
             cursor: pointer;
@@ -122,7 +122,7 @@
             font-size: 13.5px;
             cursor: pointer;
         }
-        .mine button.primary { border: 0; background: var(--primary); color: #04150f; font-weight: 700; }
+        .mine button.primary { border: 0; background: var(--primary); color: #ffffff; font-weight: 700; }
 
         .section-title { margin: 18px 0 8px; font-size: 13px; font-weight: 700; letter-spacing: .06em; color: var(--muted); text-transform: uppercase; }
 
@@ -136,8 +136,8 @@
         .uni-link .label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .uni-link .host { color: var(--muted); font-size: 12px; }
         .kind-chip { display: inline-flex; align-items: center; gap: 5px; padding: 2px 9px; border-radius: 999px; font-size: 11.5px; font-weight: 700; letter-spacing: .02em; white-space: nowrap; }
-        .kind-site { background: color-mix(in srgb, var(--primary) 16%, var(--panel)); color: #046c56; }
-        .kind-people { background: color-mix(in srgb, #2582d8 16%, var(--panel)); color: #1668b3; }
+        .kind-site { background: color-mix(in srgb, var(--primary) 16%, var(--panel)); color: #5345c6; }
+        .kind-people { background: color-mix(in srgb, #6254d9 16%, var(--panel)); color: #5345c6; }
         .uni-card button {
             margin-top: 10px;
             padding: 8px 14px;
@@ -149,22 +149,24 @@
             font-size: 13.5px;
             cursor: pointer;
         }
-        .uni-card button.claimed { border-color: var(--primary); color: #046c56; font-weight: 700; }
+        .uni-card button.claimed { border-color: var(--primary); color: #5345c6; font-weight: 700; }
         .uni-note { margin: 10px 0 0; color: var(--muted); font-size: 12.5px; line-height: 1.5; }
         .state { padding: 18px 4px; color: var(--muted); font-size: 14px; text-align: center; }
         .status { margin: 10px 0 0; font-size: 13px; }
         .status.error { color: #d12c2c; }
-        .status.success { color: #046c56; }
+        .status.success { color: #5345c6; }
         .footnote { margin: 18px 0 8px; color: var(--muted); font-size: 12.5px; line-height: 1.6; }
         [hidden] { display: none !important; }
     </style>
-  <script type="module" crossorigin src="/assets/companies-CQ7_tBkk.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/pwa-We62OCdk.js">
-  <link rel="modulepreload" crossorigin href="/assets/offline-banner-kKPYqale.js">
-  <link rel="modulepreload" crossorigin href="/assets/profile-identity-Ca2trUFN.js">
-  <link rel="modulepreload" crossorigin href="/assets/offline-store-DtZovh2O.js">
-  <link rel="modulepreload" crossorigin href="/assets/company-directory-CcSTY6JP.js">
-  <link rel="stylesheet" crossorigin href="/assets/pwa-BFBmpa7B.css">
+  <script type="module" crossorigin src="/assets/companies-s-hPMiUx.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/supabase-BZASSCr-.js">
+  <link rel="modulepreload" crossorigin href="/assets/offline-banner-FNj5sJXW.js">
+  <link rel="modulepreload" crossorigin href="/assets/profile-identity-NgoVhTRF.js">
+  <link rel="modulepreload" crossorigin href="/assets/offline-store-DwnENRt3.js">
+  <link rel="modulepreload" crossorigin href="/assets/company-directory-Bb5cvSif.js">
+  <link rel="stylesheet" crossorigin href="/assets/offline-banner-BFBmpa7B.css">
+  <script type="module">import.meta.url;import("_").catch(()=>1);(async function*(){})().next();if(location.protocol!="file:"){window.__vite_is_modern_browser=true}</script>
+  <script type="module">!function(){if(window.__vite_is_modern_browser)return;console.warn("vite: loading legacy chunks, syntax error above and the same error below should be ignored");var e=document.getElementById("vite-legacy-polyfill"),n=document.createElement("script");n.src=e.src,n.onload=function(){System.import(document.getElementById('vite-legacy-entry').getAttribute('data-src'))},document.body.appendChild(n)}();</script>
 </head>
 
 <body>
@@ -237,6 +239,9 @@
         </p>
     </main>
 
+  <script nomodule>!function(){var e=document,t=e.createElement("script");if(!("noModule"in t)&&"onbeforeload"in t){var n=!1;e.addEventListener("beforeload",(function(e){if(e.target===t)n=!0;else if(!e.target.hasAttribute("nomodule")||!n)return;e.preventDefault()}),!0),t.type="module",t.src=".",e.head.appendChild(t),t.remove()}}();</script>
+  <script nomodule crossorigin id="vite-legacy-polyfill" src="/assets/polyfills-legacy-CWJMBqWU.js"></script>
+  <script nomodule crossorigin id="vite-legacy-entry" data-src="/assets/companies-legacy-CJrMJnbB.js">System.import(document.getElementById('vite-legacy-entry').getAttribute('data-src'))</script>
 </body>
 
 </html>

@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#5751d8">
+  <meta name="description" content="Public posts shared from Campus Connect.">
+  <title>World posts | Campus Connect</title>
+  <style>
+    :root { color-scheme: light; font-family: Inter, "Segoe UI", Arial, sans-serif; background: #f2f0ff; color: #201f3c; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; }
+    header { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px max(18px, calc((100% - 760px) / 2)); background: #fff; border-bottom: 1px solid #dcd8f4; }
+    h1 { margin: 0; font-size: 20px; }
+    a { color: #5345c6; font-weight: 650; text-decoration: none; }
+    main { width: min(620px, calc(100% - 24px)); margin: 24px auto; }
+    .intro, article, .notice { background: #fff; border: 1px solid #dcd8f4; border-radius: 16px; box-shadow: 0 5px 20px #37318c0b; }
+    .intro { padding: 18px; margin-bottom: 16px; }
+    .intro h2 { margin: 0 0 6px; }
+    .intro p, .notice { color: #65647a; line-height: 1.5; }
+    .notice { padding: 16px; }
+    #feed { display: grid; gap: 14px; }
+    article { overflow: hidden; }
+    .author { display: flex; align-items: center; gap: 10px; padding: 14px; }
+    .avatar { display: grid; place-items: center; width: 40px; height: 40px; flex: 0 0 40px; border-radius: 50%; background: #e5e3ff; color: #5345c6; font-weight: 750; }
+    .avatar img { width: 100%; height: 100%; border-radius: inherit; object-fit: cover; }
+    .author strong, .author small { display: block; }
+    .author small { color: #77768b; margin-top: 3px; }
+    .caption { padding: 0 14px 16px; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.5; }
+    article img, article video { display: block; width: 100%; max-height: 75vh; object-fit: contain; background: #171622; }
+    @media (prefers-color-scheme: dark) {
+      :root { color-scheme: dark; background: #111126; color: #eeedff; }
+      header, .intro, article, .notice { background: #1b1a35; border-color: #343252; }
+      .intro p, .notice, .author small { color: #aaa8c5; }
+      .avatar { background: #373366; color: #c9c6ff; }
+      a { color: #aaa5ff; }
+    }
+  </style>
+  <script type="module" crossorigin src="/assets/world-BMUAXI8g.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/supabase-BZASSCr-.js">
+  <script type="module">import.meta.url;import("_").catch(()=>1);(async function*(){})().next();if(location.protocol!="file:"){window.__vite_is_modern_browser=true}</script>
+  <script type="module">!function(){if(window.__vite_is_modern_browser)return;console.warn("vite: loading legacy chunks, syntax error above and the same error below should be ignored");var e=document.getElementById("vite-legacy-polyfill"),n=document.createElement("script");n.src=e.src,n.onload=function(){System.import(document.getElementById('vite-legacy-entry').getAttribute('data-src'))},document.body.appendChild(n)}();</script>
+</head>
+<body>
+  <header><h1>Campus Connect · World posts</h1><a href="/">Open the app</a></header>
+  <main>
+    <section class="intro"><h2>Shared with the world</h2><p>These posts were marked public by their authors. Anyone can read and share them.</p></section>
+    <p id="status" class="notice" role="status" aria-live="polite">Loading public posts…</p>
+    <section id="feed" aria-label="Public posts"></section>
+  </main>
+  <script nomodule>!function(){var e=document,t=e.createElement("script");if(!("noModule"in t)&&"onbeforeload"in t){var n=!1;e.addEventListener("beforeload",(function(e){if(e.target===t)n=!0;else if(!e.target.hasAttribute("nomodule")||!n)return;e.preventDefault()}),!0),t.type="module",t.src=".",e.head.appendChild(t),t.remove()}}();</script>
+  <script nomodule crossorigin id="vite-legacy-polyfill" src="/assets/polyfills-legacy-CWJMBqWU.js"></script>
+  <script nomodule crossorigin id="vite-legacy-entry" data-src="/assets/world-legacy-CrUvO6sv.js">System.import(document.getElementById('vite-legacy-entry').getAttribute('data-src'))</script>
+</body>
+</html>
