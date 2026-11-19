@@ -1,8953 +1,1834 @@
--- THIS IS THE FILE TO USE (built 2026-10-17): it is schema.sql + every
--- migration, plus message reactions / stars / replies, lecturer credentials,
--- study modes, one number per account, the bulletin board, the company directory, the broadcast
--- policies behind the typing indicator, private group chats, the device list
--- behind push alerts, the campus identity rules (one school per member, one
--- person per staff account), the per-chat archive / mute / lock / label flags,
--- the phone number that lets a classmate dial you, the hostel, catering and
--- chaplaincy departments of a school, the class register that writes itself,
--- the placement a hostel or a print shop bought by hand and the front of the feed
--- it is sold into,
--- the document somebody picked up and the private word it sends to its owner,
--- and a final check.
--- It replaces RUN_ONCE.sql, RUN_THIS_IN_SUPABASE.sql, RUN_MESSAGE_MARKS.sql,
--- RUN_FRIEND_NAMES.sql, RUN_CLASSES_MIN.sql and REPAIR_CHATS.sql.
--- ===================================================================
--- CAMPUS CONNECT ‚Äî ONE-SHOT DATABASE UPDATE
--- Paste this ENTIRE file into Supabase SQL Editor and click Run.
--- Safe to run multiple times (everything is idempotent).
--- Built 2026-10-14 from schema.sql + all migrations, in order.
--- ===================================================================
-
--- ==================== PART 1/24: schema.sql ===========================
--- ============================================================
--- CAMPUS CONNECT
--- Social networking database for university students
--- Platform: Supabase / PostgreSQL
--- ============================================================
-
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
-
--- This public bucket serves chat/profile attachments and older public post URLs.
--- Apply database/migrations/20261011_social_access_controls.sql to store new
--- feed/status media in a private bucket restricted to mutual connections.
-INSERT INTO storage.buckets (
-    id,
-    name,
-    public,
-    file_size_limit,
-    allowed_mime_types
-)
-VALUES (
-    'campus-media',
-    'campus-media',
-    TRUE,
-    524288000,
-    ARRAY[
-        'image/*',
-        'video/*',
-        'audio/*',
-        'application/pdf',
-        'text/plain',
-        'text/csv',
-        'application/rtf',
-        'application/msword',
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'application/vnd.ms-excel',
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'application/vnd.ms-powerpoint',
-        'application/vnd.openxmlformats-officedocument.presentationml.presentation'
-    ]
-)
-ON CONFLICT (id) DO UPDATE
-SET
-    public = EXCLUDED.public,
-    file_size_limit = EXCLUDED.file_size_limit,
-    allowed_mime_types = EXCLUDED.allowed_mime_types;
-
-DROP POLICY IF EXISTS "Authenticated users upload own campus media"
-    ON storage.objects;
-
-CREATE POLICY "Authenticated users upload own campus media"
-    ON storage.objects
-    FOR INSERT TO authenticated
-    WITH CHECK (
-        bucket_id = 'campus-media'
-        AND (storage.foldername(name))[1] = auth.uid()::TEXT
-    );
-
--- ============================================================
--- 1. STUDENT PROFILES
--- Each profile belongs to an authenticated Supabase user.
--- ============================================================
-
-CREATE TABLE IF NOT EXISTS public.profiles (
-    id UUID PRIMARY KEY
-        REFERENCES auth.users(id) ON DELETE CASCADE,
-
-    username TEXT NOT NULL UNIQUE
-        CHECK (
-            username = LOWER(username)
-            AND username ~ '^[a-z0-9_]{3,30}$'
-        ),
-
-    full_name TEXT NOT NULL DEFAULT ''
-        CHECK (char_length(trim(full_name)) <= 100),
-
-    gender TEXT NOT NULL DEFAULT ''
-        CHECK (gender IN ('', 'male', 'female', 'other')),
-
-    bio TEXT NOT NULL DEFAULT ''
-        CHECK (char_length(bio) <= 500),
-
-    avatar_url TEXT,
-
-    course TEXT NOT NULL DEFAULT ''
-        CHECK (char_length(course) <= 120),
-
-    contact_email TEXT NOT NULL DEFAULT ''
-        CHECK (char_length(contact_email) <= 254),
-
-    contact_phone TEXT NOT NULL DEFAULT ''
-        CHECK (char_length(contact_phone) <= 32),
-
-    share_email BOOLEAN NOT NULL DEFAULT FALSE,
-
-    share_phone BOOLEAN NOT NULL DEFAULT FALSE,
-
-    is_discoverable BOOLEAN NOT NULL DEFAULT TRUE,
-
-    allow_follower_statuses BOOLEAN NOT NULL DEFAULT FALSE,
-
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-ALTER TABLE public.profiles
-    ADD COLUMN IF NOT EXISTS contact_email TEXT NOT NULL DEFAULT '';
-ALTER TABLE public.profiles
-    ADD COLUMN IF NOT EXISTS contact_phone TEXT NOT NULL DEFAULT '';
-ALTER TABLE public.profiles
-    ADD COLUMN IF NOT EXISTS share_email BOOLEAN NOT NULL DEFAULT FALSE;
-ALTER TABLE public.profiles
-    ADD COLUMN IF NOT EXISTS share_phone BOOLEAN NOT NULL DEFAULT FALSE;
-ALTER TABLE public.profiles
-    ADD COLUMN IF NOT EXISTS is_discoverable BOOLEAN NOT NULL DEFAULT TRUE;
-ALTER TABLE public.profiles
-    ADD COLUMN IF NOT EXISTS allow_follower_statuses BOOLEAN NOT NULL DEFAULT FALSE;
-ALTER TABLE public.profiles
-    ADD COLUMN IF NOT EXISTS gender TEXT NOT NULL DEFAULT '';
-
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint
-        WHERE conrelid = 'public.profiles'::REGCLASS
-          AND conname = 'profiles_gender_check'
-    ) THEN
-        ALTER TABLE public.profiles
-            ADD CONSTRAINT profiles_gender_check
-            CHECK (gender IN ('', 'male', 'female', 'other'));
-    END IF;
-END;
-$$;
-
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint
-        WHERE conrelid = 'public.profiles'::REGCLASS
-          AND conname = 'profiles_contact_email_length_check'
-    ) THEN
-        ALTER TABLE public.profiles
-            ADD CONSTRAINT profiles_contact_email_length_check
-            CHECK (char_length(contact_email) <= 254);
-    END IF;
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint
-        WHERE conrelid = 'public.profiles'::REGCLASS
-          AND conname = 'profiles_contact_phone_length_check'
-    ) THEN
-        ALTER TABLE public.profiles
-            ADD CONSTRAINT profiles_contact_phone_length_check
-            CHECK (char_length(contact_phone) <= 32);
-    END IF;
-END;
-$$;
-
-CREATE OR REPLACE FUNCTION public.enforce_profile_contact_sharing()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-SET search_path = ''
-AS $$
-BEGIN
-    IF NOT NEW.share_email THEN
-        NEW.contact_email := '';
-    END IF;
-    IF NOT NEW.share_phone THEN
-        NEW.contact_phone := '';
-    END IF;
-    RETURN NEW;
-END;
-$$;
-
-REVOKE ALL ON FUNCTION public.enforce_profile_contact_sharing() FROM PUBLIC, anon, authenticated;
-
-DROP TRIGGER IF EXISTS profiles_enforce_contact_sharing ON public.profiles;
-CREATE TRIGGER profiles_enforce_contact_sharing
-    BEFORE INSERT OR UPDATE
-    ON public.profiles
-    FOR EACH ROW
-    EXECUTE FUNCTION public.enforce_profile_contact_sharing();
-
-CREATE OR REPLACE FUNCTION public.handle_new_auth_user()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-DECLARE
-    username_base TEXT;
-    candidate_username TEXT;
-    attempt INTEGER;
-    metadata JSONB;
-BEGIN
-    metadata := COALESCE(NEW.raw_user_meta_data, '{}'::JSONB);
-    username_base := LOWER(
-        REGEXP_REPLACE(
-            COALESCE(
-                metadata->>'username',
-                SPLIT_PART(COALESCE(NEW.email, NEW.phone, 'student'), '@', 1)
-            ),
-            '[^a-zA-Z0-9_]',
-            '',
-            'g'
-        )
-    );
-    username_base := LEFT(username_base, 20);
-    IF char_length(username_base) < 3 THEN
-        username_base := 'student';
-    END IF;
-
-    FOR attempt IN 0..5 LOOP
-        candidate_username := CASE
-            WHEN attempt = 0 THEN username_base
-            ELSE LEFT(username_base, 19) || '_' || LEFT(NEW.id::TEXT, 8) ||
-                 CASE WHEN attempt > 1 THEN '_' || (attempt - 1)::TEXT ELSE '' END
-        END;
-
-        BEGIN
-            INSERT INTO public.profiles (
-                id,
-                username,
-                full_name,
-                course
-            )
-            VALUES (
-                NEW.id,
-                candidate_username,
-                LEFT(COALESCE(metadata->>'full_name', 'Member'), 100),
-                LEFT(COALESCE(metadata->>'course', ''), 120)
-            )
-            ON CONFLICT (id) DO NOTHING;
-            RETURN NEW;
-        EXCEPTION WHEN unique_violation THEN
-            IF attempt = 5 THEN
-                RAISE;
-            END IF;
-        END;
-    END LOOP;
-
-    RETURN NEW;
-END;
-$$;
-
-REVOKE ALL ON FUNCTION public.handle_new_auth_user() FROM PUBLIC, anon, authenticated;
-
-DROP TRIGGER IF EXISTS on_auth_user_created_create_profile ON auth.users;
-CREATE TRIGGER on_auth_user_created_create_profile
-    AFTER INSERT ON auth.users
-    FOR EACH ROW
-    EXECUTE FUNCTION public.handle_new_auth_user();
-
-DO $$
-DECLARE
-    registered_user RECORD;
-    username_base TEXT;
-    candidate_username TEXT;
-    attempt INTEGER;
-BEGIN
-    FOR registered_user IN
-        SELECT auth_user.id, auth_user.email, auth_user.phone, auth_user.raw_user_meta_data
-        FROM auth.users AS auth_user
-        WHERE NOT EXISTS (
-            SELECT 1
-            FROM public.profiles AS profile
-            WHERE profile.id = auth_user.id
-        )
-        ORDER BY auth_user.created_at, auth_user.id
-    LOOP
-        username_base := LOWER(
-            REGEXP_REPLACE(
-                COALESCE(
-                    registered_user.raw_user_meta_data->>'username',
-                    SPLIT_PART(COALESCE(registered_user.email, registered_user.phone, 'student'), '@', 1)
-                ),
-                '[^a-zA-Z0-9_]',
-                '',
-                'g'
-            )
-        );
-        username_base := LEFT(username_base, 20);
-        IF char_length(username_base) < 3 THEN
-            username_base := 'student';
-        END IF;
-
-        FOR attempt IN 0..5 LOOP
-            candidate_username := CASE
-                WHEN attempt = 0 THEN username_base
-                ELSE LEFT(username_base, 19) || '_' || LEFT(registered_user.id::TEXT, 8) ||
-                     CASE WHEN attempt > 1 THEN '_' || (attempt - 1)::TEXT ELSE '' END
-            END;
-
-            BEGIN
-                INSERT INTO public.profiles (id, username, full_name, course)
-                VALUES (
-                    registered_user.id,
-                    candidate_username,
-                    LEFT(COALESCE(registered_user.raw_user_meta_data->>'full_name', 'Member'), 100),
-                    LEFT(COALESCE(registered_user.raw_user_meta_data->>'course', ''), 120)
-                )
-                ON CONFLICT (id) DO NOTHING;
-                EXIT;
-            EXCEPTION WHEN unique_violation THEN
-                IF attempt = 5 THEN
-                    RAISE;
-                END IF;
-            END;
-        END LOOP;
-    END LOOP;
-END;
-$$;
-
-
--- ============================================================
--- 2. POSTS
--- Students can publish text posts and optional image URLs.
--- ============================================================
-
-CREATE TABLE IF NOT EXISTS public.posts (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-
-    user_id UUID NOT NULL
-        REFERENCES auth.users(id) ON DELETE CASCADE,
-
-    caption TEXT NOT NULL DEFAULT ''
-        CHECK (char_length(caption) <= 5000),
-
-    image_url TEXT,
-
-    audience TEXT NOT NULL DEFAULT 'school'
-        CONSTRAINT posts_audience_check
-        CHECK (audience IN ('school', 'people', 'world')),
-
-    media_items JSONB NOT NULL DEFAULT '[]'::JSONB
-        CONSTRAINT posts_media_items_array_check
-        CHECK (
-            jsonb_typeof(media_items) = 'array'
-            AND jsonb_array_length(media_items) <= 10
-        ),
-
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-    CHECK (
-        char_length(trim(caption)) > 0
-        OR image_url IS NOT NULL
-    )
-);
-
-ALTER TABLE public.posts
-    ADD COLUMN IF NOT EXISTS media_items JSONB NOT NULL DEFAULT '[]'::JSONB;
-
-ALTER TABLE public.posts
-    ADD COLUMN IF NOT EXISTS audience TEXT NOT NULL DEFAULT 'school';
-
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint
-        WHERE conname = 'posts_audience_check'
-          AND conrelid = 'public.posts'::regclass
-    ) THEN
-        ALTER TABLE public.posts
-            ADD CONSTRAINT posts_audience_check
-            CHECK (audience IN ('school', 'people', 'world'));
-    END IF;
-END;
-$$;
-
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint
-        WHERE conname = 'posts_media_items_array_check'
-          AND conrelid = 'public.posts'::regclass
-    ) THEN
-        ALTER TABLE public.posts
-            ADD CONSTRAINT posts_media_items_array_check
-            CHECK (
-                jsonb_typeof(media_items) = 'array'
-                AND jsonb_array_length(media_items) <= 10
-            );
-    END IF;
-END;
-$$;
-
-
--- ============================================================
--- 3. FOLLOWS
--- follower_id follows following_id.
--- ============================================================
-
-CREATE TABLE IF NOT EXISTS public.follows (
-    follower_id UUID NOT NULL
-        REFERENCES auth.users(id) ON DELETE CASCADE,
-
-    following_id UUID NOT NULL
-        REFERENCES auth.users(id) ON DELETE CASCADE,
-
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-    PRIMARY KEY (follower_id, following_id),
-
-    CHECK (follower_id <> following_id)
-);
-
-
--- ============================================================
--- 4. POST LIKES
--- A user can like each post only once.
--- ============================================================
-
-CREATE TABLE IF NOT EXISTS public.post_likes (
-    user_id UUID NOT NULL
-        REFERENCES auth.users(id) ON DELETE CASCADE,
-
-    post_id UUID NOT NULL
-        REFERENCES public.posts(id) ON DELETE CASCADE,
-
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-    PRIMARY KEY (user_id, post_id)
-);
-
-
--- ============================================================
--- 5. COMMENTS
--- ============================================================
-
-CREATE TABLE IF NOT EXISTS public.comments (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-
-    post_id UUID NOT NULL
-        REFERENCES public.posts(id) ON DELETE CASCADE,
-
-    user_id UUID NOT NULL
-        REFERENCES auth.users(id) ON DELETE CASCADE,
-
-    content TEXT NOT NULL
-        CHECK (
-            char_length(trim(content)) BETWEEN 1 AND 2000
-        ),
-
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-
--- ============================================================
--- 6. STORIES
--- Stories expire after 24 hours by default.
--- ============================================================
-
-CREATE TABLE IF NOT EXISTS public.stories (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-
-    user_id UUID NOT NULL
-        REFERENCES auth.users(id) ON DELETE CASCADE,
-
-    media_url TEXT,
-
-    content TEXT NOT NULL DEFAULT ''
-        CHECK (char_length(content) <= 500),
-
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-    expires_at TIMESTAMPTZ NOT NULL
-        DEFAULT (NOW() + INTERVAL '24 hours'),
-
-    CONSTRAINT stories_expiration_window_check
-        CHECK (
-            expires_at > created_at
-            AND expires_at <= created_at + INTERVAL '24 hours'
-        ),
-    CONSTRAINT stories_content_or_media_check
-        CHECK (char_length(trim(content)) > 0 OR media_url IS NOT NULL)
-);
-
-ALTER TABLE public.stories
-    ALTER COLUMN media_url DROP NOT NULL;
-
-ALTER TABLE public.stories
-    ADD COLUMN IF NOT EXISTS content TEXT NOT NULL DEFAULT '';
-
-UPDATE public.stories
-SET expires_at = created_at + INTERVAL '24 hours'
-WHERE expires_at > created_at + INTERVAL '24 hours';
-
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1
-        FROM pg_constraint
-        WHERE conname = 'stories_content_or_media_check'
-          AND conrelid = 'public.stories'::regclass
-    ) THEN
-        ALTER TABLE public.stories
-            ADD CONSTRAINT stories_content_or_media_check
-            CHECK (char_length(trim(content)) > 0 OR media_url IS NOT NULL);
-    END IF;
-END;
-$$;
-
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1
-        FROM pg_constraint
-        WHERE conname = 'stories_expiration_window_check'
-          AND conrelid = 'public.stories'::regclass
-    ) THEN
-        ALTER TABLE public.stories
-            ADD CONSTRAINT stories_expiration_window_check
-            CHECK (
-                expires_at > created_at
-                AND expires_at <= created_at + INTERVAL '24 hours'
-            );
-    END IF;
-END;
-$$;
-
-
--- ============================================================
--- 7. PRIVATE MESSAGES
--- Only the sender and receiver can read a conversation.
--- ============================================================
-
-CREATE TABLE IF NOT EXISTS public.messages (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-
-    sender_id UUID NOT NULL
-        REFERENCES auth.users(id) ON DELETE CASCADE,
-
-    receiver_id UUID NOT NULL
-        REFERENCES auth.users(id) ON DELETE CASCADE,
-
-    content TEXT NOT NULL
-        CHECK (
-            char_length(trim(content)) BETWEEN 1 AND 5000
-        ),
-
-    media_url TEXT,
-
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-    is_read BOOLEAN NOT NULL DEFAULT FALSE,
-
-    read_at TIMESTAMPTZ,
-
-    CHECK (sender_id <> receiver_id),
-
-    CHECK (
-        (is_read = FALSE AND read_at IS NULL)
-        OR
-        (is_read = TRUE AND read_at IS NOT NULL)
-    )
-);
-
--- ============================================================
--- 8. WEBRTC CALL SIGNALING
--- The table carries short-lived offer/answer/ICE signaling only.
--- Media stays peer-to-peer and is not stored in Supabase.
--- ============================================================
-
-CREATE TABLE IF NOT EXISTS public.call_signals (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-
-    call_id UUID NOT NULL,
-
-    sender_id UUID NOT NULL
-        REFERENCES auth.users(id) ON DELETE CASCADE,
-
-    recipient_id UUID NOT NULL
-        REFERENCES auth.users(id) ON DELETE CASCADE,
-
-    kind TEXT NOT NULL
-        CHECK (kind IN ('offer', 'answer', 'ice', 'end', 'reject', 'busy')),
-
-    payload JSONB NOT NULL DEFAULT '{}'::JSONB
-        CHECK (
-            jsonb_typeof(payload) = 'object'
-            AND octet_length(payload::TEXT) <= 65536
-        ),
-
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-    CHECK (sender_id <> recipient_id)
-);
-
-GRANT SELECT, INSERT, DELETE ON public.call_signals TO authenticated;
-
-
--- ============================================================
--- 9. INDEXES
--- Improve performance when loading feeds, comments and chats.
--- ============================================================
-
-CREATE INDEX IF NOT EXISTS posts_user_created_idx
-    ON public.posts (user_id, created_at DESC);
-
-CREATE INDEX IF NOT EXISTS posts_created_idx
-    ON public.posts (created_at DESC);
-
-CREATE INDEX IF NOT EXISTS comments_post_created_idx
-    ON public.comments (post_id, created_at ASC);
-
-CREATE INDEX IF NOT EXISTS comments_user_idx
-    ON public.comments (user_id);
-
-CREATE INDEX IF NOT EXISTS follows_following_idx
-    ON public.follows (following_id, created_at DESC);
-
-CREATE INDEX IF NOT EXISTS post_likes_post_idx
-    ON public.post_likes (post_id);
-
-CREATE INDEX IF NOT EXISTS stories_user_created_idx
-    ON public.stories (user_id, created_at DESC);
-
-CREATE INDEX IF NOT EXISTS stories_expires_idx
-    ON public.stories (expires_at);
-
-CREATE INDEX IF NOT EXISTS messages_sender_created_idx
-    ON public.messages (sender_id, created_at DESC);
-
-CREATE INDEX IF NOT EXISTS messages_receiver_created_idx
-    ON public.messages (receiver_id, created_at DESC);
-
-CREATE INDEX IF NOT EXISTS messages_sender_conversation_cursor_idx
-    ON public.messages (sender_id, receiver_id, created_at DESC, id DESC);
-
-CREATE INDEX IF NOT EXISTS messages_receiver_conversation_cursor_idx
-    ON public.messages (receiver_id, sender_id, created_at DESC, id DESC);
-
-CREATE INDEX IF NOT EXISTS messages_unread_receiver_idx
-    ON public.messages (receiver_id, created_at DESC)
-    WHERE is_read = FALSE;
-
-CREATE INDEX IF NOT EXISTS profiles_username_search_idx
-    ON public.profiles USING GIN (username gin_trgm_ops);
-
-CREATE INDEX IF NOT EXISTS profiles_full_name_search_idx
-    ON public.profiles USING GIN (full_name gin_trgm_ops);
-
-CREATE INDEX IF NOT EXISTS profiles_course_search_idx
-    ON public.profiles USING GIN (course gin_trgm_ops);
-
-CREATE INDEX IF NOT EXISTS profiles_contact_email_search_idx
-    ON public.profiles USING GIN (contact_email gin_trgm_ops)
-    WHERE share_email = TRUE;
-
-CREATE INDEX IF NOT EXISTS profiles_contact_phone_search_idx
-    ON public.profiles USING GIN (contact_phone gin_trgm_ops)
-    WHERE share_phone = TRUE;
-
-CREATE INDEX IF NOT EXISTS call_signals_recipient_created_idx
-    ON public.call_signals (recipient_id, created_at DESC);
-
-CREATE INDEX IF NOT EXISTS call_signals_sender_created_idx
-    ON public.call_signals (sender_id, created_at DESC);
-
-
--- ============================================================
--- 10. AUTOMATIC UPDATED_AT TIMESTAMPS
--- ============================================================
-
-CREATE OR REPLACE FUNCTION public.set_updated_at()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-SET search_path = ''
-AS $$
-BEGIN
-    NEW.updated_at = NOW();
-    RETURN NEW;
-END;
-$$;
-
-DROP TRIGGER IF EXISTS profiles_set_updated_at
-    ON public.profiles;
-
-CREATE TRIGGER profiles_set_updated_at
-    BEFORE UPDATE ON public.profiles
-    FOR EACH ROW
-    EXECUTE FUNCTION public.set_updated_at();
-
-DROP TRIGGER IF EXISTS posts_set_updated_at
-    ON public.posts;
-
-CREATE TRIGGER posts_set_updated_at
-    BEFORE UPDATE ON public.posts
-    FOR EACH ROW
-    EXECUTE FUNCTION public.set_updated_at();
-
-DROP TRIGGER IF EXISTS comments_set_updated_at
-    ON public.comments;
-
-CREATE TRIGGER comments_set_updated_at
-    BEFORE UPDATE ON public.comments
-    FOR EACH ROW
-    EXECUTE FUNCTION public.set_updated_at();
-
-
--- ============================================================
--- 10. ENABLE ROW LEVEL SECURITY (RLS)
--- ============================================================
-
-ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.posts ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.follows ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.post_likes ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.comments ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.stories ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.messages ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.call_signals ENABLE ROW LEVEL SECURITY;
-
-
--- ============================================================
--- 11. PROFILE POLICIES
--- Profiles are visible to their owners, discoverable members, and private-chat peers.
--- Users can create and update only their own profiles.
--- ============================================================
-
-DROP POLICY IF EXISTS "Profiles are viewable by authenticated users"
-    ON public.profiles;
-
-CREATE POLICY "Profiles are viewable by authenticated users"
-    ON public.profiles
-    FOR SELECT TO authenticated
-    USING (
-        auth.uid() = id
-        OR is_discoverable
-        OR EXISTS (
-            SELECT 1
-            FROM public.messages AS message
-            WHERE (message.sender_id = auth.uid() AND message.receiver_id = profiles.id)
-               OR (message.receiver_id = auth.uid() AND message.sender_id = profiles.id)
-        )
-    );
-
-DROP POLICY IF EXISTS "Users create their own profile"
-    ON public.profiles;
-
-CREATE POLICY "Users create their own profile"
-    ON public.profiles
-    FOR INSERT TO authenticated
-    WITH CHECK (auth.uid() = id);
-
-DROP POLICY IF EXISTS "Users update their own profile"
-    ON public.profiles;
-
-CREATE POLICY "Users update their own profile"
-    ON public.profiles
-    FOR UPDATE TO authenticated
-    USING (auth.uid() = id)
-    WITH CHECK (auth.uid() = id);
-
-DROP POLICY IF EXISTS "Users delete their own profile"
-    ON public.profiles;
-
-CREATE POLICY "Users delete their own profile"
-    ON public.profiles
-    FOR DELETE TO authenticated
-    USING (auth.uid() = id);
-
-
--- ============================================================
--- 12. POST POLICIES
--- ============================================================
-
-DROP POLICY IF EXISTS "Authenticated users view posts"
-    ON public.posts;
-
-CREATE POLICY "Authenticated users view posts"
-    ON public.posts
-    FOR SELECT TO authenticated
-    USING (TRUE);
-
-DROP POLICY IF EXISTS "Users create their own posts"
-    ON public.posts;
-
-CREATE POLICY "Users create their own posts"
-    ON public.posts
-    FOR INSERT TO authenticated
-    WITH CHECK (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "Users update their own posts"
-    ON public.posts;
-
-CREATE POLICY "Users update their own posts"
-    ON public.posts
-    FOR UPDATE TO authenticated
-    USING (auth.uid() = user_id)
-    WITH CHECK (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "Users delete their own posts"
-    ON public.posts;
-
-CREATE POLICY "Users delete their own posts"
-    ON public.posts
-    FOR DELETE TO authenticated
-    USING (auth.uid() = user_id);
-
-
--- ============================================================
--- 13. FOLLOW POLICIES
--- ============================================================
-
-DROP POLICY IF EXISTS "Authenticated users view follows"
-    ON public.follows;
-
-CREATE POLICY "Authenticated users view follows"
-    ON public.follows
-    FOR SELECT TO authenticated
-    USING (TRUE);
-
-DROP POLICY IF EXISTS "Users follow as themselves"
-    ON public.follows;
-
-CREATE POLICY "Users follow as themselves"
-    ON public.follows
-    FOR INSERT TO authenticated
-    WITH CHECK (
-        auth.uid() = follower_id
-        AND follower_id <> following_id
-    );
-
-DROP POLICY IF EXISTS "Users unfollow as themselves"
-    ON public.follows;
-
-CREATE POLICY "Users unfollow as themselves"
-    ON public.follows
-    FOR DELETE TO authenticated
-    USING (auth.uid() = follower_id);
-
-
--- ============================================================
--- 14. LIKE POLICIES
--- ============================================================
-
-DROP POLICY IF EXISTS "Authenticated users view likes"
-    ON public.post_likes;
-
-CREATE POLICY "Authenticated users view likes"
-    ON public.post_likes
-    FOR SELECT TO authenticated
-    USING (TRUE);
-
-DROP POLICY IF EXISTS "Users like as themselves"
-    ON public.post_likes;
-
-CREATE POLICY "Users like as themselves"
-    ON public.post_likes
-    FOR INSERT TO authenticated
-    WITH CHECK (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "Users remove their own likes"
-    ON public.post_likes;
-
-CREATE POLICY "Users remove their own likes"
-    ON public.post_likes
-    FOR DELETE TO authenticated
-    USING (auth.uid() = user_id);
-
--- ---- STATUS LIKES (v1.24): like a status the way a post is liked ----
-
-CREATE TABLE IF NOT EXISTS public.story_likes (
-    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    story_id UUID NOT NULL REFERENCES public.stories(id) ON DELETE CASCADE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    PRIMARY KEY (user_id, story_id)
-);
-
-CREATE INDEX IF NOT EXISTS story_likes_story_idx ON public.story_likes (story_id);
-
-ALTER TABLE public.story_likes ENABLE ROW LEVEL SECURITY;
-GRANT SELECT, INSERT, DELETE ON public.story_likes TO authenticated;
-
-DROP POLICY IF EXISTS "Authenticated users view status likes" ON public.story_likes;
-CREATE POLICY "Authenticated users view status likes" ON public.story_likes
-    FOR SELECT TO authenticated USING (TRUE);
-
-DROP POLICY IF EXISTS "Users like a status as themselves" ON public.story_likes;
-CREATE POLICY "Users like a status as themselves" ON public.story_likes
-    FOR INSERT TO authenticated WITH CHECK (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "Users remove their own status likes" ON public.story_likes;
-CREATE POLICY "Users remove their own status likes" ON public.story_likes
-    FOR DELETE TO authenticated USING (auth.uid() = user_id);
-
-NOTIFY pgrst, 'reload schema';
-
-
--- ============================================================
--- 15. COMMENT POLICIES
--- ============================================================
-
-DROP POLICY IF EXISTS "Authenticated users view comments"
-    ON public.comments;
-
-CREATE POLICY "Authenticated users view comments"
-    ON public.comments
-    FOR SELECT TO authenticated
-    USING (TRUE);
-
-DROP POLICY IF EXISTS "Users create their own comments"
-    ON public.comments;
-
-CREATE POLICY "Users create their own comments"
-    ON public.comments
-    FOR INSERT TO authenticated
-    WITH CHECK (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "Users update their own comments"
-    ON public.comments;
-
-CREATE POLICY "Users update their own comments"
-    ON public.comments
-    FOR UPDATE TO authenticated
-    USING (auth.uid() = user_id)
-    WITH CHECK (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "Users delete their own comments"
-    ON public.comments;
-
-CREATE POLICY "Users delete their own comments"
-    ON public.comments
-    FOR DELETE TO authenticated
-    USING (auth.uid() = user_id);
-
-
--- ============================================================
--- 16. STORY POLICIES
--- ============================================================
-
-DROP POLICY IF EXISTS "Authenticated users view stories"
-    ON public.stories;
-
-CREATE POLICY "Authenticated users view stories"
-    ON public.stories
-    FOR SELECT TO authenticated
-    USING (expires_at > NOW());
-
-DROP POLICY IF EXISTS "Users create their own stories"
-    ON public.stories;
-
-CREATE POLICY "Users create their own stories"
-    ON public.stories
-    FOR INSERT TO authenticated
-    WITH CHECK (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "Users delete their own stories"
-    ON public.stories;
-
-CREATE POLICY "Users delete their own stories"
-    ON public.stories
-    FOR DELETE TO authenticated
-    USING (auth.uid() = user_id);
-
--- ============================================================
--- 17. CALL SIGNAL POLICIES
--- Only the two call participants can read or remove signaling rows.
--- Users can only create signals as themselves.
--- ============================================================
-
-DROP POLICY IF EXISTS "Call participants view call signals"
-    ON public.call_signals;
-
-CREATE POLICY "Call participants view call signals"
-    ON public.call_signals
-    FOR SELECT TO authenticated
-    USING (
-        auth.uid() = sender_id
-        OR auth.uid() = recipient_id
-    );
-
-DROP POLICY IF EXISTS "Users send call signals as themselves"
-    ON public.call_signals;
-
-CREATE POLICY "Users send call signals as themselves"
-    ON public.call_signals
-    FOR INSERT TO authenticated
-    WITH CHECK (
-        auth.uid() = sender_id
-        AND sender_id <> recipient_id
-    );
-
-DROP POLICY IF EXISTS "Call participants delete call signals"
-    ON public.call_signals;
-
-CREATE POLICY "Call participants delete call signals"
-    ON public.call_signals
-    FOR DELETE TO authenticated
-    USING (
-        auth.uid() = sender_id
-        OR auth.uid() = recipient_id
-    );
-
-
--- ============================================================
--- 18. PRIVATE MESSAGE POLICIES
--- Important: users must not access messages belonging to others.
--- ============================================================
-
-DROP POLICY IF EXISTS "Participants view their messages"
-    ON public.messages;
-
-CREATE POLICY "Participants view their messages"
-    ON public.messages
-    FOR SELECT TO authenticated
-    USING (
-        auth.uid() = sender_id
-        OR auth.uid() = receiver_id
-    );
-
-DROP POLICY IF EXISTS "Users send messages as themselves"
-    ON public.messages;
-
-CREATE POLICY "Users send messages as themselves"
-    ON public.messages
-    FOR INSERT TO authenticated
-    WITH CHECK (
-        auth.uid() = sender_id
-        AND sender_id <> receiver_id
-    );
-
-DROP POLICY IF EXISTS "Recipients mark messages as read"
-    ON public.messages;
-
-CREATE POLICY "Recipients mark messages as read"
-    ON public.messages
-    FOR UPDATE TO authenticated
-    USING (
-        auth.uid() = receiver_id
-    )
-    WITH CHECK (
-        auth.uid() = receiver_id
-    );
-
-DROP POLICY IF EXISTS "Senders delete their own messages"
-    ON public.messages;
-
-CREATE POLICY "Senders delete their own messages"
-    ON public.messages
-    FOR DELETE TO authenticated
-    USING (
-        auth.uid() = sender_id
-    );
-
-
--- ============================================================
--- 19. PROTECT MESSAGE IMMUTABLE FIELDS
--- Recipients may mark messages as read, but cannot rewrite
--- the sender, receiver, content, or creation timestamp.
--- ============================================================
-
-CREATE OR REPLACE FUNCTION public.protect_message_fields()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-SET search_path = ''
-AS $$
-BEGIN
-    IF NEW.id IS DISTINCT FROM OLD.id
-       OR NEW.sender_id IS DISTINCT FROM OLD.sender_id
-       OR NEW.receiver_id IS DISTINCT FROM OLD.receiver_id
-       OR NEW.content IS DISTINCT FROM OLD.content
-       OR NEW.media_url IS DISTINCT FROM OLD.media_url
-       OR NEW.created_at IS DISTINCT FROM OLD.created_at
-    THEN
-        RAISE EXCEPTION
-            'Message sender, receiver, content, and creation time cannot be changed.';
-    END IF;
-
-    IF NEW.is_read IS DISTINCT FROM OLD.is_read THEN
-        IF OLD.is_read = TRUE AND NEW.is_read = FALSE THEN
-            RAISE EXCEPTION 'A read message cannot be marked unread.';
-        END IF;
-
-        IF NEW.is_read = TRUE AND NEW.read_at IS NULL THEN
-            NEW.read_at = NOW();
-        END IF;
-    END IF;
-
-    IF NEW.is_read = FALSE THEN
-        NEW.read_at = NULL;
-    END IF;
-
-    RETURN NEW;
-END;
-$$;
-
-DROP TRIGGER IF EXISTS protect_message_fields_trigger
-    ON public.messages;
-
-CREATE TRIGGER protect_message_fields_trigger
-    BEFORE UPDATE ON public.messages
-    FOR EACH ROW
-    EXECUTE FUNCTION public.protect_message_fields();
-
--- Postgres Changes must be enabled for live call signaling.
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1
-        FROM pg_publication_tables
-        WHERE pubname = 'supabase_realtime'
-          AND schemaname = 'public'
-          AND tablename = 'call_signals'
-    ) THEN
-        ALTER PUBLICATION supabase_realtime
-            ADD TABLE public.call_signals;
-    END IF;
-END;
-$$;
-
--- Private and community chat inserts drive live message delivery.
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1
-        FROM pg_publication_tables
-        WHERE pubname = 'supabase_realtime'
-          AND schemaname = 'public'
-          AND tablename = 'messages'
-    ) THEN
-        ALTER PUBLICATION supabase_realtime ADD TABLE public.messages;
-    END IF;
-END;
-$$;
-
-
--- ============================================================
--- 20. REACTIONS, GROUPS, CHANNELS, CHAT MEDIA, NOTIFICATIONS
--- ============================================================
-
-CREATE TABLE IF NOT EXISTS public.post_reactions (
-    post_id UUID NOT NULL REFERENCES public.posts(id) ON DELETE CASCADE,
-    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    reaction TEXT NOT NULL
-        CHECK (reaction IN ('üëç', '‚ù§Ô∏è', 'üòÇ', 'üéâ', 'ü§î')),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    PRIMARY KEY (post_id, user_id)
-);
-
-CREATE TABLE IF NOT EXISTS public.post_reposts (
-    post_id UUID NOT NULL REFERENCES public.posts(id) ON DELETE CASCADE,
-    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    PRIMARY KEY (post_id, user_id)
-);
-
-INSERT INTO public.post_reactions (post_id, user_id, reaction)
-SELECT post_id, user_id, '‚ù§Ô∏è'
-FROM public.post_likes
-ON CONFLICT (post_id, user_id) DO NOTHING;
-
-CREATE TABLE IF NOT EXISTS public.communities (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    owner_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    name TEXT NOT NULL CHECK (char_length(trim(name)) BETWEEN 3 AND 80),
-    description TEXT NOT NULL DEFAULT '' CHECK (char_length(description) <= 500),
-    kind TEXT NOT NULL CHECK (kind IN ('group', 'channel')),
-    is_public BOOLEAN NOT NULL DEFAULT TRUE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS public.community_members (
-    community_id UUID NOT NULL REFERENCES public.communities(id) ON DELETE CASCADE,
-    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    role TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('owner', 'admin', 'member')),
-    joined_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    PRIMARY KEY (community_id, user_id)
-);
-
-DROP POLICY IF EXISTS "Community members view peer profiles"
-    ON public.profiles;
-CREATE POLICY "Community members view peer profiles"
-    ON public.profiles FOR SELECT TO authenticated
-    USING (
-        EXISTS (
-            SELECT 1
-            FROM public.community_members AS own_membership
-            JOIN public.community_members AS peer_membership
-                ON peer_membership.community_id = own_membership.community_id
-            WHERE own_membership.user_id = (SELECT auth.uid())
-              AND peer_membership.user_id = profiles.id
-        )
-    );
-
-CREATE TABLE IF NOT EXISTS public.community_messages (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    community_id UUID NOT NULL REFERENCES public.communities(id) ON DELETE CASCADE,
-    sender_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    content TEXT NOT NULL DEFAULT '' CHECK (char_length(content) <= 5000),
-    media_url TEXT,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CHECK (char_length(trim(content)) > 0 OR media_url IS NOT NULL)
-);
-
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1
-        FROM pg_publication_tables
-        WHERE pubname = 'supabase_realtime'
-          AND schemaname = 'public'
-          AND tablename = 'community_messages'
-    ) THEN
-        ALTER PUBLICATION supabase_realtime
-            ADD TABLE public.community_messages;
-    END IF;
-END;
-$$;
-
-CREATE TABLE IF NOT EXISTS public.notifications (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    recipient_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    actor_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    kind TEXT NOT NULL CHECK (kind IN ('reaction', 'comment', 'follow', 'message')),
-    post_id UUID REFERENCES public.posts(id) ON DELETE CASCADE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    is_read BOOLEAN NOT NULL DEFAULT FALSE,
-    CHECK (recipient_id <> actor_id)
-);
-
-ALTER TABLE public.messages
-    ADD COLUMN IF NOT EXISTS media_url TEXT;
-ALTER TABLE public.messages
-    ALTER COLUMN content SET DEFAULT '';
-ALTER TABLE public.messages
-    ALTER COLUMN content DROP NOT NULL;
-ALTER TABLE public.messages
-    DROP CONSTRAINT IF EXISTS messages_content_check;
-ALTER TABLE public.messages
-    DROP CONSTRAINT IF EXISTS messages_content_or_media_check;
-ALTER TABLE public.messages
-    ADD CONSTRAINT messages_content_or_media_check
-        CHECK (
-            char_length(COALESCE(content, '')) <= 5000
-            AND (char_length(trim(COALESCE(content, ''))) > 0 OR media_url IS NOT NULL)
-        );
-
-CREATE INDEX IF NOT EXISTS post_reactions_post_idx
-    ON public.post_reactions (post_id, reaction);
-CREATE INDEX IF NOT EXISTS post_reposts_post_idx
-    ON public.post_reposts (post_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS communities_created_idx
-    ON public.communities (created_at DESC);
-CREATE INDEX IF NOT EXISTS community_members_user_idx
-    ON public.community_members (user_id, joined_at DESC);
-CREATE INDEX IF NOT EXISTS community_messages_created_idx
-    ON public.community_messages (community_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS notifications_recipient_created_idx
-    ON public.notifications (recipient_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS notifications_unread_idx
-    ON public.notifications (recipient_id, created_at DESC)
-    WHERE is_read = FALSE;
-
-ALTER TABLE public.post_reactions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.post_reposts ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.communities ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.community_members ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.community_messages ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.notifications ENABLE ROW LEVEL SECURITY;
-
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.post_reactions TO authenticated;
-GRANT SELECT, INSERT, DELETE ON public.post_reposts TO authenticated;
-GRANT SELECT, UPDATE, DELETE ON public.communities TO authenticated;
-GRANT SELECT, INSERT, DELETE ON public.community_members TO authenticated;
-GRANT SELECT, INSERT, DELETE ON public.community_messages TO authenticated;
-GRANT SELECT ON public.notifications TO authenticated;
-
-CREATE OR REPLACE FUNCTION public.is_community_member(p_community_id UUID)
-RETURNS BOOLEAN
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-    SELECT EXISTS (
-        SELECT 1
-        FROM public.community_members AS member
-        WHERE member.community_id = p_community_id
-          AND member.user_id = (SELECT auth.uid())
-    );
-$$;
-
-CREATE OR REPLACE FUNCTION public.can_manage_community(p_community_id UUID)
-RETURNS BOOLEAN
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-    SELECT EXISTS (
-        SELECT 1
-        FROM public.community_members AS member
-        WHERE member.community_id = p_community_id
-          AND member.user_id = (SELECT auth.uid())
-          AND member.role IN ('owner', 'admin')
-    );
-$$;
-
-CREATE OR REPLACE FUNCTION public.is_community_public(p_community_id UUID)
-RETURNS BOOLEAN
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-    SELECT EXISTS (
-        SELECT 1
-        FROM public.communities AS community
-        WHERE community.id = p_community_id
-          AND community.is_public = TRUE
-    );
-$$;
-
-CREATE OR REPLACE FUNCTION public.create_community(
-    p_name TEXT,
-    p_description TEXT,
-    p_kind TEXT
-)
-RETURNS UUID
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-DECLARE
-    new_community_id UUID;
-    current_user_id UUID := auth.uid();
-BEGIN
-    IF current_user_id IS NULL THEN
-        RAISE EXCEPTION 'You must be signed in to create a community.';
-    END IF;
-    IF p_kind NOT IN ('group', 'channel') THEN
-        RAISE EXCEPTION 'Choose either a group or a channel.';
-    END IF;
-    IF char_length(trim(COALESCE(p_name, ''))) NOT BETWEEN 3 AND 80
-       OR char_length(COALESCE(p_description, '')) > 500 THEN
-        RAISE EXCEPTION 'Community name or description is too long or too short.';
-    END IF;
-
-    INSERT INTO public.communities (owner_id, name, description, kind)
-    VALUES (current_user_id, trim(p_name), trim(COALESCE(p_description, '')), p_kind)
-    RETURNING id INTO new_community_id;
-
-    INSERT INTO public.community_members (community_id, user_id, role)
-    VALUES (new_community_id, current_user_id, 'owner');
-
-    RETURN new_community_id;
-END;
-$$;
-
-CREATE OR REPLACE FUNCTION public.mark_notifications_read()
-RETURNS VOID
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-BEGIN
-    IF auth.uid() IS NULL THEN
-        RAISE EXCEPTION 'You must be signed in to update notifications.';
-    END IF;
-
-    UPDATE public.notifications
-    SET is_read = TRUE
-    WHERE recipient_id = auth.uid()
-      AND is_read = FALSE;
-END;
-$$;
-
-CREATE OR REPLACE FUNCTION public.get_post_reaction_summary(p_post_ids UUID[])
-RETURNS TABLE (
-    post_id UUID,
-    reaction TEXT,
-    reaction_count BIGINT,
-    my_reaction TEXT
-)
-LANGUAGE sql
-STABLE
-SECURITY INVOKER
-SET search_path = ''
-AS $$
-    WITH requested_posts AS (
-        SELECT DISTINCT requested.post_id
-        FROM unnest(COALESCE(p_post_ids, ARRAY[]::UUID[])) AS requested(post_id)
-        WHERE requested.post_id IS NOT NULL
-    )
-    SELECT
-        post_reaction.post_id,
-        post_reaction.reaction,
-        COUNT(*)::BIGINT,
-        MAX(post_reaction.reaction) FILTER (
-            WHERE post_reaction.user_id = (SELECT auth.uid())
-        )
-    FROM public.post_reactions AS post_reaction
-    JOIN requested_posts
-      ON requested_posts.post_id = post_reaction.post_id
-    GROUP BY post_reaction.post_id, post_reaction.reaction;
-$$;
-
-REVOKE ALL ON FUNCTION public.is_community_member(UUID) FROM PUBLIC, anon;
-REVOKE ALL ON FUNCTION public.can_manage_community(UUID) FROM PUBLIC, anon;
-REVOKE ALL ON FUNCTION public.is_community_public(UUID) FROM PUBLIC, anon;
-REVOKE ALL ON FUNCTION public.create_community(TEXT, TEXT, TEXT) FROM PUBLIC, anon;
-REVOKE ALL ON FUNCTION public.mark_notifications_read() FROM PUBLIC, anon;
-REVOKE ALL ON FUNCTION public.get_post_reaction_summary(UUID[]) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.is_community_member(UUID) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.can_manage_community(UUID) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.is_community_public(UUID) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.create_community(TEXT, TEXT, TEXT) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.mark_notifications_read() TO authenticated;
-GRANT EXECUTE ON FUNCTION public.get_post_reaction_summary(UUID[]) TO authenticated;
-
-DROP POLICY IF EXISTS "Authenticated users view post reactions"
-    ON public.post_reactions;
-CREATE POLICY "Authenticated users view post reactions"
-    ON public.post_reactions FOR SELECT TO authenticated USING (TRUE);
-DROP POLICY IF EXISTS "Users manage their own post reactions"
-    ON public.post_reactions;
-CREATE POLICY "Users manage their own post reactions"
-    ON public.post_reactions FOR ALL TO authenticated
-    USING (auth.uid() = user_id)
-    WITH CHECK (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "Members discover public communities"
-    ON public.communities;
-CREATE POLICY "Members discover public communities"
-    ON public.communities FOR SELECT TO authenticated
-    USING (is_public OR public.is_community_member(id));
-DROP POLICY IF EXISTS "Community managers update communities"
-    ON public.communities;
-CREATE POLICY "Community managers update communities"
-    ON public.communities FOR UPDATE TO authenticated
-    USING (public.can_manage_community(id))
-    WITH CHECK (public.can_manage_community(id));
-DROP POLICY IF EXISTS "Community owners delete communities"
-    ON public.communities;
-CREATE POLICY "Community owners delete communities"
-    ON public.communities FOR DELETE TO authenticated
-    USING (owner_id = (SELECT auth.uid()));
-
-DROP POLICY IF EXISTS "Members view community membership"
-    ON public.community_members;
-CREATE POLICY "Members view community membership"
-    ON public.community_members FOR SELECT TO authenticated
-    USING (
-        user_id = (SELECT auth.uid())
-        OR public.is_community_member(community_id)
-        OR public.is_community_public(community_id)
-    );
-DROP POLICY IF EXISTS "Members join public communities"
-    ON public.community_members;
-CREATE POLICY "Members join public communities"
-    ON public.community_members FOR INSERT TO authenticated
-    WITH CHECK (
-        user_id = (SELECT auth.uid())
-        AND role = 'member'
-        AND public.is_community_public(community_id)
-    );
-DROP POLICY IF EXISTS "Members leave or managers remove members"
-    ON public.community_members;
-CREATE POLICY "Members leave or managers remove members"
-    ON public.community_members FOR DELETE TO authenticated
-    USING (
-        (user_id = (SELECT auth.uid()) AND role <> 'owner')
-        OR (role <> 'owner' AND public.can_manage_community(community_id))
-    );
-
-DROP POLICY IF EXISTS "Community members view messages"
-    ON public.community_messages;
-CREATE POLICY "Community members view messages"
-    ON public.community_messages FOR SELECT TO authenticated
-    USING (public.is_community_member(community_id));
-DROP POLICY IF EXISTS "Community members send group messages"
-    ON public.community_messages;
-CREATE POLICY "Community members send group messages"
-    ON public.community_messages FOR INSERT TO authenticated
-    WITH CHECK (
-        sender_id = (SELECT auth.uid())
-        AND public.is_community_member(community_id)
-        AND (
-            EXISTS (
-                SELECT 1 FROM public.communities AS community
-                WHERE community.id = community_messages.community_id
-                  AND community.kind = 'group'
-            )
-            OR public.can_manage_community(community_id)
-        )
-    );
-DROP POLICY IF EXISTS "Community senders and managers delete messages"
-    ON public.community_messages;
-CREATE POLICY "Community senders and managers delete messages"
-    ON public.community_messages FOR DELETE TO authenticated
-    USING (
-        sender_id = (SELECT auth.uid())
-        OR public.can_manage_community(community_id)
-    );
-
-DROP POLICY IF EXISTS "Users view their own notifications"
-    ON public.notifications;
-CREATE POLICY "Users view their own notifications"
-    ON public.notifications FOR SELECT TO authenticated
-    USING (recipient_id = (SELECT auth.uid()));
-
-CREATE OR REPLACE FUNCTION public.notify_post_activity()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-DECLARE
-    post_owner_id UUID;
-    notification_kind TEXT;
-BEGIN
-    SELECT post.user_id INTO post_owner_id
-    FROM public.posts AS post
-    WHERE post.id = NEW.post_id;
-
-    IF post_owner_id IS NOT NULL AND post_owner_id <> NEW.user_id THEN
-        notification_kind := CASE TG_TABLE_NAME
-            WHEN 'comments' THEN 'comment'
-            ELSE 'reaction'
-        END;
-        INSERT INTO public.notifications (recipient_id, actor_id, kind, post_id)
-        VALUES (post_owner_id, NEW.user_id, notification_kind, NEW.post_id);
-    END IF;
-    RETURN NEW;
-END;
-$$;
-
-CREATE OR REPLACE FUNCTION public.notify_new_follow()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-BEGIN
-    INSERT INTO public.notifications (recipient_id, actor_id, kind)
-    VALUES (NEW.following_id, NEW.follower_id, 'follow');
-    RETURN NEW;
-END;
-$$;
-
-CREATE OR REPLACE FUNCTION public.notify_new_message()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-BEGIN
-    INSERT INTO public.notifications (recipient_id, actor_id, kind)
-    VALUES (NEW.receiver_id, NEW.sender_id, 'message');
-    RETURN NEW;
-END;
-$$;
-
-REVOKE ALL ON FUNCTION public.notify_post_activity() FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION public.notify_new_follow() FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION public.notify_new_message() FROM PUBLIC, anon, authenticated;
-
-DROP TRIGGER IF EXISTS post_likes_notify_activity ON public.post_likes;
-CREATE TRIGGER post_likes_notify_activity
-    AFTER INSERT ON public.post_likes
-    FOR EACH ROW EXECUTE FUNCTION public.notify_post_activity();
-DROP TRIGGER IF EXISTS post_reactions_notify_activity ON public.post_reactions;
-CREATE TRIGGER post_reactions_notify_activity
-    AFTER INSERT ON public.post_reactions
-    FOR EACH ROW EXECUTE FUNCTION public.notify_post_activity();
-DROP TRIGGER IF EXISTS comments_notify_activity ON public.comments;
-CREATE TRIGGER comments_notify_activity
-    AFTER INSERT ON public.comments
-    FOR EACH ROW EXECUTE FUNCTION public.notify_post_activity();
-DROP TRIGGER IF EXISTS follows_notify_activity ON public.follows;
-CREATE TRIGGER follows_notify_activity
-    AFTER INSERT ON public.follows
-    FOR EACH ROW EXECUTE FUNCTION public.notify_new_follow();
-DROP TRIGGER IF EXISTS messages_notify_activity ON public.messages;
-CREATE TRIGGER messages_notify_activity
-    AFTER INSERT ON public.messages
-    FOR EACH ROW EXECUTE FUNCTION public.notify_new_message();
-
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_publication_tables
-        WHERE pubname = 'supabase_realtime'
-          AND schemaname = 'public'
-          AND tablename = 'notifications'
-    ) THEN
-        ALTER PUBLICATION supabase_realtime ADD TABLE public.notifications;
-    END IF;
-END;
-$$;
-
--- ============================================================
--- END OF CAMPUS CONNECT SCHEMA
--- ============================================================
-
-NOTIFY pgrst, 'reload schema';
-
--- ================ PART 2/24: migrations/20261011_profile_gender.sql ================
-BEGIN;
-
-ALTER TABLE public.profiles
-    ADD COLUMN IF NOT EXISTS gender TEXT NOT NULL DEFAULT '';
-
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint
-        WHERE conrelid = 'public.profiles'::REGCLASS
-          AND conname = 'profiles_gender_check'
-    ) THEN
-        ALTER TABLE public.profiles
-            ADD CONSTRAINT profiles_gender_check
-            CHECK (gender IN ('', 'male', 'female', 'other'));
-    END IF;
-END;
-$$;
-
-COMMIT;
-
--- ================ PART 3/24: migrations/20261011_social_access_controls.sql ================
-BEGIN;
-
-CREATE TABLE IF NOT EXISTS public.user_blocks (
-    blocker_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    blocked_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    PRIMARY KEY (blocker_id, blocked_id),
-    CHECK (blocker_id <> blocked_id)
-);
-
-CREATE INDEX IF NOT EXISTS user_blocks_blocked_idx
-    ON public.user_blocks (blocked_id, blocker_id);
-
-ALTER TABLE public.user_blocks ENABLE ROW LEVEL SECURITY;
-GRANT SELECT, INSERT, DELETE ON public.user_blocks TO authenticated;
-
-CREATE TABLE IF NOT EXISTS public.user_presence (
-    user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-    last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-ALTER TABLE public.user_presence ENABLE ROW LEVEL SECURITY;
-GRANT SELECT, INSERT, UPDATE ON public.user_presence TO authenticated;
-
-DROP POLICY IF EXISTS "Members write their own presence" ON public.user_presence;
-CREATE POLICY "Members write their own presence"
-    ON public.user_presence FOR INSERT TO authenticated
-    WITH CHECK (user_id = (SELECT auth.uid()));
-
-DROP POLICY IF EXISTS "Members update their own presence" ON public.user_presence;
-CREATE POLICY "Members update their own presence"
-    ON public.user_presence FOR UPDATE TO authenticated
-    USING (user_id = (SELECT auth.uid()))
-    WITH CHECK (user_id = (SELECT auth.uid()));
-
-DROP POLICY IF EXISTS "Users view their own blocks" ON public.user_blocks;
-CREATE POLICY "Users view their own blocks"
-    ON public.user_blocks FOR SELECT TO authenticated
-    USING ((SELECT auth.uid()) = blocker_id);
-
-DROP POLICY IF EXISTS "Users block others as themselves" ON public.user_blocks;
-CREATE POLICY "Users block others as themselves"
-    ON public.user_blocks FOR INSERT TO authenticated
-    WITH CHECK (
-        (SELECT auth.uid()) = blocker_id
-        AND blocker_id <> blocked_id
-    );
-
-DROP POLICY IF EXISTS "Users unblock others as themselves" ON public.user_blocks;
-CREATE POLICY "Users unblock others as themselves"
-    ON public.user_blocks FOR DELETE TO authenticated
-    USING ((SELECT auth.uid()) = blocker_id);
-
-CREATE OR REPLACE FUNCTION public.is_blocked_between(p_first UUID, p_second UUID)
-RETURNS BOOLEAN
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-    SELECT p_first IS NOT NULL
-       AND p_second IS NOT NULL
-       AND (p_first = auth.uid() OR p_second = auth.uid())
-       AND EXISTS (
-            SELECT 1
-            FROM public.user_blocks AS block
-            WHERE (block.blocker_id = p_first AND block.blocked_id = p_second)
-               OR (block.blocker_id = p_second AND block.blocked_id = p_first)
-       );
-$$;
-
-CREATE OR REPLACE FUNCTION public.are_mutual_connections(p_first UUID, p_second UUID)
-RETURNS BOOLEAN
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-    SELECT p_first IS NOT NULL
-       AND p_second IS NOT NULL
-       AND p_first <> p_second
-       AND (p_first = auth.uid() OR p_second = auth.uid())
-       AND NOT public.is_blocked_between(p_first, p_second)
-       AND EXISTS (
-            SELECT 1 FROM public.follows
-            WHERE follower_id = p_first AND following_id = p_second
-       )
-       AND EXISTS (
-            SELECT 1 FROM public.follows
-            WHERE follower_id = p_second AND following_id = p_first
-       );
-$$;
-
-CREATE OR REPLACE FUNCTION public.can_view_story_from_follower(p_author_id UUID, p_viewer_id UUID)
-RETURNS BOOLEAN
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-    SELECT COALESCE(
-        p_author_id IS NOT NULL
-        AND p_viewer_id = (SELECT auth.uid())
-        AND p_author_id <> p_viewer_id
-        AND NOT public.is_blocked_between(p_author_id, p_viewer_id)
-        AND EXISTS (
-            SELECT 1
-            FROM public.profiles AS author
-            WHERE author.id = p_author_id
-              AND author.allow_follower_statuses
-        )
-        AND EXISTS (
-            SELECT 1
-            FROM public.follows AS relationship
-            WHERE relationship.follower_id = p_viewer_id
-              AND relationship.following_id = p_author_id
-        ),
-        FALSE
-    );
-$$;
-
-CREATE OR REPLACE FUNCTION public.can_view_story_from_chat(p_author_id UUID, p_viewer_id UUID)
-RETURNS BOOLEAN
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-    SELECT COALESCE(
-        p_author_id IS NOT NULL
-        AND p_viewer_id = (SELECT auth.uid())
-        AND p_author_id <> p_viewer_id
-        AND NOT public.is_blocked_between(p_author_id, p_viewer_id)
-        AND EXISTS (
-            SELECT 1
-            FROM public.messages AS message
-            WHERE message.sender_id = p_author_id
-              AND message.receiver_id = p_viewer_id
-        )
-        AND EXISTS (
-            SELECT 1
-            FROM public.messages AS message
-            WHERE message.sender_id = p_viewer_id
-              AND message.receiver_id = p_author_id
-        ),
-        FALSE
-    );
-$$;
-
-CREATE OR REPLACE FUNCTION public.get_story_author_profiles(p_user_ids UUID[])
-RETURNS TABLE (id UUID, username TEXT, full_name TEXT, avatar_url TEXT)
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-    SELECT profile.id, profile.username, profile.full_name, profile.avatar_url
-    FROM public.profiles AS profile
-    WHERE (SELECT auth.uid()) IS NOT NULL
-      AND profile.id = ANY(COALESCE(p_user_ids, ARRAY[]::UUID[]))
-      AND EXISTS (
-          SELECT 1
-          FROM public.stories AS story
-          WHERE story.user_id = profile.id
-            AND story.expires_at > NOW()
-            AND (
-                story.user_id = (SELECT auth.uid())
-                OR public.are_mutual_connections(story.user_id, (SELECT auth.uid()))
-                OR public.can_view_story_from_follower(story.user_id, (SELECT auth.uid()))
-                OR public.can_view_story_from_chat(story.user_id, (SELECT auth.uid()))
-            )
-      );
-$$;
-
-CREATE OR REPLACE FUNCTION public.get_blocked_profiles()
-RETURNS TABLE (id UUID, username TEXT, full_name TEXT)
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-    SELECT profile.id, profile.username, profile.full_name
-    FROM public.user_blocks AS block
-    JOIN public.profiles AS profile ON profile.id = block.blocked_id
-    WHERE block.blocker_id = auth.uid();
-$$;
-
-CREATE OR REPLACE FUNCTION public.update_last_seen()
-RETURNS TIMESTAMPTZ
-LANGUAGE plpgsql
-SECURITY INVOKER
-SET search_path = ''
-AS $$
-DECLARE
-    updated_value TIMESTAMPTZ;
-BEGIN
-    IF auth.uid() IS NULL THEN
-        RAISE EXCEPTION 'You must be signed in to update your last-seen time.';
-    END IF;
-
-    INSERT INTO public.user_presence (user_id, last_seen_at)
-    VALUES (auth.uid(), NOW())
-    ON CONFLICT (user_id)
-    DO UPDATE SET last_seen_at = EXCLUDED.last_seen_at
-    RETURNING last_seen_at INTO updated_value;
-
-    RETURN updated_value;
-END;
-$$;
-
-REVOKE ALL ON FUNCTION public.is_blocked_between(UUID, UUID) FROM PUBLIC, anon;
-REVOKE ALL ON FUNCTION public.are_mutual_connections(UUID, UUID) FROM PUBLIC, anon;
-REVOKE ALL ON FUNCTION public.can_view_story_from_follower(UUID, UUID) FROM PUBLIC, anon;
-REVOKE ALL ON FUNCTION public.can_view_story_from_chat(UUID, UUID) FROM PUBLIC, anon;
-REVOKE ALL ON FUNCTION public.get_story_author_profiles(UUID[]) FROM PUBLIC, anon;
-REVOKE ALL ON FUNCTION public.get_blocked_profiles() FROM PUBLIC, anon;
-REVOKE ALL ON FUNCTION public.update_last_seen() FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.is_blocked_between(UUID, UUID) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.are_mutual_connections(UUID, UUID) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.can_view_story_from_follower(UUID, UUID) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.can_view_story_from_chat(UUID, UUID) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.get_story_author_profiles(UUID[]) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.get_blocked_profiles() TO authenticated;
-GRANT EXECUTE ON FUNCTION public.update_last_seen() TO authenticated;
-
-DROP POLICY IF EXISTS "Members view mutual connection presence" ON public.user_presence;
-CREATE POLICY "Members view mutual connection presence"
-    ON public.user_presence FOR SELECT TO authenticated
-    USING (
-        user_id = (SELECT auth.uid())
-        OR public.are_mutual_connections(user_id, (SELECT auth.uid()))
-    );
-
-DROP POLICY IF EXISTS "Profiles are viewable by authenticated users" ON public.profiles;
-CREATE POLICY "Profiles are viewable by authenticated users"
-    ON public.profiles FOR SELECT TO authenticated
-    USING (
-        (SELECT auth.uid()) = id
-        OR (
-            NOT public.is_blocked_between((SELECT auth.uid()), id)
-            AND (
-                is_discoverable
-                OR public.are_mutual_connections((SELECT auth.uid()), id)
-                OR EXISTS (
-                    SELECT 1
-                    FROM public.messages AS message
-                    WHERE (message.sender_id = (SELECT auth.uid()) AND message.receiver_id = profiles.id)
-                       OR (message.receiver_id = (SELECT auth.uid()) AND message.sender_id = profiles.id)
-                )
-            )
-        )
-    );
-
-DROP POLICY IF EXISTS "Community members view peer profiles" ON public.profiles;
-CREATE POLICY "Community members view peer profiles"
-    ON public.profiles FOR SELECT TO authenticated
-    USING (
-        NOT public.is_blocked_between((SELECT auth.uid()), profiles.id)
-        AND EXISTS (
-            SELECT 1
-            FROM public.community_members AS own_membership
-            JOIN public.community_members AS peer_membership
-                ON peer_membership.community_id = own_membership.community_id
-            WHERE own_membership.user_id = (SELECT auth.uid())
-              AND peer_membership.user_id = profiles.id
-        )
-    );
-
-DROP POLICY IF EXISTS "Authenticated users view posts" ON public.posts;
-CREATE POLICY "Authenticated users view posts"
-    ON public.posts FOR SELECT TO authenticated
-    USING (
-        user_id = (SELECT auth.uid())
-        OR public.are_mutual_connections(user_id, (SELECT auth.uid()))
-    );
-
-DROP POLICY IF EXISTS "Authenticated users view stories" ON public.stories;
-CREATE POLICY "Authenticated users view stories"
-    ON public.stories FOR SELECT TO authenticated
-    USING (
-        expires_at > NOW()
-        AND (
-            user_id = (SELECT auth.uid())
-            OR public.are_mutual_connections(user_id, (SELECT auth.uid()))
-            OR public.can_view_story_from_follower(user_id, (SELECT auth.uid()))
-            OR public.can_view_story_from_chat(user_id, (SELECT auth.uid()))
-        )
-    );
-
-DROP POLICY IF EXISTS "Authenticated users view comments" ON public.comments;
-CREATE POLICY "Authenticated users view comments"
-    ON public.comments FOR SELECT TO authenticated
-    USING (
-        EXISTS (
-            SELECT 1 FROM public.posts
-            WHERE posts.id = comments.post_id
-        )
-    );
-
-DROP POLICY IF EXISTS "Users create their own comments" ON public.comments;
-CREATE POLICY "Users create their own comments"
-    ON public.comments FOR INSERT TO authenticated
-    WITH CHECK (
-        user_id = (SELECT auth.uid())
-        AND EXISTS (
-            SELECT 1 FROM public.posts
-            WHERE posts.id = comments.post_id
-        )
-    );
-
-DROP POLICY IF EXISTS "Authenticated users view post reactions" ON public.post_reactions;
-CREATE POLICY "Authenticated users view post reactions"
-    ON public.post_reactions FOR SELECT TO authenticated
-    USING (
-        EXISTS (
-            SELECT 1 FROM public.posts
-            WHERE posts.id = post_reactions.post_id
-        )
-    );
-
-DROP POLICY IF EXISTS "Members view reposts of visible posts" ON public.post_reposts;
-CREATE POLICY "Members view reposts of visible posts"
-    ON public.post_reposts FOR SELECT TO authenticated
-    USING (
-        EXISTS (
-            SELECT 1 FROM public.posts
-            WHERE posts.id = post_reposts.post_id
-        )
-    );
-
-DROP POLICY IF EXISTS "Members repost visible posts as themselves" ON public.post_reposts;
-CREATE POLICY "Members repost visible posts as themselves"
-    ON public.post_reposts FOR INSERT TO authenticated
-    WITH CHECK (
-        user_id = (SELECT auth.uid())
-        AND EXISTS (
-            SELECT 1 FROM public.posts
-            WHERE posts.id = post_reposts.post_id
-        )
-    );
-
-DROP POLICY IF EXISTS "Members remove their own reposts" ON public.post_reposts;
-CREATE POLICY "Members remove their own reposts"
-    ON public.post_reposts FOR DELETE TO authenticated
-    USING (user_id = (SELECT auth.uid()));
-
-DROP POLICY IF EXISTS "Users follow as themselves" ON public.follows;
-CREATE POLICY "Users follow as themselves"
-    ON public.follows FOR INSERT TO authenticated
-    WITH CHECK (
-        follower_id = (SELECT auth.uid())
-        AND follower_id <> following_id
-        AND NOT public.is_blocked_between(follower_id, following_id)
-    );
-
-DROP POLICY IF EXISTS "Participants view their messages" ON public.messages;
-CREATE POLICY "Participants view their messages"
-    ON public.messages FOR SELECT TO authenticated
-    USING (
-        (
-            (SELECT auth.uid()) = sender_id
-            OR (SELECT auth.uid()) = receiver_id
-        )
-        AND NOT public.is_blocked_between(sender_id, receiver_id)
-    );
-
-DROP POLICY IF EXISTS "Users send messages as themselves" ON public.messages;
-CREATE POLICY "Users send messages as themselves"
-    ON public.messages FOR INSERT TO authenticated
-    WITH CHECK (
-        sender_id = (SELECT auth.uid())
-        AND sender_id <> receiver_id
-        AND NOT public.is_blocked_between(sender_id, receiver_id)
-        AND public.are_mutual_connections(sender_id, receiver_id)
-    );
-
-DROP POLICY IF EXISTS "Recipients mark messages as read" ON public.messages;
-CREATE POLICY "Recipients mark messages as read"
-    ON public.messages FOR UPDATE TO authenticated
-    USING (
-        receiver_id = (SELECT auth.uid())
-        AND NOT public.is_blocked_between(sender_id, receiver_id)
-    )
-    WITH CHECK (
-        receiver_id = (SELECT auth.uid())
-        AND NOT public.is_blocked_between(sender_id, receiver_id)
-    );
-
-DROP POLICY IF EXISTS "Call participants view signaling" ON public.call_signals;
-DROP POLICY IF EXISTS "Call participants view call signals" ON public.call_signals;
-CREATE POLICY "Call participants view call signals"
-    ON public.call_signals FOR SELECT TO authenticated
-    USING (
-        (sender_id = (SELECT auth.uid()) OR recipient_id = (SELECT auth.uid()))
-        AND NOT public.is_blocked_between(sender_id, recipient_id)
-    );
-
-DROP POLICY IF EXISTS "Call senders create signaling" ON public.call_signals;
-DROP POLICY IF EXISTS "Users send call signals as themselves" ON public.call_signals;
-CREATE POLICY "Users send call signals as themselves"
-    ON public.call_signals FOR INSERT TO authenticated
-    WITH CHECK (
-        sender_id = (SELECT auth.uid())
-        AND sender_id <> recipient_id
-        AND NOT public.is_blocked_between(sender_id, recipient_id)
-    );
-
-DROP POLICY IF EXISTS "Call participants delete signaling" ON public.call_signals;
-DROP POLICY IF EXISTS "Call participants delete call signals" ON public.call_signals;
-CREATE POLICY "Call participants delete call signals"
-    ON public.call_signals FOR DELETE TO authenticated
-    USING (
-        (sender_id = (SELECT auth.uid()) OR recipient_id = (SELECT auth.uid()))
-        AND NOT public.is_blocked_between(sender_id, recipient_id)
-    );
-
-INSERT INTO storage.buckets (
-    id, name, public, file_size_limit, allowed_mime_types
-)
-VALUES (
-    'campus-private-media',
-    'campus-private-media',
-    FALSE,
-    524288000,
-    ARRAY['image/*', 'video/*']
-)
-ON CONFLICT (id) DO UPDATE
-SET public = FALSE,
-    file_size_limit = EXCLUDED.file_size_limit,
-    allowed_mime_types = EXCLUDED.allowed_mime_types;
-
-DROP POLICY IF EXISTS "Authenticated users upload own private social media" ON storage.objects;
-CREATE POLICY "Authenticated users upload own private social media"
-    ON storage.objects FOR INSERT TO authenticated
-    WITH CHECK (
-        bucket_id = 'campus-private-media'
-        AND (storage.foldername(name))[1] = (SELECT auth.uid())::TEXT
-    );
-
-DROP POLICY IF EXISTS "Connections view private social media" ON storage.objects;
-CREATE POLICY "Connections view private social media"
-    ON storage.objects FOR SELECT TO authenticated
-    USING (
-        bucket_id = 'campus-private-media'
-        AND (
-            (storage.foldername(name))[1] = (SELECT auth.uid())::TEXT
-            OR CASE
-                WHEN (storage.foldername(name))[1] ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
-                THEN public.are_mutual_connections(
-                    (storage.foldername(name))[1]::UUID,
-                    (SELECT auth.uid())
-                )
-                ELSE FALSE
-            END
-            OR EXISTS (
-                SELECT 1
-                FROM public.stories AS story
-                WHERE story.media_url = 'private-media:' || storage.objects.name
-                  AND story.expires_at > NOW()
-                  AND (
-                      public.can_view_story_from_follower(story.user_id, (SELECT auth.uid()))
-                      OR public.can_view_story_from_chat(story.user_id, (SELECT auth.uid()))
-                  )
-            )
-        )
-    );
-
-DROP POLICY IF EXISTS "Users delete own private social media" ON storage.objects;
-CREATE POLICY "Users delete own private social media"
-    ON storage.objects FOR DELETE TO authenticated
-    USING (
-        bucket_id = 'campus-private-media'
-        AND (storage.foldername(name))[1] = (SELECT auth.uid())::TEXT
-    );
-
-COMMIT;
-
--- ================ PART 4/24: migrations/20261011_student_interactions_and_calls.sql ================
-BEGIN;
-
-ALTER TABLE public.profiles
-    ADD COLUMN IF NOT EXISTS is_discoverable BOOLEAN NOT NULL DEFAULT FALSE;
-
-CREATE TABLE IF NOT EXISTS public.call_signals (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    call_id UUID NOT NULL,
-    sender_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    recipient_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    kind TEXT NOT NULL CHECK (kind IN ('offer', 'answer', 'ice', 'end', 'reject', 'busy')),
-    payload JSONB NOT NULL DEFAULT '{}'::JSONB
-        CHECK (
-            jsonb_typeof(payload) = 'object'
-            AND octet_length(payload::TEXT) <= 65536
-        ),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CHECK (sender_id <> recipient_id)
-);
-
-CREATE INDEX IF NOT EXISTS call_signals_recipient_created_idx
-    ON public.call_signals (recipient_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS call_signals_sender_created_idx
-    ON public.call_signals (sender_id, created_at DESC);
-
-ALTER TABLE public.call_signals ENABLE ROW LEVEL SECURITY;
-GRANT SELECT, INSERT, DELETE ON public.call_signals TO authenticated;
-
-DROP POLICY IF EXISTS "Call participants view signaling"
-    ON public.call_signals;
-CREATE POLICY "Call participants view signaling"
-    ON public.call_signals
-    FOR SELECT TO authenticated
-    USING (
-        (SELECT auth.uid()) = sender_id
-        OR (SELECT auth.uid()) = recipient_id
-    );
-
-DROP POLICY IF EXISTS "Call senders create signaling"
-    ON public.call_signals;
-CREATE POLICY "Call senders create signaling"
-    ON public.call_signals
-    FOR INSERT TO authenticated
-    WITH CHECK (
-        (SELECT auth.uid()) = sender_id
-        AND sender_id <> recipient_id
-    );
-
-DROP POLICY IF EXISTS "Call participants delete signaling"
-    ON public.call_signals;
-CREATE POLICY "Call participants delete signaling"
-    ON public.call_signals
-    FOR DELETE TO authenticated
-    USING (
-        (SELECT auth.uid()) = sender_id
-        OR (SELECT auth.uid()) = recipient_id
-    );
-
-DO $realtime$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1
-        FROM pg_publication_tables
-        WHERE pubname = 'supabase_realtime'
-          AND schemaname = 'public'
-          AND tablename = 'call_signals'
-    ) THEN
-        ALTER PUBLICATION supabase_realtime
-            ADD TABLE public.call_signals;
-    END IF;
-END;
-$realtime$;
-
-DROP POLICY IF EXISTS "Profiles are viewable by authenticated users"
-    ON public.profiles;
-
-DO $migration$
-DECLARE
-    visibility_rule TEXT := $policy$
-        auth.uid() = id
-        OR is_discoverable
-        OR EXISTS (
-            SELECT 1
-            FROM public.messages AS message
-            WHERE (message.sender_id = auth.uid() AND message.receiver_id = profiles.id)
-               OR (message.receiver_id = auth.uid() AND message.sender_id = profiles.id)
-        )
-    $policy$;
-BEGIN
-    IF to_regclass('public.community_members') IS NOT NULL THEN
-        visibility_rule := visibility_rule || $policy$
-            OR EXISTS (
-            SELECT 1
-            FROM public.community_members AS own_membership
-            JOIN public.community_members AS peer_membership
-                ON peer_membership.community_id = own_membership.community_id
-            WHERE own_membership.user_id = auth.uid()
-              AND peer_membership.user_id = profiles.id
-            )
-        $policy$;
-    END IF;
-
-    EXECUTE format(
-        'CREATE POLICY "Profiles are viewable by authenticated users" '
-        'ON public.profiles FOR SELECT TO authenticated USING (%s)',
-        visibility_rule
-    );
-END;
-$migration$;
-
-COMMIT;
-
--- ================ PART 5/24: migrations/20261012_friendships_attachments_notification_preferences.sql ================
-BEGIN;
-
--- Explicit friend requests are separate from the existing one-way follow graph.
-CREATE TABLE IF NOT EXISTS public.friend_requests (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    requester_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    recipient_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    status TEXT NOT NULL DEFAULT 'pending'
-        CHECK (status IN ('pending', 'accepted', 'declined')),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CHECK (requester_id <> recipient_id),
-    UNIQUE (requester_id, recipient_id)
-);
-
-CREATE INDEX IF NOT EXISTS friend_requests_recipient_status_idx
-    ON public.friend_requests (recipient_id, status, created_at DESC);
-CREATE INDEX IF NOT EXISTS friend_requests_requester_status_idx
-    ON public.friend_requests (requester_id, status, created_at DESC);
-
-CREATE TABLE IF NOT EXISTS public.message_attachments (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    message_id UUID REFERENCES public.messages(id) ON DELETE CASCADE,
-    community_message_id UUID REFERENCES public.community_messages(id) ON DELETE CASCADE,
-    uploader_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    storage_path TEXT NOT NULL,
-    file_name TEXT NOT NULL CHECK (char_length(file_name) BETWEEN 1 AND 255),
-    mime_type TEXT NOT NULL CHECK (char_length(mime_type) BETWEEN 1 AND 160),
-    file_size BIGINT NOT NULL CHECK (file_size > 0 AND file_size <= 524288000),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CHECK (num_nonnulls(message_id, community_message_id) = 1),
-    UNIQUE (storage_path)
-);
-
-CREATE INDEX IF NOT EXISTS message_attachments_message_idx
-    ON public.message_attachments (message_id, created_at);
-CREATE INDEX IF NOT EXISTS message_attachments_community_message_idx
-    ON public.message_attachments (community_message_id, created_at);
-CREATE INDEX IF NOT EXISTS message_attachments_uploader_idx
-    ON public.message_attachments (uploader_id, created_at DESC);
-
-CREATE TABLE IF NOT EXISTS public.notification_preferences (
-    user_id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-    messages BOOLEAN NOT NULL DEFAULT TRUE,
-    friend_requests BOOLEAN NOT NULL DEFAULT TRUE,
-    follows BOOLEAN NOT NULL DEFAULT TRUE,
-    post_activity BOOLEAN NOT NULL DEFAULT TRUE,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-ALTER TABLE public.friend_requests ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.message_attachments ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.notification_preferences ENABLE ROW LEVEL SECURITY;
-
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.friend_requests TO authenticated;
-REVOKE UPDATE ON public.friend_requests FROM authenticated;
-GRANT UPDATE (status) ON public.friend_requests TO authenticated;
-GRANT SELECT, INSERT, DELETE ON public.message_attachments TO authenticated;
-GRANT SELECT, INSERT, UPDATE ON public.notification_preferences TO authenticated;
-
-DROP POLICY IF EXISTS "Users view their own friend requests" ON public.friend_requests;
-CREATE POLICY "Users view their own friend requests"
-    ON public.friend_requests FOR SELECT TO authenticated
-    USING (requester_id = (SELECT auth.uid()) OR recipient_id = (SELECT auth.uid()));
-
-DROP POLICY IF EXISTS "Users send friend requests as themselves" ON public.friend_requests;
-CREATE POLICY "Users send friend requests as themselves"
-    ON public.friend_requests FOR INSERT TO authenticated
-    WITH CHECK (
-        requester_id = (SELECT auth.uid())
-        AND requester_id <> recipient_id
-        AND status = 'pending'
-        AND NOT public.is_blocked_between(requester_id, recipient_id)
-    );
-
-DROP POLICY IF EXISTS "Recipients respond to friend requests" ON public.friend_requests;
-CREATE POLICY "Recipients respond to friend requests"
-    ON public.friend_requests FOR UPDATE TO authenticated
-    USING (recipient_id = (SELECT auth.uid()) AND status = 'pending')
-    WITH CHECK (
-        recipient_id = (SELECT auth.uid())
-        AND status IN ('accepted', 'declined')
-    );
-
-DROP POLICY IF EXISTS "Requesters cancel pending friend requests" ON public.friend_requests;
-CREATE POLICY "Requesters cancel pending friend requests"
-    ON public.friend_requests FOR DELETE TO authenticated
-    USING (requester_id = (SELECT auth.uid()) AND status = 'pending');
-
-DROP POLICY IF EXISTS "Chat participants view attachments" ON public.message_attachments;
-CREATE POLICY "Chat participants view attachments"
-    ON public.message_attachments FOR SELECT TO authenticated
-    USING (
-        uploader_id = (SELECT auth.uid())
-        OR EXISTS (
-            SELECT 1 FROM public.messages AS message
-            WHERE message.id = message_attachments.message_id
-              AND (message.sender_id = (SELECT auth.uid()) OR message.receiver_id = (SELECT auth.uid()))
-        )
-        OR EXISTS (
-            SELECT 1 FROM public.community_messages AS message
-            WHERE message.id = message_attachments.community_message_id
-              AND public.is_community_member(message.community_id)
-        )
-    );
-
-DROP POLICY IF EXISTS "Users attach files to their own messages" ON public.message_attachments;
-CREATE POLICY "Users attach files to their own messages"
-    ON public.message_attachments FOR INSERT TO authenticated
-    WITH CHECK (
-        uploader_id = (SELECT auth.uid())
-        AND (
-            EXISTS (
-                SELECT 1 FROM public.messages AS message
-                WHERE message.id = message_attachments.message_id
-                  AND message.sender_id = (SELECT auth.uid())
-            )
-            OR EXISTS (
-                SELECT 1 FROM public.community_messages AS message
-                WHERE message.id = message_attachments.community_message_id
-                  AND message.sender_id = (SELECT auth.uid())
-                  AND public.is_community_member(message.community_id)
-            )
-        )
-    );
-
-DROP POLICY IF EXISTS "Users remove their uploaded attachments" ON public.message_attachments;
-CREATE POLICY "Users remove their uploaded attachments"
-    ON public.message_attachments FOR DELETE TO authenticated
-    USING (uploader_id = (SELECT auth.uid()));
-
-DROP POLICY IF EXISTS "Users view their notification preferences" ON public.notification_preferences;
-CREATE POLICY "Users view their notification preferences"
-    ON public.notification_preferences FOR SELECT TO authenticated
-    USING (user_id = (SELECT auth.uid()));
-
-DROP POLICY IF EXISTS "Users create their notification preferences" ON public.notification_preferences;
-CREATE POLICY "Users create their notification preferences"
-    ON public.notification_preferences FOR INSERT TO authenticated
-    WITH CHECK (user_id = (SELECT auth.uid()));
-
-DROP POLICY IF EXISTS "Users update their notification preferences" ON public.notification_preferences;
-CREATE POLICY "Users update their notification preferences"
-    ON public.notification_preferences FOR UPDATE TO authenticated
-    USING (user_id = (SELECT auth.uid()))
-    WITH CHECK (user_id = (SELECT auth.uid()));
-
-CREATE OR REPLACE FUNCTION public.notify_friend_request()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-BEGIN
-    INSERT INTO public.notifications (recipient_id, actor_id, kind)
-    VALUES (NEW.recipient_id, NEW.requester_id, 'friend_request');
-    RETURN NEW;
-END;
-$$;
-
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint
-        WHERE conrelid = 'public.notifications'::REGCLASS
-          AND conname = 'notifications_kind_check'
-    ) THEN
-        ALTER TABLE public.notifications
-            ADD CONSTRAINT notifications_kind_check
-            CHECK (kind IN ('reaction', 'comment', 'follow', 'message', 'friend_request'));
-    ELSE
-        ALTER TABLE public.notifications DROP CONSTRAINT notifications_kind_check;
-        ALTER TABLE public.notifications
-            ADD CONSTRAINT notifications_kind_check
-            CHECK (kind IN ('reaction', 'comment', 'follow', 'message', 'friend_request'));
-    END IF;
-END;
-$$;
-
-DROP TRIGGER IF EXISTS friend_requests_notify_recipient ON public.friend_requests;
-CREATE TRIGGER friend_requests_notify_recipient
-    AFTER INSERT ON public.friend_requests
-    FOR EACH ROW EXECUTE FUNCTION public.notify_friend_request();
-REVOKE ALL ON FUNCTION public.notify_friend_request() FROM PUBLIC, anon, authenticated;
-
-COMMIT;
-
--- ================ PART 6/24: migrations/20261012_respond_to_chat_invitations.sql ================
-BEGIN;
-
--- Let a recipient accept or decline a one-way follow invitation. Accepting
--- creates the reciprocal follow used by the app's mutual-connection checks.
-CREATE OR REPLACE FUNCTION public.respond_to_chat_invitation(
-    p_inviter_id UUID,
-    p_accept BOOLEAN
-)
-RETURNS VOID
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-DECLARE
-    current_user_id UUID := auth.uid();
-    invitation_exists BOOLEAN;
-    blocked BOOLEAN := FALSE;
-BEGIN
-    IF current_user_id IS NULL THEN
-        RAISE EXCEPTION 'You must be signed in to respond to invitations.';
-    END IF;
-    IF p_inviter_id IS NULL OR p_inviter_id = current_user_id OR p_accept IS NULL THEN
-        RAISE EXCEPTION 'This invitation is invalid.';
-    END IF;
-
-    SELECT EXISTS (
-        SELECT 1
-        FROM public.follows
-        WHERE follower_id = p_inviter_id
-          AND following_id = current_user_id
-    ) INTO invitation_exists;
-
-    IF NOT invitation_exists THEN
-        RAISE EXCEPTION 'This invitation is no longer pending.';
-    END IF;
-
-    -- The blocking migration is optional on older deployments. Check it when
-    -- its table exists without making this function depend on that migration.
-    IF to_regclass('public.user_blocks') IS NOT NULL THEN
-        EXECUTE
-            'SELECT EXISTS (
-                SELECT 1 FROM public.user_blocks
-                WHERE (blocker_id = $1 AND blocked_id = $2)
-                   OR (blocker_id = $2 AND blocked_id = $1)
-            )'
-            INTO blocked
-            USING current_user_id, p_inviter_id;
-    END IF;
-
-    IF p_accept THEN
-        IF blocked THEN
-            RAISE EXCEPTION 'Unblock this member before accepting the invitation.';
-        END IF;
-
-        INSERT INTO public.follows (follower_id, following_id)
-        VALUES (current_user_id, p_inviter_id)
-        ON CONFLICT (follower_id, following_id) DO NOTHING;
-    ELSE
-        DELETE FROM public.follows
-        WHERE follower_id = p_inviter_id
-          AND following_id = current_user_id;
-    END IF;
-END;
-$$;
-
-REVOKE ALL ON FUNCTION public.respond_to_chat_invitation(UUID, BOOLEAN)
-    FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.respond_to_chat_invitation(UUID, BOOLEAN)
-    TO authenticated;
-
--- A member can view the profile and avatar of accounts that follow them,
--- including accounts hidden from global search. Blocks still override access.
-DROP POLICY IF EXISTS "Members view profiles of their followers" ON public.profiles;
-DO $migration$
-DECLARE
-    follower_visibility TEXT := $policy$
-        (SELECT auth.uid()) IS NOT NULL
-        AND EXISTS (
-            SELECT 1
-            FROM public.follows AS relationship
-            WHERE relationship.follower_id = public.profiles.id
-              AND relationship.following_id = (SELECT auth.uid())
-        )
-    $policy$;
-BEGIN
-    IF to_regclass('public.user_blocks') IS NOT NULL THEN
-        follower_visibility := follower_visibility || $policy$
-            AND NOT EXISTS (
-                SELECT 1
-                FROM public.user_blocks AS block
-                WHERE (block.blocker_id = (SELECT auth.uid()) AND block.blocked_id = public.profiles.id)
-                   OR (block.blocker_id = public.profiles.id AND block.blocked_id = (SELECT auth.uid()))
-            )
-        $policy$;
-    END IF;
-
-    EXECUTE format(
-        'CREATE POLICY "Members view profiles of their followers" '
-        'ON public.profiles FOR SELECT TO authenticated USING (%s)',
-        follower_visibility
-    );
-END;
-$migration$;
-
-COMMIT;
-
--- ================ PART 7/24: migrations/20261013_find_people.sql ================
--- ============================================================
--- STEP 1 / FINDING PEOPLE
--- Makes members discoverable by default, lets a user claim a unique
--- username, and lets an invite link resolve a username to a member.
---
--- Safe to run more than once: every statement is IF NOT EXISTS,
--- CREATE OR REPLACE, or an idempotent ALTER/GRANT.
--- Run this file AFTER database/schema.sql and AFTER every file in
--- database/migrations/.
--- ============================================================
-
-
--- ------------------------------------------------------------
--- 1. BE DISCOVERABLE BY DEFAULT
--- profiles.is_discoverable was added with DEFAULT FALSE, so nobody
--- could appear in search. New accounts now start discoverable.
--- ------------------------------------------------------------
-
-ALTER TABLE public.profiles
-    ALTER COLUMN is_discoverable SET DEFAULT TRUE;
-
-
--- ------------------------------------------------------------
--- 2. EXISTING MEMBERS
--- Without this, every account that already exists stays invisible and
--- "can't find each other" continues for your current users.
--- Delete this single statement if you would rather people opt in.
--- ------------------------------------------------------------
-
-UPDATE public.profiles
-    SET is_discoverable = TRUE
-    WHERE is_discoverable IS DISTINCT FROM TRUE;
-
-
--- ------------------------------------------------------------
--- 3. USERNAME LOOKUP SUPPORT
--- No index work needed: username already has a UNIQUE constraint, a
--- CHECK that stores it lowercase, and a trigram index
--- (profiles_username_search_idx) from schema.sql. Invite links do an
--- exact match, which the UNIQUE constraint already serves.
--- ------------------------------------------------------------
-
-
--- ------------------------------------------------------------
--- 4. CHECK A USERNAME IS FREE AND WELL FORMED
--- SECURITY DEFINER: a plain SELECT cannot see rows the caller may not
--- read, so uniqueness could not be verified otherwise. The function
--- only reveals "taken / free", never who owns it.
--- ------------------------------------------------------------
-
-CREATE OR REPLACE FUNCTION public.username_available(p_username TEXT)
-RETURNS BOOLEAN
-LANGUAGE plpgsql
-STABLE
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-DECLARE
-    candidate TEXT := LOWER(TRIM(COALESCE(p_username, '')));
-BEGIN
-    IF auth.uid() IS NULL THEN
-        RETURN FALSE;
-    END IF;
-
-    IF candidate !~ '^[a-z0-9_]{3,30}$' THEN
-        RETURN FALSE;
-    END IF;
-
-    RETURN NOT EXISTS (
-        SELECT 1
-        FROM public.profiles
-        WHERE LOWER(username) = candidate
-          AND id <> auth.uid()
-    );
-END;
-$$;
-
-REVOKE ALL ON FUNCTION public.username_available(TEXT) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.username_available(TEXT) TO authenticated;
-
-
--- ------------------------------------------------------------
--- 5. CHANGE MY USERNAME
--- Validates shape first so a bad value cannot reach the table CHECK,
--- then updates only the caller's own row.
--- ------------------------------------------------------------
-
-CREATE OR REPLACE FUNCTION public.set_my_username(p_username TEXT)
-RETURNS TEXT
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-DECLARE
-    candidate TEXT := LOWER(TRIM(COALESCE(p_username, '')));
-    updated_username TEXT;
-BEGIN
-    IF auth.uid() IS NULL THEN
-        RAISE EXCEPTION 'Sign in to choose a username.'
-            USING ERRCODE = '28000';
-    END IF;
-
-    IF candidate !~ '^[a-z0-9_]{3,30}$' THEN
-        RAISE EXCEPTION 'Usernames are 3-30 characters: a-z, 0-9, underscore.'
-            USING ERRCODE = '22023';
-    END IF;
-
-    IF EXISTS (
-        SELECT 1 FROM public.profiles
-        WHERE LOWER(username) = candidate AND id <> auth.uid()
-    ) THEN
-        RAISE EXCEPTION 'That username is already taken.'
-            USING ERRCODE = '23505';
-    END IF;
-
-    UPDATE public.profiles
-        SET username = candidate
-        WHERE id = auth.uid()
-        RETURNING public.profiles.username INTO updated_username;
-
-    RETURN updated_username;
-END;
-$$;
-
-REVOKE ALL ON FUNCTION public.set_my_username(TEXT) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.set_my_username(TEXT) TO authenticated;
-
-
--- ------------------------------------------------------------
--- 6. RESOLVE AN INVITE LINK
--- No function needed. The client selects the profile row by username,
--- and the existing "Profiles are viewable by authenticated users"
--- policy already decides the outcome: a member who turned "hide me
--- from search" off returns no row, and so does a member who blocked
--- the visitor. Doing it in the policy means one code path and no extra
--- SECURITY DEFINER surface.
--- ------------------------------------------------------------
-
-
--- ------------------------------------------------------------
--- 7. RELOAD THE API SCHEMA CACHE
--- ------------------------------------------------------------
-
-NOTIFY pgrst, 'reload schema';
-
-
--- ------------------------------------------------------------
--- 8. VERIFY
--- Expected: 3 rows, all result = 'ok'.
--- ------------------------------------------------------------
-
-SELECT 'discoverable_default' AS check_name,
-       CASE WHEN (
-           SELECT column_default
-           FROM information_schema.columns
-           WHERE table_schema = 'public'
-             AND table_name = 'profiles'
-             AND column_name = 'is_discoverable'
-       ) LIKE '%true%' THEN 'ok' ELSE 'FAILED' END AS result
-UNION ALL
-SELECT 'functions_created',
-       CASE WHEN COUNT(*) = 2 THEN 'ok' ELSE 'FAILED (' || COUNT(*) || '/2)' END
-FROM pg_proc AS p
-JOIN pg_namespace AS n ON n.oid = p.pronamespace
-WHERE n.nspname = 'public'
-  AND p.proname IN ('username_available', 'set_my_username')
-UNION ALL
-SELECT 'everyone_discoverable',
-       CASE WHEN COUNT(*) = 0 THEN 'ok' ELSE 'FAILED (' || COUNT(*) || ' hidden)' END
-FROM public.profiles
-WHERE is_discoverable IS DISTINCT FROM TRUE;
-
--- ================ PART 8/24: migrations/20261014_roles_and_admin.sql ================
--- ============================================================
--- CAMPUS CONNECT ‚Äî ROLES, APPROVAL, AND ADMIN
--- Kabarak University: Student / Lecturer / Security / Admin.
---
--- Idempotent: safe to run more than once. Uses DROP ... IF EXISTS,
--- CREATE OR REPLACE, ADD COLUMN IF NOT EXISTS, and catalog checks
--- around index creation.
---
--- RUN ORDER
---   1. database/schema.sql
---   2. every file in database/migrations/ that already exists
---   3. database/migrations/20261013_find_people.sql
---   4. THIS FILE
--- ============================================================
-
-
--- ------------------------------------------------------------
--- 1. ROLE COLUMNS ON PROFILES
--- Existing members become students and stay approved, so nothing that
--- works today breaks after this runs.
--- ------------------------------------------------------------
-
-ALTER TABLE public.profiles
-    ADD COLUMN IF NOT EXISTS role TEXT NOT NULL DEFAULT 'student';
-
-ALTER TABLE public.profiles
-    ADD COLUMN IF NOT EXISTS verification_status TEXT NOT NULL DEFAULT 'approved';
-
-ALTER TABLE public.profiles
-    ADD COLUMN IF NOT EXISTS requested_role TEXT NOT NULL DEFAULT '';
-
-ALTER TABLE public.profiles
-    ADD COLUMN IF NOT EXISTS university TEXT NOT NULL DEFAULT '';
-
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint
-        WHERE conname = 'profiles_role_check' AND conrelid = 'public.profiles'::regclass
-    ) THEN
-        ALTER TABLE public.profiles
-            ADD CONSTRAINT profiles_role_check
-            CHECK (role IN ('student', 'lecturer', 'security', 'admin'));
-    END IF;
-
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint
-        WHERE conname = 'profiles_verification_status_check'
-          AND conrelid = 'public.profiles'::regclass
-    ) THEN
-        ALTER TABLE public.profiles
-            ADD CONSTRAINT profiles_verification_status_check
-            CHECK (verification_status IN ('pending', 'approved', 'rejected'));
-    END IF;
-
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint
-        WHERE conname = 'profiles_requested_role_check'
-          AND conrelid = 'public.profiles'::regclass
-    ) THEN
-        ALTER TABLE public.profiles
-            ADD CONSTRAINT profiles_requested_role_check
-            CHECK (requested_role IN ('', 'student', 'lecturer', 'security'));
-    END IF;
-END;
-$$;
-
--- Rows that existed before this migration already carry the new column
--- defaults (student, approved). An UPDATE here used to force every role
--- back to student, which silently demoted admins and lecturers whenever
--- the setup was run a second time, so it is deliberately not done.
-
-
--- ------------------------------------------------------------
--- 2. REGISTRATION NUMBERS LIVE IN THEIR OWN TABLE
--- The profile screen reads profiles with select('*). Keeping the
--- number there would hand it to anyone allowed to read the row.
--- In its own table, Row Level Security can limit it to the owner and
--- to admins, which is what stops anyone browsing student numbers.
--- ------------------------------------------------------------
-
-CREATE TABLE IF NOT EXISTS public.student_registrations (
-    user_id UUID PRIMARY KEY REFERENCES public.profiles(id) ON DELETE CASCADE,
-    registration_number TEXT NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT student_registrations_number_format_check
-        CHECK (registration_number ~ '^[A-Za-z0-9][-./ A-Za-z0-9]{2,31}$')
-);
-
-CREATE UNIQUE INDEX IF NOT EXISTS student_registrations_number_key
-    ON public.student_registrations (registration_number);
-
-ALTER TABLE public.student_registrations ENABLE ROW LEVEL SECURITY;
-
-
--- ------------------------------------------------------------
--- 3. WHO AM I ‚Äî admin check that does not recurse through RLS
--- SECURITY DEFINER so reading profiles.role is allowed inside the
--- policies that themselves consult profiles.role.
--- ------------------------------------------------------------
-
-CREATE OR REPLACE FUNCTION public.is_admin()
-RETURNS BOOLEAN
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-    SELECT COALESCE(
-        (SELECT p.role = 'admin' FROM public.profiles AS p WHERE p.id = auth.uid()),
-        FALSE
-    );
-$$;
-
-CREATE OR REPLACE FUNCTION public.my_role()
-RETURNS TEXT
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-    SELECT COALESCE(
-        (SELECT p.role FROM public.profiles AS p WHERE p.id = auth.uid()),
-        'student'
-    );
-$$;
-
-REVOKE ALL ON FUNCTION public.is_admin() FROM PUBLIC, anon;
-REVOKE ALL ON FUNCTION public.my_role() FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.is_admin() TO authenticated;
-GRANT EXECUTE ON FUNCTION public.my_role() TO authenticated;
-
-
--- ------------------------------------------------------------
--- 4. A MEMBER CANNOT PROMOTE THEMSELF
--- This is the whole point of the feature: without it, anyone could set
--- role='security' and read every found ID. RLS policies alone cannot
--- compare old and new column values, so a trigger does it.
---
--- On INSERT the role is forced to student. A person who wants lecturer
--- or security access only ever stores a REQUEST, which an admin acts on.
--- ------------------------------------------------------------
-
-CREATE OR REPLACE FUNCTION public.enforce_profile_role_integrity()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
--- Any request coming through the API carries a signed-in user, so
--- auth.uid() is set. It is NULL only for the SQL Editor, the service
--- key, and migrations like the admin seed in section 9 ‚Äî the app owner
--- working directly in the database. Anonymous API traffic never reaches
--- this trigger, because every policy on profiles is TO authenticated.
-AS $$
-BEGIN
-    IF auth.uid() IS NULL THEN
-        RETURN NEW;
-    END IF;
-
-    IF TG_OP = 'INSERT' THEN
-        IF public.is_admin() AND NEW.role IS NOT NULL THEN
-            RETURN NEW;
-        END IF;
-        -- Sign-up can carry a request, never a role.
-        NEW.role := 'student';
-        IF NEW.requested_role IN ('lecturer', 'security') THEN
-            NEW.verification_status := 'pending';
-        ELSE
-            NEW.verification_status := 'approved';
-            NEW.requested_role := '';
-        END IF;
-        RETURN NEW;
-    END IF;
-
-    -- A member may ask for a role; only an admin may grant one.
-    IF NEW.requested_role IS DISTINCT FROM OLD.requested_role THEN
-        -- Withdrawing a request puts a plain student back in good
-        -- standing. This grants nothing: student is the baseline role.
-        IF NEW.requested_role = ''
-           AND OLD.role = 'student'
-           AND NOT public.is_admin() THEN
-            NEW.verification_status := 'approved';
-            RETURN NEW;
-        END IF;
-
-        IF NEW.requested_role <> '' AND NOT public.is_admin() THEN
-            IF OLD.verification_status = 'rejected' AND OLD.requested_role = NEW.requested_role THEN
-                RAISE EXCEPTION 'An admin already rejected that role request.'
-                    USING ERRCODE = '42501';
-            END IF;
-            -- The request only marks the account pending. NEW.role keeps
-            -- its old value, so asking for another role can never promote
-            -- the sender and can never demote one an admin already granted.
-            NEW.verification_status := 'pending';
-            RETURN NEW;
-        END IF;
-    END IF;
-
-    IF NEW.role IS DISTINCT FROM OLD.role
-       OR NEW.verification_status IS DISTINCT FROM OLD.verification_status THEN
-        IF NOT public.is_admin() THEN
-            RAISE EXCEPTION 'Only an admin can change a role or approval status.'
-                USING ERRCODE = '42501';
-        END IF;
-    END IF;
-
-    RETURN NEW;
-END;
-$$;
-
-REVOKE ALL ON FUNCTION public.enforce_profile_role_integrity() FROM PUBLIC, anon, authenticated;
-
-DROP TRIGGER IF EXISTS profiles_enforce_role_integrity ON public.profiles;
-CREATE TRIGGER profiles_enforce_role_integrity
-    BEFORE INSERT OR UPDATE
-    ON public.profiles
-    FOR EACH ROW
-    EXECUTE FUNCTION public.enforce_profile_role_integrity();
-
-
--- ------------------------------------------------------------
--- 5. ADMIN ACTION LOG
--- ------------------------------------------------------------
-
-CREATE TABLE IF NOT EXISTS public.admin_action_log (
-    id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
-    actor_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-    target_user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-    action TEXT NOT NULL,
-    detail TEXT NOT NULL DEFAULT '',
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT admin_action_log_action_check
-        CHECK (action IN ('approve', 'reject', 'set_role', 'reset_role_request'))
-);
-
-CREATE INDEX IF NOT EXISTS admin_action_log_target_idx
-    ON public.admin_action_log (target_user_id, created_at DESC);
-
-ALTER TABLE public.admin_action_log ENABLE ROW LEVEL SECURITY;
-
-
--- ------------------------------------------------------------
--- 6. POLICIES
--- ------------------------------------------------------------
-
--- Own registration row; admins see all so they can verify a claimant.
-DROP POLICY IF EXISTS "Members manage their own registration number"
-    ON public.student_registrations;
-CREATE POLICY "Members manage their own registration number"
-    ON public.student_registrations
-    FOR ALL TO authenticated
-    USING (auth.uid() = user_id)
-    WITH CHECK (auth.uid() = user_id);
-
-DROP POLICY IF EXISTS "Admins view all registration numbers"
-    ON public.student_registrations;
-CREATE POLICY "Admins view all registration numbers"
-    ON public.student_registrations
-    FOR SELECT TO authenticated
-    USING (public.is_admin());
-
--- The registration number is immutable once set, so a member cannot
--- trade it around; only an admin may move it.
-CREATE OR REPLACE FUNCTION public.enforce_registration_immutable()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-BEGIN
-    IF auth.uid() IS NULL THEN
-        RETURN NEW;
-    END IF;
-
-    IF NEW.registration_number IS DISTINCT FROM OLD.registration_number
-       AND NOT public.is_admin() THEN
-        RAISE EXCEPTION 'Only an admin can change a registration number.'
-            USING ERRCODE = '42501';
-    END IF;
-    RETURN NEW;
-END;
-$$;
-
-REVOKE ALL ON FUNCTION public.enforce_registration_immutable() FROM PUBLIC, anon, authenticated;
-
-DROP TRIGGER IF EXISTS student_registrations_enforce_immutable ON public.student_registrations;
-CREATE TRIGGER student_registrations_enforce_immutable
-    BEFORE UPDATE
-    ON public.student_registrations
-    FOR EACH ROW
-    EXECUTE FUNCTION public.enforce_registration_immutable();
-
--- Admins may read every profile, including members hidden from search,
--- so they can review a pending request.
-DROP POLICY IF EXISTS "Admins view all profiles"
-    ON public.profiles;
-CREATE POLICY "Admins view all profiles"
-    ON public.profiles
-    FOR SELECT TO authenticated
-    USING (public.is_admin());
-
-DROP POLICY IF EXISTS "Admins view audit log"
-    ON public.admin_action_log;
-CREATE POLICY "Admins view audit log"
-    ON public.admin_action_log
-    FOR SELECT TO authenticated
-    USING (public.is_admin());
-
-
--- ------------------------------------------------------------
--- 7. ADMIN-ONLY CHANGES RUN AS DEFINER
--- Deliberately narrow: an admin gets these three operations, not a
--- blanket right to edit anyone's profile.
--- ------------------------------------------------------------
-
-CREATE OR REPLACE FUNCTION public.approve_membership(p_user_id UUID)
-RETURNS VOID
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-BEGIN
-    IF NOT public.is_admin() THEN
-        RAISE EXCEPTION 'Only an admin can approve a role request.'
-            USING ERRCODE = '42501';
-    END IF;
-
-    UPDATE public.profiles
-        SET verification_status = 'approved',
-            role = CASE WHEN requested_role IN ('lecturer', 'security')
-                        THEN requested_role ELSE role END
-        WHERE id = p_user_id;
-
-    IF NOT FOUND THEN
-        RAISE EXCEPTION 'No such member.' USING ERRCODE = 'P0002';
-    END IF;
-
-    INSERT INTO public.admin_action_log (actor_id, target_user_id, action)
-        VALUES (auth.uid(), p_user_id, 'approve');
-END;
-$$;
-
-CREATE OR REPLACE FUNCTION public.reject_membership(p_user_id UUID)
-RETURNS VOID
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-BEGIN
-    IF NOT public.is_admin() THEN
-        RAISE EXCEPTION 'Only an admin can reject a role request.'
-            USING ERRCODE = '42501';
-    END IF;
-
-    UPDATE public.profiles
-        SET verification_status = 'rejected'
-        WHERE id = p_user_id;
-
-    IF NOT FOUND THEN
-        RAISE EXCEPTION 'No such member.' USING ERRCODE = 'P0002';
-    END IF;
-
-    INSERT INTO public.admin_action_log (actor_id, target_user_id, action)
-        VALUES (auth.uid(), p_user_id, 'reject');
-END;
-$$;
-
-CREATE OR REPLACE FUNCTION public.set_user_role(p_user_id UUID, p_role TEXT)
-RETURNS VOID
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-BEGIN
-    IF NOT public.is_admin() THEN
-        RAISE EXCEPTION 'Only an admin can change a role.'
-            USING ERRCODE = '42501';
-    END IF;
-
-    IF p_role NOT IN ('student', 'lecturer', 'security', 'admin') THEN
-        RAISE EXCEPTION 'Unknown role.' USING ERRCODE = '22023';
-    END IF;
-
-    -- Refuse to lock everybody out of the admin screen.
-    IF p_role <> 'admin'
-       AND (SELECT role FROM public.profiles WHERE id = p_user_id) = 'admin'
-       AND (SELECT COUNT(*) FROM public.profiles WHERE role = 'admin') <= 1 THEN
-        RAISE EXCEPTION 'That is the last admin. Appoint another admin first.'
-            USING ERRCODE = 'P0001';
-    END IF;
-
-    UPDATE public.profiles
-        SET role = p_role,
-            verification_status = 'approved',
-            requested_role = ''
-        WHERE id = p_user_id;
-
-    IF NOT FOUND THEN
-        RAISE EXCEPTION 'No such member.' USING ERRCODE = 'P0002';
-    END IF;
-
-    INSERT INTO public.admin_action_log (actor_id, target_user_id, action, detail)
-        VALUES (auth.uid(), p_user_id, 'set_role', p_role);
-END;
-$$;
-
-REVOKE ALL ON FUNCTION public.approve_membership(UUID) FROM PUBLIC, anon;
-REVOKE ALL ON FUNCTION public.reject_membership(UUID) FROM PUBLIC, anon;
-REVOKE ALL ON FUNCTION public.set_user_role(UUID, TEXT) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.approve_membership(UUID) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.reject_membership(UUID) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.set_user_role(UUID, TEXT) TO authenticated;
-
-
--- ------------------------------------------------------------
--- 8. TABLE GRANTS
--- ------------------------------------------------------------
-
-GRANT USAGE ON SCHEMA public TO authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.student_registrations TO authenticated;
-GRANT SELECT ON public.admin_action_log TO authenticated;
-
-
--- ------------------------------------------------------------
--- 9. SEED THE FIRST ADMIN
--- A chicken-and-egg problem: only an admin can appoint an admin, so the
--- very first one has to be written in by hand. Replace the placeholder
--- below with YOUR OWN login email, then run this block. It is safe to
--- repeat. Skip it entirely if you would rather do it later.
--- ------------------------------------------------------------
-
-DO $$
-DECLARE
-    admin_email TEXT := 'REPLACE-WITH-YOUR-EMAIL';
-    admin_id UUID;
-BEGIN
-    IF admin_email LIKE 'REPLACE-WITH%' THEN
-        RAISE NOTICE 'Admin seed skipped: replace the placeholder email first.';
-        RETURN;
-    END IF;
-
-    SELECT u.id INTO admin_id FROM auth.users AS u WHERE LOWER(u.email) = LOWER(admin_email);
-    IF admin_id IS NULL THEN
-        RAISE EXCEPTION 'No auth user with email %', admin_email;
-    END IF;
-
-    INSERT INTO public.profiles (id, username, full_name)
-        VALUES (admin_id, 'admin' || LEFT(admin_id::TEXT, 6), 'Admin')
-        ON CONFLICT (id) DO NOTHING;
-
-    UPDATE public.profiles
-        SET role = 'admin', verification_status = 'approved', requested_role = ''
-        WHERE id = admin_id;
-
-    RAISE NOTICE 'Seeded admin %', admin_email;
-END;
-$$;
-
-
--- ------------------------------------------------------------
--- 10. RELOAD THE API SCHEMA CACHE
--- ------------------------------------------------------------
-
-NOTIFY pgrst, 'reload schema';
-
-
--- ------------------------------------------------------------
--- 11. VERIFY
--- Expected: five rows, all result = 'ok'.
--- ------------------------------------------------------------
-
-SELECT 'role_columns' AS check_name,
-       CASE WHEN COUNT(*) = 4 THEN 'ok'
-            ELSE 'FAILED (' || COUNT(*) || '/4)' END AS result
-FROM information_schema.columns
-WHERE table_schema = 'public' AND table_name = 'profiles'
-  AND column_name IN ('role', 'verification_status', 'requested_role', 'university')
-UNION ALL
-SELECT 'role_guard_trigger',
-       CASE WHEN COUNT(*) = 1 THEN 'ok' ELSE 'FAILED (missing)' END
-FROM pg_trigger WHERE tgname = 'profiles_enforce_role_integrity' AND NOT tgisinternal
-UNION ALL
-SELECT 'admin_rpc_count',
-       CASE WHEN COUNT(*) = 3 THEN 'ok' ELSE 'FAILED (' || COUNT(*) || '/3)' END
-FROM pg_proc AS p JOIN pg_namespace AS n ON n.oid = p.pronamespace
-WHERE n.nspname = 'public'
-  AND p.proname IN ('approve_membership', 'reject_membership', 'set_user_role')
-UNION ALL
-SELECT 'registrations_table',
-       CASE WHEN COUNT(*) = 1 THEN 'ok' ELSE 'FAILED (missing)' END
-FROM information_schema.tables
-WHERE table_schema = 'public' AND table_name = 'student_registrations'
-UNION ALL
-SELECT 'at_least_one_admin',
-       CASE WHEN COUNT(*) > 0 THEN 'ok' ELSE 'NONE YET (run section 9)' END
-FROM public.profiles WHERE role = 'admin';
-
--- ============ PART 9/24: migrations/20261014_message_edit_delete.sql ============
--- ============================================================
--- MESSAGE EDIT + DELETE (run this whole file in Supabase SQL Editor)
--- Rules enforced inside the database, not just the app:
---   * sender may edit own text messages within 20 minutes
---   * sender may delete for everyone within 15 minutes
---   * any participant may hide a message for themselves, any time
--- Safe to run repeatedly.
--- ============================================================
-
-ALTER TABLE public.messages
-    ADD COLUMN IF NOT EXISTS edited_at timestamptz,
-    ADD COLUMN IF NOT EXISTS deleted_for_everyone boolean NOT NULL DEFAULT FALSE,
-    ADD COLUMN IF NOT EXISTS deleted_by uuid[] NOT NULL DEFAULT '{}';
-
-DROP POLICY IF EXISTS "Recipients mark messages as read" ON public.messages;
-DROP POLICY IF EXISTS "Participants update their messages" ON public.messages;
-
-CREATE POLICY "Participants update their messages"
-    ON public.messages FOR UPDATE TO authenticated
-    USING (auth.uid() = sender_id OR auth.uid() = receiver_id)
-    WITH CHECK (auth.uid() = sender_id OR auth.uid() = receiver_id);
-
-CREATE OR REPLACE FUNCTION public.protect_message_fields()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-SET search_path = ''
-AS $$
-DECLARE
-    actor uuid := auth.uid();
-BEGIN
-    IF NEW.id IS DISTINCT FROM OLD.id
-       OR NEW.sender_id IS DISTINCT FROM OLD.sender_id
-       OR NEW.receiver_id IS DISTINCT FROM OLD.receiver_id
-       OR NEW.created_at IS DISTINCT FROM OLD.created_at
-    THEN
-        RAISE EXCEPTION 'Message id, sender, receiver and creation time cannot be changed.';
-    END IF;
-
-    IF NEW.deleted_for_everyone IS DISTINCT FROM OLD.deleted_for_everyone THEN
-        IF NEW.deleted_for_everyone <> TRUE
-           OR actor IS DISTINCT FROM OLD.sender_id
-           OR OLD.deleted_for_everyone
-           OR OLD.created_at <= now() - interval '15 minutes'
-        THEN
-            RAISE EXCEPTION 'Only the sender can delete for everyone within 15 minutes.';
-        END IF;
-        NEW.content := NULL;
-        NEW.media_url := NULL;
-    ELSIF NEW.media_url IS DISTINCT FROM OLD.media_url THEN
-        RAISE EXCEPTION 'Message media cannot be changed.';
-    ELSIF NEW.content IS DISTINCT FROM OLD.content THEN
-        IF actor IS DISTINCT FROM OLD.sender_id
-           OR OLD.deleted_for_everyone
-           OR OLD.created_at <= now() - interval '20 minutes'
-        THEN
-            RAISE EXCEPTION 'Only the sender can edit a message within 20 minutes.';
-        END IF;
-        NEW.edited_at := now();
-    END IF;
-
-    IF NEW.deleted_by IS DISTINCT FROM OLD.deleted_by THEN
-        IF actor IS NULL
-           OR (actor <> OLD.sender_id AND actor <> OLD.receiver_id)
-           OR NOT (OLD.deleted_by <@ NEW.deleted_by)
-           OR NOT (actor = ANY (NEW.deleted_by))
-           OR coalesce(array_length(NEW.deleted_by, 1), 0) <>
-              coalesce(array_length(OLD.deleted_by, 1), 0) + 1
-        THEN
-            RAISE EXCEPTION 'A participant can only hide a message for themselves.';
-        END IF;
-    END IF;
-
-    IF NEW.edited_at IS DISTINCT FROM OLD.edited_at
-       AND NOT (NEW.content IS DISTINCT FROM OLD.content)
-    THEN
-        RAISE EXCEPTION 'The edit timestamp changes only with an actual edit.';
-    END IF;
-
-    IF NEW.is_read IS DISTINCT FROM OLD.is_read THEN
-        IF OLD.is_read = TRUE AND NEW.is_read = FALSE THEN
-            RAISE EXCEPTION 'A read message cannot be marked unread.';
-        END IF;
-        IF NEW.is_read = TRUE AND NEW.read_at IS NULL THEN
-            NEW.read_at := NOW();
-        END IF;
-    END IF;
-
-    IF NEW.is_read = FALSE THEN
-        NEW.read_at := NULL;
-    END IF;
-
-    RETURN NEW;
-END;
-$$;
-
--- The trigger already exists from schema.sql; reattach to pick up the new body.
-DROP TRIGGER IF EXISTS protect_message_fields_trigger ON public.messages;
-CREATE TRIGGER protect_message_fields_trigger
-    BEFORE UPDATE ON public.messages
-    FOR EACH ROW
-    EXECUTE FUNCTION public.protect_message_fields();
-
-
--- ============ PART 10/24: migrations/20261015_programmes_units_classes.sql ============
--- ============================================================
--- CAMPUS CONNECT ‚Äî PROGRAMMES, UNITS, AND CLASS TIMETABLES
--- Kabarak University course system:
---   * programmes: schools and degrees (seeded below)
---   * units: course units per programme/year/semester (lecturers add)
---   * class_sessions: weekly class plan (time, room, or online link)
---   * profiles: each member can attach programme + year + semester
---     which the app shows as 1.1, 2.2, M1.1, ...
--- Idempotent: safe to run more than once.
--- ============================================================
-
-CREATE TABLE IF NOT EXISTS public.programmes (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    school TEXT NOT NULL,
-    name TEXT NOT NULL,
-    level TEXT NOT NULL DEFAULT 'undergraduate',
-    max_year INT NOT NULL DEFAULT 4,
-    campus TEXT NOT NULL DEFAULT 'Main',
-    specializations TEXT NOT NULL DEFAULT '',
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT programmes_level_check
-        CHECK (level IN ('certificate', 'diploma', 'undergraduate', 'masters', 'phd')),
-    CONSTRAINT programmes_school_name_key UNIQUE (school, name)
-);
-
-ALTER TABLE public.programmes
-    ADD COLUMN IF NOT EXISTS campus TEXT NOT NULL DEFAULT 'Main',
-    ADD COLUMN IF NOT EXISTS specializations TEXT NOT NULL DEFAULT '';
-
-CREATE TABLE IF NOT EXISTS public.units (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    programme_id UUID NOT NULL REFERENCES public.programmes(id) ON DELETE CASCADE,
-    code TEXT NOT NULL,
-    title TEXT NOT NULL,
-    study_year INT NOT NULL CHECK (study_year BETWEEN 1 AND 6),
-    semester INT NOT NULL CHECK (semester IN (1, 2)),
-    created_by UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT units_code_format_check CHECK (code ~ '^[A-Za-z0-9][-./ A-Za-z0-9]{1,15}$'),
-    CONSTRAINT units_title_length_check CHECK (char_length(title) BETWEEN 2 AND 120),
-    CONSTRAINT units_programme_code_key UNIQUE (programme_id, code)
-);
-
-CREATE TABLE IF NOT EXISTS public.class_sessions (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    unit_id UUID NOT NULL REFERENCES public.units(id) ON DELETE CASCADE,
-    lecturer_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-    weekday INT NOT NULL CHECK (weekday BETWEEN 1 AND 6),
-    start_time TIME NOT NULL,
-    end_time TIME NOT NULL,
-    mode TEXT NOT NULL DEFAULT 'physical',
-    location TEXT NOT NULL DEFAULT '',
-    link TEXT NOT NULL DEFAULT '',
-    note TEXT NOT NULL DEFAULT '',
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT class_sessions_mode_check CHECK (mode IN ('physical', 'online')),
-    CONSTRAINT class_sessions_time_order_check CHECK (end_time > start_time),
-    CONSTRAINT class_sessions_link_length_check CHECK (char_length(link) <= 300)
-);
-
-CREATE INDEX IF NOT EXISTS units_programme_year_semester_idx
-    ON public.units (programme_id, study_year, semester);
-CREATE INDEX IF NOT EXISTS class_sessions_lecturer_idx
-    ON public.class_sessions (lecturer_id, weekday, start_time);
-CREATE INDEX IF NOT EXISTS class_sessions_unit_idx
-    ON public.class_sessions (unit_id);
-
-ALTER TABLE public.profiles
-    ADD COLUMN IF NOT EXISTS programme_id UUID REFERENCES public.programmes(id) ON DELETE SET NULL,
-    ADD COLUMN IF NOT EXISTS study_year INT CHECK (study_year BETWEEN 1 AND 6),
-    ADD COLUMN IF NOT EXISTS semester INT CHECK (semester IN (1, 2));
-
-CREATE INDEX IF NOT EXISTS profiles_programme_idx
-    ON public.profiles (programme_id, study_year, semester);
-
--- ------------------------------------------------------------
--- ROW LEVEL SECURITY
--- Members read everything that belongs to the public catalogue;
--- only lecturers and admins may write units and class plans,
--- and only their own rows.
--- ------------------------------------------------------------
-
-ALTER TABLE public.programmes ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.units ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.class_sessions ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS "Members view programmes" ON public.programmes;
-CREATE POLICY "Members view programmes"
-    ON public.programmes FOR SELECT TO authenticated
-    USING (TRUE);
-
-DROP POLICY IF EXISTS "Members view units" ON public.units;
-CREATE POLICY "Members view units"
-    ON public.units FOR SELECT TO authenticated
-    USING (TRUE);
-
-DROP POLICY IF EXISTS "Lecturers add units" ON public.units;
-CREATE POLICY "Lecturers add units"
-    ON public.units FOR INSERT TO authenticated
-    WITH CHECK (
-        auth.uid() = created_by
-        AND public.my_role() IN ('lecturer', 'admin')
-    );
-
-DROP POLICY IF EXISTS "Owners and admins curate units" ON public.units;
-CREATE POLICY "Owners and admins curate units"
-    ON public.units FOR UPDATE TO authenticated
-    USING (auth.uid() = created_by OR public.is_admin())
-    WITH CHECK (
-        auth.uid() = created_by
-        AND public.my_role() IN ('lecturer', 'admin')
-        OR public.is_admin()
-    );
-
-DROP POLICY IF EXISTS "Owners and admins remove units" ON public.units;
-CREATE POLICY "Owners and admins remove units"
-    ON public.units FOR DELETE TO authenticated
-    USING (auth.uid() = created_by OR public.is_admin());
-
-DROP POLICY IF EXISTS "Members view class sessions" ON public.class_sessions;
-CREATE POLICY "Members view class sessions"
-    ON public.class_sessions FOR SELECT TO authenticated
-    USING (TRUE);
-
-DROP POLICY IF EXISTS "Lecturers plan their classes" ON public.class_sessions;
-CREATE POLICY "Lecturers plan their classes"
-    ON public.class_sessions FOR INSERT TO authenticated
-    WITH CHECK (
-        auth.uid() = lecturer_id
-        AND public.my_role() IN ('lecturer', 'admin')
-    );
-
-DROP POLICY IF EXISTS "Owners and admins edit class plans" ON public.class_sessions;
-CREATE POLICY "Owners and admins edit class plans"
-    ON public.class_sessions FOR UPDATE TO authenticated
-    USING (auth.uid() = lecturer_id OR public.is_admin())
-    WITH CHECK (
-        auth.uid() = lecturer_id
-        AND public.my_role() IN ('lecturer', 'admin')
-        OR public.is_admin()
-    );
-
-DROP POLICY IF EXISTS "Owners and admins remove class plans" ON public.class_sessions;
-CREATE POLICY "Owners and admins remove class plans"
-    ON public.class_sessions FOR DELETE TO authenticated
-    USING (auth.uid() = lecturer_id OR public.is_admin());
-
-GRANT SELECT ON public.programmes TO authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.units TO authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.class_sessions TO authenticated;
-
--- ------------------------------------------------------------
--- SEED: KABARAK UNIVERSITY SCHOOLS AND PROGRAMMES
--- Full official list (school, level, programme, campus,
--- specializations/options). Lecturers add the unit lists in the app.
--- ON CONFLICT keeps edits made later in the app when this file is
--- run again.
--- ------------------------------------------------------------
-
-INSERT INTO public.programmes (school, name, level, max_year, campus, specializations) VALUES
-    -- School of Business and Economics
-    ('School of Business and Economics', 'Doctor of Philosophy in Business Administration', 'phd', 3, 'Nakuru City', 'Accounting; Strategic Management; Human Resource Management; Finance; Marketing; Entrepreneurship; Management Information Systems; Operations Management'),
-    ('School of Business and Economics', 'Doctor of Philosophy in Finance', 'phd', 3, 'Nakuru City', ''),
-    ('School of Business and Economics', 'Master of Science in Finance', 'masters', 2, 'Nakuru City', 'Finance and Investment Analysis; Finance and Banking Management'),
-    ('School of Business and Economics', 'Master of Business Administration (MBA)', 'masters', 2, 'Nakuru City', 'Accounting; Strategic Management; Human Resource Management; Finance; Marketing; Entrepreneurship; Management Information Systems; Operations Management'),
-    ('School of Business and Economics', 'Master of Science in Project Management', 'masters', 2, 'Nakuru City', ''),
-    ('School of Business and Economics', 'Master of Science in Human Resource Management', 'masters', 2, 'Nakuru City', ''),
-    ('School of Business and Economics', 'Master of Organizational Development', 'masters', 2, 'Nakuru City', ''),
-    ('School of Business and Economics', 'Bachelor of Science in Hospitality Management', 'undergraduate', 4, 'Main', ''),
-    ('School of Business and Economics', 'Bachelor of Business Management and Information Technology (BMIT)', 'undergraduate', 4, 'Main; Nakuru City', ''),
-    ('School of Business and Economics', 'Bachelor of Business Information Technology (BBIT)', 'undergraduate', 4, 'Main; Nakuru City', ''),
-    ('School of Business and Economics', 'Bachelor of Commerce', 'undergraduate', 4, 'Main; Nakuru City', 'Accounting; Banking and Finance; Technology, Innovation and Entrepreneurship; Finance; Human Resource Management; Insurance; Marketing; Operations Management'),
-    ('School of Business and Economics', 'Bachelor of Management Information Systems', 'undergraduate', 4, 'Main', ''),
-    ('School of Business and Economics', 'Bachelor of Science in Economics and Mathematics', 'undergraduate', 4, 'Main', ''),
-    ('School of Business and Economics', 'Bachelor of Science in Economics', 'undergraduate', 4, 'Main', ''),
-    ('School of Business and Economics', 'Bachelor of Science in Economics and Statistics', 'undergraduate', 4, 'Main', ''),
-    ('School of Business and Economics', 'Bachelor of Procurement and Logistics Management', 'undergraduate', 4, 'Main; Nakuru City', ''),
-    ('School of Business and Economics', 'Bachelor of Science in Economics and Finance', 'undergraduate', 4, 'Main', ''),
-    ('School of Business and Economics', 'Bachelor of Science in Agribusiness Management', 'undergraduate', 4, 'Main', ''),
-    ('School of Business and Economics', 'Diploma in Business Administration', 'diploma', 2, 'Nakuru City', ''),
-    ('School of Business and Economics', 'Diploma in Procurement and Logistics Management', 'diploma', 2, 'Nakuru City', ''),
-    ('School of Business and Economics', 'Diploma in Business Management', 'diploma', 2, 'Nakuru City', ''),
-    ('School of Business and Economics', 'Diploma in Business Information Technology', 'diploma', 2, 'Nakuru City', ''),
-    ('School of Business and Economics', 'Diploma in Hospitality Management', 'diploma', 2, 'Main', ''),
-    ('School of Business and Economics', 'Diploma in Tourism Management', 'diploma', 2, 'Main', ''),
-    ('School of Business and Economics', 'Diploma in Human Resource Management', 'diploma', 2, 'Nakuru City', ''),
-    ('School of Business and Economics', 'Diploma in Sales and Marketing', 'diploma', 2, 'Nakuru City', ''),
-    ('School of Business and Economics', 'Diploma in Banking and Finance', 'diploma', 2, 'Nakuru City', ''),
-    ('School of Business and Economics', 'Diploma in Monitoring and Evaluation', 'diploma', 2, 'Nakuru City', ''),
-    ('School of Business and Economics', 'Diploma in Project Management', 'diploma', 2, 'Nakuru City', ''),
-
-    -- School of Science, Engineering and Technology
-    ('School of Science, Engineering and Technology', 'Doctor of Philosophy in IT', 'phd', 3, 'Nakuru City', ''),
-    ('School of Science, Engineering and Technology', 'Doctor of Philosophy in IT Security and Audit', 'phd', 3, 'Nakuru City', ''),
-    ('School of Science, Engineering and Technology', 'Master of Science in Information Technology', 'masters', 2, 'Nakuru City', ''),
-    ('School of Science, Engineering and Technology', 'Master of Science in Physics', 'masters', 2, 'Main', ''),
-    ('School of Science, Engineering and Technology', 'Master of Science in IT Security and Audit', 'masters', 2, 'Nakuru City', ''),
-    ('School of Science, Engineering and Technology', 'Master of Science in Environmental Science', 'masters', 2, 'Nakuru City', ''),
-    ('School of Science, Engineering and Technology', 'Bachelor of Science in Computer Science', 'undergraduate', 4, 'Main', ''),
-    ('School of Science, Engineering and Technology', 'Bachelor of Science in Information Technology', 'undergraduate', 4, 'Main; Nakuru City', ''),
-    ('School of Science, Engineering and Technology', 'Bachelor of Science in Telecommunications', 'undergraduate', 4, 'Main', ''),
-    ('School of Science, Engineering and Technology', 'Bachelor of Science in Actuarial Science', 'undergraduate', 4, 'Main', ''),
-    ('School of Science, Engineering and Technology', 'Bachelor of Science in Computer Security and Forensics', 'undergraduate', 4, 'Main', ''),
-    ('School of Science, Engineering and Technology', 'Bachelor of Science', 'undergraduate', 4, 'Main', 'Mathematics; Zoology; Botany; Chemistry; Physics'),
-    ('School of Science, Engineering and Technology', 'Bachelor of Science in Environmental Science', 'undergraduate', 4, 'Main', ''),
-    ('School of Science, Engineering and Technology', 'Diploma in Computer Science', 'diploma', 2, 'Nakuru City', ''),
-    ('School of Science, Engineering and Technology', 'Diploma in Information Technology', 'diploma', 2, 'Nakuru City', ''),
-    ('School of Science, Engineering and Technology', 'Certificate in Information Technology', 'certificate', 1, 'Nakuru City', ''),
-    ('School of Science, Engineering and Technology', 'Certificate in Environmental Impact Assessment', 'certificate', 1, 'Nakuru City', ''),
-
-    -- School of Education, Humanities and Social Sciences
-    ('School of Education, Humanities and Social Sciences', 'Doctor of Philosophy in Education', 'phd', 3, 'All campuses', 'Management and Leadership; Guidance and Counseling; Education Communication Technology; Educational Psychology; Curriculum Studies'),
-    ('School of Education, Humanities and Social Sciences', 'Master of Education in Management and Leadership of Education', 'masters', 2, 'All campuses', ''),
-    ('School of Education, Humanities and Social Sciences', 'Master of Education in Guidance and Counseling', 'masters', 2, 'All campuses', ''),
-    ('School of Education, Humanities and Social Sciences', 'Master of Education in Curriculum Studies', 'masters', 2, 'All campuses', ''),
-    ('School of Education, Humanities and Social Sciences', 'Bachelor of Agricultural Education and Extension', 'undergraduate', 4, 'Main', ''),
-    ('School of Education, Humanities and Social Sciences', 'Bachelor of Arts in Chaplaincy', 'undergraduate', 4, 'Main; Nakuru City', ''),
-    ('School of Education, Humanities and Social Sciences', 'Bachelor of Education (Science)', 'undergraduate', 4, 'Main', 'Mathematics; Biology; Chemistry; Agriculture; Computer; Physics'),
-    ('School of Education, Humanities and Social Sciences', 'Bachelor of Education (Arts)', 'undergraduate', 4, 'Main', 'English; Literature; History; Music; Geography; Kiswahili; CRE; Business'),
-    ('School of Education, Humanities and Social Sciences', 'Bachelor of Theology', 'undergraduate', 4, 'Main', ''),
-    ('School of Education, Humanities and Social Sciences', 'Diploma in Theology', 'diploma', 2, 'Main; Nakuru City', ''),
-    ('School of Education, Humanities and Social Sciences', 'Diploma in Chaplaincy', 'diploma', 2, 'Main; Nakuru City', ''),
-    ('School of Education, Humanities and Social Sciences', 'Diploma in Education (Science)', 'diploma', 2, 'Main', ''),
-    ('School of Education, Humanities and Social Sciences', 'Diploma in Education (Arts)', 'diploma', 2, 'Main', ''),
-    ('School of Education, Humanities and Social Sciences', 'Diploma in Education (Early Childhood Development Education)', 'diploma', 2, 'Main', ''),
-    ('School of Education, Humanities and Social Sciences', 'Certificate in Education (Early Childhood Education)', 'certificate', 1, 'Main', ''),
-
-    -- School of Law
-    ('School of Law', 'Bachelor of Laws (LLB)', 'undergraduate', 4, 'Main', ''),
-
-    -- School of Medicine and Health Sciences
-    ('School of Medicine and Health Sciences', 'Master of Medicine in Family Medicine', 'masters', 3, 'Main', ''),
-    ('School of Medicine and Health Sciences', 'Master of Science in Human Nutrition and Dietetics', 'masters', 2, 'Main', ''),
-    ('School of Medicine and Health Sciences', 'Master of Public Health', 'masters', 2, 'Main', ''),
-    ('School of Medicine and Health Sciences', 'Master of Science in Nursing', 'masters', 2, 'Main', 'Midwifery and Reproductive Health Nursing; Oncology and Palliative Care Nursing; Nursing Education; Leadership and Management in Nursing; Critical Care Nursing; Neonatal and Pediatric Health Nursing'),
-    ('School of Medicine and Health Sciences', 'Master of Science in Clinical Medicine (Child and Adolescent Health)', 'masters', 2, 'Main', ''),
-    ('School of Medicine and Health Sciences', 'Bachelor of Science in Nursing (Direct Entry)', 'undergraduate', 4, 'Main', ''),
-    ('School of Medicine and Health Sciences', 'Bachelor of Science in Nursing (In-Service)', 'undergraduate', 3, 'Main', ''),
-    ('School of Medicine and Health Sciences', 'Bachelor of Science in Clinical Medicine', 'undergraduate', 5, 'Main', ''),
-    ('School of Medicine and Health Sciences', 'Bachelor of Science in Clinical Medicine (In-Service)', 'undergraduate', 4, 'Main', ''),
-    ('School of Medicine and Health Sciences', 'Bachelor of Science in Public Health', 'undergraduate', 4, 'Main', ''),
-    ('School of Medicine and Health Sciences', 'Bachelor of Science in Human Nutrition and Dietetics', 'undergraduate', 4, 'Main', ''),
-    ('School of Medicine and Health Sciences', 'Diploma in Human Nutrition and Dietetics', 'diploma', 2, 'Main', ''),
-    ('School of Medicine and Health Sciences', 'Diploma in Environmental Health', 'diploma', 2, 'Main', ''),
-    ('School of Medicine and Health Sciences', 'Diploma in Medical Laboratory Sciences', 'diploma', 3, 'Main', ''),
-    ('School of Medicine and Health Sciences', 'Diploma in Clinical Medicine and Surgery', 'diploma', 3, 'Main', ''),
-
-    -- School of Music and Media
-    ('School of Music and Media', 'Doctor of Philosophy in Music', 'phd', 3, 'Main', 'Music Education; Music Composition; Ethnomusicology; Musicology; Church Music and Music Therapy; Music Production Technology'),
-    ('School of Music and Media', 'Master of Music', 'masters', 2, 'Main', 'Music Education; Musicology; Music Composition; Church Music'),
-    ('School of Music and Media', 'Bachelor of Music Production Technology', 'undergraduate', 4, 'Main', ''),
-    ('School of Music and Media', 'Bachelor of Music Theory and Composition', 'undergraduate', 4, 'Main', ''),
-    ('School of Music and Media', 'Bachelor of Mass Communication', 'undergraduate', 4, 'Main', 'Media; Public Relations'),
-    ('School of Music and Media', 'Diploma in Mass Communication', 'diploma', 2, 'Main', 'Media; Public Relations'),
-    ('School of Music and Media', 'Diploma in Music', 'diploma', 2, 'Main', ''),
-    ('School of Music and Media', 'Diploma in Music Production Technology', 'diploma', 2, 'Main', ''),
-    ('School of Music and Media', 'Diploma in Theatre Arts', 'diploma', 2, 'Main', ''),
-    ('School of Music and Media', 'Diploma in Electronic Media', 'diploma', 2, 'Main', ''),
-    ('School of Music and Media', 'Diploma in Film and Theatre', 'diploma', 2, 'Main', ''),
-    ('School of Music and Media', 'Certificate in Music', 'certificate', 1, 'Main', ''),
-    ('School of Music and Media', 'Certificate in Music Production Technology', 'certificate', 1, 'Main', ''),
-    ('School of Music and Media', 'Certificate in Mass Communication', 'certificate', 1, 'Main', ''),
-    ('School of Music and Media', 'Certificate in Film and Theatre', 'certificate', 1, 'Main', ''),
-
-    -- School of Pharmacy
-    ('School of Pharmacy', 'Bachelor of Pharmacy', 'undergraduate', 5, 'Main', '')
-ON CONFLICT (school, name) DO NOTHING;
-
--- ==================== PART 11/24: friend names (contact_names) ==========
-CREATE TABLE IF NOT EXISTS public.contact_names (
-    author_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    peer_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    name TEXT NOT NULL CHECK (char_length(name) BETWEEN 1 AND 80),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    PRIMARY KEY (author_id, peer_id),
-    CHECK (author_id <> peer_id)
-);
-
-CREATE INDEX IF NOT EXISTS contact_names_peer_idx
-    ON public.contact_names (peer_id);
-
-ALTER TABLE public.contact_names ENABLE ROW LEVEL SECURITY;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.contact_names TO authenticated;
-
-DROP POLICY IF EXISTS "Users view their own contact names" ON public.contact_names;
-CREATE POLICY "Users view their own contact names"
-    ON public.contact_names FOR SELECT TO authenticated
-    USING (author_id = (SELECT auth.uid()));
-
-DROP POLICY IF EXISTS "Users save their own contact names" ON public.contact_names;
-CREATE POLICY "Users save their own contact names"
-    ON public.contact_names FOR INSERT TO authenticated
-    WITH CHECK (
-        author_id = (SELECT auth.uid())
-        AND author_id <> peer_id
-    );
-
-DROP POLICY IF EXISTS "Users update their own contact names" ON public.contact_names;
-CREATE POLICY "Users update their own contact names"
-    ON public.contact_names FOR UPDATE TO authenticated
-    USING (author_id = (SELECT auth.uid()))
-    WITH CHECK (author_id = (SELECT auth.uid()) AND author_id <> peer_id);
-
-DROP POLICY IF EXISTS "Users delete their own contact names" ON public.contact_names;
-CREATE POLICY "Users delete their own contact names"
-    ON public.contact_names FOR DELETE TO authenticated
-    USING (author_id = (SELECT auth.uid()));
-
-NOTIFY pgrst, 'reload schema';
--- Campus Connect ‚Äî message reactions, stars and replies (v36)
--- Safe to paste again (re-runnable). Paste in:
--- https://supabase.com/dashboard/project/jvqnwkekbpaynpppjeyf/sql/new
--- The app works without this file too, but then reactions and stars are only
--- visible on your own phone. After pasting, both sides see them.
-BEGIN;
-
--- 1. Emoji reactions on a chat message (visible to both participants).
-CREATE TABLE IF NOT EXISTS public.message_reactions (
-    message_id UUID NOT NULL REFERENCES public.messages(id) ON DELETE CASCADE,
-    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    emoji TEXT NOT NULL CHECK (char_length(emoji) BETWEEN 1 AND 8),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    PRIMARY KEY (message_id, user_id)
-);
-
-CREATE INDEX IF NOT EXISTS message_reactions_message_idx
-    ON public.message_reactions (message_id);
-
-ALTER TABLE public.message_reactions ENABLE ROW LEVEL SECURITY;
-GRANT SELECT, INSERT, DELETE ON public.message_reactions TO authenticated;
-
-DROP POLICY IF EXISTS "Participants view message reactions" ON public.message_reactions;
-CREATE POLICY "Participants view message reactions"
-    ON public.message_reactions FOR SELECT TO authenticated
-    USING (
-        EXISTS (
-            SELECT 1 FROM public.messages AS m
-            WHERE m.id = message_reactions.message_id
-              AND (m.sender_id = (SELECT auth.uid()) OR m.receiver_id = (SELECT auth.uid()))
-        )
-    );
-
-DROP POLICY IF EXISTS "Users add their own message reaction" ON public.message_reactions;
-CREATE POLICY "Users add their own message reaction"
-    ON public.message_reactions FOR INSERT TO authenticated
-    WITH CHECK (
-        user_id = (SELECT auth.uid())
-        AND EXISTS (
-            SELECT 1 FROM public.messages AS m
-            WHERE m.id = message_reactions.message_id
-              AND (m.sender_id = (SELECT auth.uid()) OR m.receiver_id = (SELECT auth.uid()))
-        )
-    );
-
-DROP POLICY IF EXISTS "Users remove their own message reaction" ON public.message_reactions;
-CREATE POLICY "Users remove their own message reaction"
-    ON public.message_reactions FOR DELETE TO authenticated
-    USING (user_id = (SELECT auth.uid()));
-
--- 2. Starred messages (a private bookmark: only the owner sees them).
-CREATE TABLE IF NOT EXISTS public.message_stars (
-    message_id UUID NOT NULL REFERENCES public.messages(id) ON DELETE CASCADE,
-    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    PRIMARY KEY (message_id, user_id)
-);
-
-CREATE INDEX IF NOT EXISTS message_stars_user_idx
-    ON public.message_stars (user_id, created_at DESC);
-
-ALTER TABLE public.message_stars ENABLE ROW LEVEL SECURITY;
-GRANT SELECT, INSERT, DELETE ON public.message_stars TO authenticated;
-
-DROP POLICY IF EXISTS "Users view their own starred messages" ON public.message_stars;
-CREATE POLICY "Users view their own starred messages"
-    ON public.message_stars FOR SELECT TO authenticated
-    USING (user_id = (SELECT auth.uid()));
-
-DROP POLICY IF EXISTS "Users star their own messages" ON public.message_stars;
-CREATE POLICY "Users star their own messages"
-    ON public.message_stars FOR INSERT TO authenticated
-    WITH CHECK (user_id = (SELECT auth.uid()));
-
-DROP POLICY IF EXISTS "Users unstar their own messages" ON public.message_stars;
-CREATE POLICY "Users unstar their own messages"
-    ON public.message_stars FOR DELETE TO authenticated
-    USING (user_id = (SELECT auth.uid()));
-
--- 3. Reply-to: a small snapshot of the quoted message so the quote box still
---    renders even if the original message is later deleted.
-ALTER TABLE public.messages
-    ADD COLUMN IF NOT EXISTS reply_to UUID REFERENCES public.messages(id) ON DELETE SET NULL;
-
-ALTER TABLE public.messages
-    ADD COLUMN IF NOT EXISTS reply_preview JSONB;
-
-DO $do$
-BEGIN
-    IF EXISTS (
-        SELECT 1 FROM pg_constraint
-        WHERE conname = 'messages_reply_preview_size_check'
-          AND conrelid = 'public.messages'::REGCLASS
-    ) THEN
-        ALTER TABLE public.messages DROP CONSTRAINT messages_reply_preview_size_check;
-    END IF;
-END
-$do$;
-
-ALTER TABLE public.messages
-    ADD CONSTRAINT messages_reply_preview_size_check
-    CHECK (reply_preview IS NULL OR octet_length(reply_preview::TEXT) <= 4096);
-
-COMMIT;
-
--- ============ PART 12/24: migrations/20261016_lecturer_credentials.sql ============
--- ============================================================
--- CAMPUS CONNECT ‚Äî LECTURER CREDENTIALS, STUDY MODE, STAFF LOG
--- Kabarak University rules this adds:
---   * a lecturer must prove themselves with a National ID number, a
---     staff ID card number, and the registration number written on
---     their letter of introduction ‚Äî plus a photo of each
---   * until an admin approves those documents the account cannot post,
---     chat, comment or call: the university system stays shut
---   * a staff ID card number may only ever belong to one person, so a
---     lecturer who left and comes back must be issued a NEW card
---   * students are tagged normal, retake, or online
---   * a lecturer who is no longer at the university goes passive and
---     drops out of the active staff, but the record is kept
--- Idempotent: safe to run more than once.
--- ============================================================
-
-
--- ------------------------------------------------------------
--- 1. NEW COLUMNS ON PROFILES
--- staff_id_number and employment_status are university facts, so only
--- an admin (or a migration) may write them ‚Äî see section 5.
--- ------------------------------------------------------------
-
-ALTER TABLE public.profiles
-    ADD COLUMN IF NOT EXISTS staff_id_number TEXT NOT NULL DEFAULT '',
-    ADD COLUMN IF NOT EXISTS employment_status TEXT NOT NULL DEFAULT 'active',
-    ADD COLUMN IF NOT EXISTS study_mode TEXT NOT NULL DEFAULT 'normal',
-    ADD COLUMN IF NOT EXISTS lecturer_since TIMESTAMPTZ;
-
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint
-        WHERE conname = 'profiles_staff_id_number_length_check'
-          AND conrelid = 'public.profiles'::regclass
-    ) THEN
-        ALTER TABLE public.profiles
-            ADD CONSTRAINT profiles_staff_id_number_length_check
-            CHECK (char_length(staff_id_number) <= 32);
-    END IF;
-
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint
-        WHERE conname = 'profiles_employment_status_check'
-          AND conrelid = 'public.profiles'::regclass
-    ) THEN
-        ALTER TABLE public.profiles
-            ADD CONSTRAINT profiles_employment_status_check
-            CHECK (employment_status IN ('active', 'passive'));
-    END IF;
-
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint
-        WHERE conname = 'profiles_study_mode_check'
-          AND conrelid = 'public.profiles'::regclass
-    ) THEN
-        ALTER TABLE public.profiles
-            ADD CONSTRAINT profiles_study_mode_check
-            CHECK (study_mode IN ('normal', 'retake', 'online'));
-    END IF;
-END;
-$$;
-
--- One card, one person ‚Äî for good. A passive lecturer keeps their number
--- here, which is exactly what stops it being handed out again.
-CREATE UNIQUE INDEX IF NOT EXISTS profiles_staff_id_key
-    ON public.profiles (staff_id_number)
-    WHERE staff_id_number <> '';
-
-CREATE INDEX IF NOT EXISTS profiles_staff_room_idx
-    ON public.profiles (role, employment_status, lecturer_since DESC);
-
-
--- ------------------------------------------------------------
--- 1b. ONE SHAPE FOR EVERY NUMBER
--- "abc-1", "ABC-1" and "ABC 1" are the same card. Normalising before a
--- unique index ever looks at a value is what stops a second person
--- claiming a number that only differs in case or spacing.
--- ------------------------------------------------------------
-
-CREATE OR REPLACE FUNCTION public.normalize_id_number(p_value TEXT)
-RETURNS TEXT
-LANGUAGE sql
-IMMUTABLE
-SET search_path = ''
-AS $$
-    SELECT UPPER(REGEXP_REPLACE(BTRIM(COALESCE(p_value, '')), ' +', ' ', 'g'))
-$$;
-
-REVOKE ALL ON FUNCTION public.normalize_id_number(TEXT) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.normalize_id_number(TEXT) TO authenticated;
-
-
--- ------------------------------------------------------------
--- 2. THE DOCUMENT BAG
--- One row per claim, with the three numbers and the three files. It is
--- never edited in place: an admin approves or rejects it, and a person
--- who was rejected simply submits another one.
--- ------------------------------------------------------------
-
-CREATE TABLE IF NOT EXISTS public.lecturer_submissions (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-    national_id_number TEXT NOT NULL,
-    staff_id_number TEXT NOT NULL,
-    introduction_letter_number TEXT NOT NULL,
-    national_id_path TEXT NOT NULL,
-    staff_id_path TEXT NOT NULL,
-    introduction_letter_path TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'pending',
-    review_note TEXT NOT NULL DEFAULT '',
-    reviewed_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
-    reviewed_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT lecturer_submissions_national_id_check
-        CHECK (national_id_number ~ '^[0-9]{5,12}$'),
-    CONSTRAINT lecturer_submissions_staff_id_check
-        CHECK (staff_id_number ~ '^[A-Za-z0-9][-./ A-Za-z0-9]{2,31}$'),
-    CONSTRAINT lecturer_submissions_letter_check
-        CHECK (introduction_letter_number ~ '^[A-Za-z0-9][-./ A-Za-z0-9]{2,47}$'),
-    CONSTRAINT lecturer_submissions_status_check
-        CHECK (status IN ('pending', 'approved', 'rejected')),
-    CONSTRAINT lecturer_submissions_files_check
-        CHECK (national_id_path <> '' AND staff_id_path <> ''
-               AND introduction_letter_path <> ''),
-    CONSTRAINT lecturer_submissions_note_length_check
-        CHECK (char_length(review_note) <= 300)
-);
-
-CREATE INDEX IF NOT EXISTS lecturer_submissions_status_idx
-    ON public.lecturer_submissions (status, created_at DESC);
-CREATE INDEX IF NOT EXISTS lecturer_submissions_user_idx
-    ON public.lecturer_submissions (user_id, created_at DESC);
-
--- Two people cannot queue the same card at once, and an approved claim
--- keeps the number reserved for as long as the record exists.
-CREATE UNIQUE INDEX IF NOT EXISTS lecturer_submissions_staff_id_key
-    ON public.lecturer_submissions (staff_id_number)
-    WHERE status IN ('pending', 'approved');
-
--- One live request per person, so the admin queue cannot fill with copies.
-CREATE UNIQUE INDEX IF NOT EXISTS lecturer_submissions_one_pending_key
-    ON public.lecturer_submissions (user_id)
-    WHERE status = 'pending';
-
-ALTER TABLE public.lecturer_submissions ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS "Members view their own lecturer submissions" ON public.lecturer_submissions;
-CREATE POLICY "Members view their own lecturer submissions"
-    ON public.lecturer_submissions FOR SELECT TO authenticated
-    USING (user_id = (SELECT auth.uid()) OR public.is_admin());
-
--- Every new claim goes through submit_lecturer_credentials(), which owns
--- the format and duplicate checks. This policy only says nobody may file
--- a claim on behalf of someone else.
-DROP POLICY IF EXISTS "Members file their own lecturer submissions" ON public.lecturer_submissions;
-CREATE POLICY "Members file their own lecturer submissions"
-    ON public.lecturer_submissions FOR INSERT TO authenticated
-    WITH CHECK (user_id = (SELECT auth.uid()));
-
-DROP POLICY IF EXISTS "Admins update lecturer submissions" ON public.lecturer_submissions;
-CREATE POLICY "Admins update lecturer submissions"
-    ON public.lecturer_submissions FOR UPDATE TO authenticated
-    USING (public.is_admin())
-    WITH CHECK (public.is_admin());
-
-
--- ------------------------------------------------------------
--- 3. THE PROOF FILES LIVE IN THE PRIVATE BUCKET
--- Same bucket as private chat media, but in a fixed subfolder, and an
--- admin can only open a file that a claim actually points at. Nobody
--- else can reach a document ‚Äî not even a mutual connection.
--- ------------------------------------------------------------
-
-UPDATE storage.buckets
-    SET allowed_mime_types = ARRAY[
-        'image/*',
-        'video/*',
-        'application/pdf',
-        'application/msword',
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-    ]
-    WHERE id = 'campus-private-media';
-
-DROP POLICY IF EXISTS "Admins view lecturer proof files" ON storage.objects;
-CREATE POLICY "Admins view lecturer proof files"
-    ON storage.objects FOR SELECT TO authenticated
-    USING (
-        bucket_id = 'campus-private-media'
-        AND public.is_admin()
-        AND EXISTS (
-            SELECT 1
-            FROM public.lecturer_submissions AS s
-            WHERE 'private-media:' || storage.objects.name IN (
-                s.national_id_path, s.staff_id_path, s.introduction_letter_path
-            )
-        )
-    );
-
-
--- ------------------------------------------------------------
--- 4. IS THIS ACCOUNT LOCKED OUT?
--- One place decides it, so the gate cannot drift from the trigger.
--- Only the member themselves, or an admin, may ask.
--- ------------------------------------------------------------
-
-CREATE OR REPLACE FUNCTION public.account_blocked(p_user UUID)
-RETURNS BOOLEAN
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-    SELECT COALESCE(
-        (
-            SELECT p.verification_status = 'rejected'
-                OR (p.requested_role = 'lecturer' AND p.verification_status = 'pending')
-                OR (
-                    p.role = 'lecturer'
-                    AND (
-                        p.employment_status = 'passive'
-                        OR p.staff_id_number = ''
-                        OR p.verification_status <> 'approved'
-                    )
-                )
-            FROM public.profiles AS p
-            WHERE p.id = p_user
-        ),
-        FALSE
-    )
-    AND COALESCE(p_user = auth.uid() OR public.is_admin(), FALSE);
-$$;
-
--- RLS can compare a row to auth.uid(), but it cannot look at what the
--- profile says about the person, so a trigger does. It checks the writer,
--- never the row owner: a student receiving a message from a lecturer who
--- has just been locked out must still be able to read and mark it.
-CREATE OR REPLACE FUNCTION public.refuse_blocked_member_writes()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-BEGIN
-    -- The SQL Editor, the service key and migrations run without a
-    -- signed-in user. The app never does.
-    IF auth.uid() IS NULL THEN
-        RETURN NEW;
-    END IF;
-
-    IF public.account_blocked(auth.uid()) THEN
-        RAISE EXCEPTION 'University access is not open for this account yet. A lecturer must verify a National ID, a staff ID card and the letter of introduction with an admin.'
-            USING ERRCODE = '42501';
-    END IF;
-
-    RETURN NEW;
-END;
-$$;
-
-REVOKE ALL ON FUNCTION public.refuse_blocked_member_writes() FROM PUBLIC, anon, authenticated;
-
-DROP TRIGGER IF EXISTS refuse_blocked_writes ON public.posts;
-CREATE TRIGGER refuse_blocked_writes
-    BEFORE INSERT OR UPDATE ON public.posts
-    FOR EACH ROW EXECUTE FUNCTION public.refuse_blocked_member_writes();
-
-DROP TRIGGER IF EXISTS refuse_blocked_writes ON public.comments;
-CREATE TRIGGER refuse_blocked_writes
-    BEFORE INSERT OR UPDATE ON public.comments
-    FOR EACH ROW EXECUTE FUNCTION public.refuse_blocked_member_writes();
-
-DROP TRIGGER IF EXISTS refuse_blocked_writes ON public.stories;
-CREATE TRIGGER refuse_blocked_writes
-    BEFORE INSERT OR UPDATE ON public.stories
-    FOR EACH ROW EXECUTE FUNCTION public.refuse_blocked_member_writes();
-
-DROP TRIGGER IF EXISTS refuse_blocked_writes ON public.messages;
-CREATE TRIGGER refuse_blocked_writes
-    BEFORE INSERT OR UPDATE ON public.messages
-    FOR EACH ROW EXECUTE FUNCTION public.refuse_blocked_member_writes();
-
-DROP TRIGGER IF EXISTS refuse_blocked_writes ON public.community_messages;
-CREATE TRIGGER refuse_blocked_writes
-    BEFORE INSERT OR UPDATE ON public.community_messages
-    FOR EACH ROW EXECUTE FUNCTION public.refuse_blocked_member_writes();
-
-DROP TRIGGER IF EXISTS refuse_blocked_writes ON public.friend_requests;
-CREATE TRIGGER refuse_blocked_writes
-    BEFORE INSERT OR UPDATE ON public.friend_requests
-    FOR EACH ROW EXECUTE FUNCTION public.refuse_blocked_member_writes();
-
-DROP TRIGGER IF EXISTS refuse_blocked_writes ON public.call_signals;
-CREATE TRIGGER refuse_blocked_writes
-    BEFORE INSERT ON public.call_signals
-    FOR EACH ROW EXECUTE FUNCTION public.refuse_blocked_member_writes();
-
-
--- ------------------------------------------------------------
--- 5. A MEMBER CANNOT WRITE THEIR OWN STAFF RECORD
--- study_mode is theirs to choose; the university facts are not.
--- ------------------------------------------------------------
-
-CREATE OR REPLACE FUNCTION public.enforce_profile_staff_fields()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-BEGIN
-    IF auth.uid() IS NULL OR public.is_admin() THEN
-        RETURN NEW;
-    END IF;
-
-    IF NEW.staff_id_number IS DISTINCT FROM OLD.staff_id_number
-       OR NEW.employment_status IS DISTINCT FROM OLD.employment_status
-       OR NEW.lecturer_since IS DISTINCT FROM OLD.lecturer_since THEN
-        RAISE EXCEPTION 'Only an admin can set a staff ID number or an employment status.'
-            USING ERRCODE = '42501';
-    END IF;
-
-    RETURN NEW;
-END;
-$$;
-
-REVOKE ALL ON FUNCTION public.enforce_profile_staff_fields() FROM PUBLIC, anon, authenticated;
-
-DROP TRIGGER IF EXISTS profiles_enforce_staff_fields ON public.profiles;
-CREATE TRIGGER profiles_enforce_staff_fields
-    BEFORE UPDATE ON public.profiles
-    FOR EACH ROW EXECUTE FUNCTION public.enforce_profile_staff_fields();
-
-
--- ------------------------------------------------------------
--- 6. SUBMIT THE PROOF
--- Called by the person asking to be a lecturer. It checks the numbers,
--- insists the files are their own, and refuses a card that is already on
--- record ‚Äî that is the rule that forces a returning lecturer to bring a
--- new staff ID card.
--- ------------------------------------------------------------
-
-CREATE OR REPLACE FUNCTION public.submit_lecturer_credentials(
-    p_national_id_number TEXT,
-    p_staff_id_number TEXT,
-    p_introduction_letter_number TEXT,
-    p_national_id_path TEXT,
-    p_staff_id_path TEXT,
-    p_introduction_letter_path TEXT
-)
-RETURNS UUID
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-DECLARE
-    actor UUID := auth.uid();
-    own_folder TEXT;
-    submission_id UUID;
-BEGIN
-    IF actor IS NULL THEN
-        RAISE EXCEPTION 'Sign in first.' USING ERRCODE = '42501';
-    END IF;
-
-    own_folder := 'private-media:' || actor::TEXT || '/lecturer-credentials/';
-    p_national_id_number := public.normalize_id_number(p_national_id_number);
-    p_staff_id_number := public.normalize_id_number(p_staff_id_number);
-    p_introduction_letter_number := public.normalize_id_number(p_introduction_letter_number);
-
-    IF p_national_id_number !~ '^[0-9]{5,12}$' THEN
-        RAISE EXCEPTION 'A National ID number is 5 to 12 digits.'
-            USING ERRCODE = '22023';
-    END IF;
-    IF p_staff_id_number !~ '^[A-Za-z0-9][-./ A-Za-z0-9]{2,31}$' THEN
-        RAISE EXCEPTION 'A staff ID card number is 3 to 32 letters or digits.'
-            USING ERRCODE = '22023';
-    END IF;
-    IF p_introduction_letter_number !~ '^[A-Za-z0-9][-./ A-Za-z0-9]{2,47}$' THEN
-        RAISE EXCEPTION 'The registration number on the letter of introduction is 3 to 48 characters.'
-            USING ERRCODE = '22023';
-    END IF;
-
-    IF LEFT(p_national_id_path, LENGTH(own_folder)) <> own_folder
-       OR LEFT(p_staff_id_path, LENGTH(own_folder)) <> own_folder
-       OR LEFT(p_introduction_letter_path, LENGTH(own_folder)) <> own_folder THEN
-        RAISE EXCEPTION 'Take a photo of each document first.'
-            USING ERRCODE = '22023';
-    END IF;
-
-    -- The card may belong to nobody but this person. Their own profile row
-    -- already holds the number they gave at sign-up, so it is not a clash.
-    IF EXISTS (
-        SELECT 1 FROM public.profiles AS p
-        WHERE p.staff_id_number = p_staff_id_number
-          AND p.id <> actor
-    ) OR EXISTS (
-        SELECT 1 FROM public.lecturer_submissions AS s
-        WHERE public.normalize_id_number(s.staff_id_number) = p_staff_id_number
-          AND s.status IN ('pending', 'approved')
-          AND s.user_id <> actor
-    ) THEN
-        RAISE EXCEPTION 'That staff ID card is already on the university record. A lecturer coming back is given a new card.'
-            USING ERRCODE = '23505';
-    END IF;
-
-    IF EXISTS (
-        SELECT 1 FROM public.profiles AS p
-        WHERE p.id = actor
-          AND p.role = 'lecturer'
-          AND p.employment_status = 'active'
-          AND p.staff_id_number <> ''
-    ) THEN
-        RAISE EXCEPTION 'Your staff record is already verified.'
-            USING ERRCODE = '22023';
-    END IF;
-
-    IF EXISTS (
-        SELECT 1 FROM public.lecturer_submissions AS s
-        WHERE s.user_id = actor AND s.status = 'pending'
-    ) THEN
-        RAISE EXCEPTION 'An admin is already looking at your documents.'
-            USING ERRCODE = '22023';
-    END IF;
-
-    INSERT INTO public.lecturer_submissions (
-        user_id, national_id_number, staff_id_number,
-        introduction_letter_number, national_id_path,
-        staff_id_path, introduction_letter_path
-    )
-    VALUES (
-        actor, p_national_id_number, p_staff_id_number,
-        p_introduction_letter_number, p_national_id_path,
-        p_staff_id_path, p_introduction_letter_path
-    )
-    RETURNING id INTO submission_id;
-
-    RETURN submission_id;
-END;
-$$;
-
-
--- ------------------------------------------------------------
--- 7. THE ADMIN DECIDES
--- Approving is the only way to become a lecturer, and the only way a
--- passive lecturer comes back: through a fresh card.
--- ------------------------------------------------------------
-
-CREATE OR REPLACE FUNCTION public.review_lecturer_submission(
-    p_submission_id UUID,
-    p_approve BOOLEAN,
-    p_note TEXT DEFAULT ''
-)
-RETURNS VOID
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-DECLARE
-    claim public.lecturer_submissions%ROWTYPE;
-BEGIN
-    IF NOT public.is_admin() THEN
-        RAISE EXCEPTION 'Only an admin can review a staff record.'
-            USING ERRCODE = '42501';
-    END IF;
-
-    SELECT * INTO claim
-        FROM public.lecturer_submissions
-        WHERE id = p_submission_id;
-
-    IF NOT FOUND THEN
-        RAISE EXCEPTION 'No such request.' USING ERRCODE = 'P0002';
-    END IF;
-
-    IF claim.status <> 'pending' THEN
-        RAISE EXCEPTION 'That request was already reviewed.'
-            USING ERRCODE = '22023';
-    END IF;
-
-    UPDATE public.lecturer_submissions
-        SET status = CASE WHEN p_approve THEN 'approved' ELSE 'rejected' END,
-            review_note = LEFT(trim(coalesce(p_note, '')), 300),
-            reviewed_by = auth.uid(),
-            reviewed_at = NOW(),
-            updated_at = NOW()
-        WHERE id = claim.id;
-
-    IF p_approve THEN
-        IF EXISTS (
-            SELECT 1 FROM public.profiles AS p
-            WHERE p.staff_id_number = claim.staff_id_number
-              AND p.id <> claim.user_id
-        ) THEN
-            RAISE EXCEPTION 'Another lecturer already uses that staff ID card.'
-                USING ERRCODE = '23505';
-        END IF;
-
-        UPDATE public.profiles
-            SET role = 'lecturer',
-                verification_status = 'approved',
-                requested_role = '',
-                staff_id_number = claim.staff_id_number,
-                employment_status = 'active',
-                lecturer_since = COALESCE(lecturer_since, NOW())
-            WHERE id = claim.user_id;
-
-        INSERT INTO public.admin_action_log (actor_id, target_user_id, action, detail)
-            VALUES (auth.uid(), claim.user_id, 'lecturer_approve', claim.staff_id_number);
-    ELSE
-        -- A lecturer who left stays passive: they are already locked out,
-        -- and rejecting a new card must not erase that.
-        UPDATE public.profiles
-            SET verification_status = 'rejected'
-            WHERE id = claim.user_id
-              AND employment_status = 'active';
-
-        INSERT INTO public.admin_action_log (actor_id, target_user_id, action, detail)
-            VALUES (auth.uid(), claim.user_id, 'lecturer_reject', claim.staff_id_number);
-    END IF;
-END;
-$$;
-
--- Retiring keeps the row and the card number. It only takes the person
--- out of the active staff, which is what hides them from the lecturer
--- lists the students see.
-CREATE OR REPLACE FUNCTION public.archive_lecturer(p_user_id UUID)
-RETURNS VOID
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-BEGIN
-    IF NOT public.is_admin() THEN
-        RAISE EXCEPTION 'Only an admin can retire a lecturer.'
-            USING ERRCODE = '42501';
-    END IF;
-
-    UPDATE public.profiles
-        SET employment_status = 'passive'
-        WHERE id = p_user_id AND role = 'lecturer' AND employment_status = 'active';
-
-    IF NOT FOUND THEN
-        RAISE EXCEPTION 'No active lecturer with that account.'
-            USING ERRCODE = 'P0002';
-    END IF;
-
-    INSERT INTO public.admin_action_log (actor_id, target_user_id, action, detail)
-        VALUES (auth.uid(), p_user_id, 'archive_lecturer', '');
-END;
-$$;
-
--- Students pick their own study mode; an admin can overrule it from the
--- member screen.
-CREATE OR REPLACE FUNCTION public.set_member_study_mode(p_user_id UUID, p_mode TEXT)
-RETURNS VOID
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-BEGIN
-    IF NOT public.is_admin() THEN
-        RAISE EXCEPTION 'Only an admin can change a study mode.'
-            USING ERRCODE = '42501';
-    END IF;
-
-    IF p_mode NOT IN ('normal', 'retake', 'online') THEN
-        RAISE EXCEPTION 'Unknown study mode.' USING ERRCODE = '22023';
-    END IF;
-
-    UPDATE public.profiles SET study_mode = p_mode WHERE id = p_user_id;
-
-    IF NOT FOUND THEN
-        RAISE EXCEPTION 'No such member.' USING ERRCODE = 'P0002';
-    END IF;
-
-    INSERT INTO public.admin_action_log (actor_id, target_user_id, action, detail)
-        VALUES (auth.uid(), p_user_id, 'study_mode', p_mode);
-END;
-$$;
-
--- The action log has to know about the new decisions.
-DO $$
-BEGIN
-    IF EXISTS (
-        SELECT 1 FROM pg_constraint
-        WHERE conname = 'admin_action_log_action_check'
-          AND conrelid = 'public.admin_action_log'::regclass
-    ) THEN
-        ALTER TABLE public.admin_action_log
-            DROP CONSTRAINT admin_action_log_action_check;
-    END IF;
-END;
-$$;
-
-ALTER TABLE public.admin_action_log
-    ADD CONSTRAINT admin_action_log_action_check
-    CHECK (action IN ('approve', 'reject', 'set_role', 'reset_role_request',
-                      'lecturer_approve', 'lecturer_reject', 'archive_lecturer',
-                      'study_mode'));
-
-
--- ------------------------------------------------------------
--- 8. WHO MAY CALL WHAT
--- ------------------------------------------------------------
-
-REVOKE ALL ON FUNCTION public.account_blocked(UUID) FROM PUBLIC, anon;
-REVOKE ALL ON FUNCTION public.submit_lecturer_credentials(TEXT, TEXT, TEXT, TEXT, TEXT, TEXT) FROM PUBLIC, anon;
-REVOKE ALL ON FUNCTION public.review_lecturer_submission(UUID, BOOLEAN, TEXT) FROM PUBLIC, anon;
-REVOKE ALL ON FUNCTION public.archive_lecturer(UUID) FROM PUBLIC, anon;
-REVOKE ALL ON FUNCTION public.set_member_study_mode(UUID, TEXT) FROM PUBLIC, anon;
-
-GRANT EXECUTE ON FUNCTION public.account_blocked(UUID) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.submit_lecturer_credentials(TEXT, TEXT, TEXT, TEXT, TEXT, TEXT) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.review_lecturer_submission(UUID, BOOLEAN, TEXT) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.archive_lecturer(UUID) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.set_member_study_mode(UUID, TEXT) TO authenticated;
-
-GRANT SELECT, INSERT, UPDATE ON public.lecturer_submissions TO authenticated;
-
-
--- ------------------------------------------------------------
--- 9. RELOAD THE API SCHEMA CACHE
--- ------------------------------------------------------------
-
-NOTIFY pgrst, 'reload schema';
-
--- ============ PART 13/24: migrations/20261016_one_number_one_account.sql ============
-
--- ============================================================
--- CAMPUS CONNECT ‚Äî ONE NUMBER, ONE ACCOUNT
--- Kabarak University rules this adds:
---   * the number is claimed while the account is created, inside the same
---     database transaction, so a second account cannot get past a number
---     the system already knows ‚Äî even when both people share a name
---   * a student registers with their registration number, a lecturer or
---     security member with their staff ID card number
---   * "abc-1" and "ABC  1" are the same number: everything is normalised
---     before a unique index ever sees it
---   * someone who is none of those can still use the app as a plain
---     member, but a member has no university record, so units, class
---     plans and the lecturer lists stay closed
---   * re-running the whole setup no longer demotes lecturers and admins
--- Idempotent: safe to run more than once.
--- ============================================================
-
-
--- ------------------------------------------------------------
--- 1. ONE IDENTITY MORE: A PLAIN MEMBER
--- Someone who is not a student, a lecturer or security can still use the
--- app. (The old "reset every profile to student" statement in the roles
--- migration has been dropped from this setup, because running the setup
--- twice quietly demoted admins and lecturers.)
--- ------------------------------------------------------------
-
-DO $$
-BEGIN
-    IF EXISTS (
-        SELECT 1 FROM pg_catalog.pg_constraint
-        WHERE conname = 'profiles_role_check'
-          AND conrelid = 'public.profiles'::regclass
-    ) THEN
-        ALTER TABLE public.profiles DROP CONSTRAINT profiles_role_check;
-    END IF;
-    ALTER TABLE public.profiles
-        ADD CONSTRAINT profiles_role_check
-        CHECK (role IN ('student', 'lecturer', 'security', 'admin', 'member'));
-END;
-$$;
-
-
--- ------------------------------------------------------------
--- 2. EVERY NUMBER IS WRITTEN THE SAME WAY
--- Without this, "ku-01" and "KU-01" are two different people holding one
--- card. The triggers sit before the checks and the unique indexes, so no
--- caller can slip an unnormalised value in.
--- ------------------------------------------------------------
-
-CREATE OR REPLACE FUNCTION public.normalize_member_numbers()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-VOLATILE
-SET search_path = ''
-AS $$
-BEGIN
-    NEW.staff_id_number := public.normalize_id_number(NEW.staff_id_number);
-    RETURN NEW;
-END;
-$$;
-
-DROP TRIGGER IF EXISTS profiles_normalize_staff_id ON public.profiles;
-CREATE TRIGGER profiles_normalize_staff_id
-    BEFORE INSERT OR UPDATE
-    ON public.profiles
-    FOR EACH ROW
-    EXECUTE FUNCTION public.normalize_member_numbers();
-
-CREATE OR REPLACE FUNCTION public.normalize_submission_numbers()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-VOLATILE
-SET search_path = ''
-AS $$
-BEGIN
-    NEW.national_id_number := public.normalize_id_number(NEW.national_id_number);
-    NEW.staff_id_number := public.normalize_id_number(NEW.staff_id_number);
-    NEW.introduction_letter_number := public.normalize_id_number(NEW.introduction_letter_number);
-    RETURN NEW;
-END;
-$$;
-
-DROP TRIGGER IF EXISTS lecturer_submissions_normalize_numbers ON public.lecturer_submissions;
-CREATE TRIGGER lecturer_submissions_normalize_numbers
-    BEFORE INSERT OR UPDATE
-    ON public.lecturer_submissions
-    FOR EACH ROW
-    EXECUTE FUNCTION public.normalize_submission_numbers();
-
-CREATE OR REPLACE FUNCTION public.normalize_registration_number()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-VOLATILE
-SET search_path = ''
-AS $$
-BEGIN
-    NEW.registration_number := public.normalize_id_number(NEW.registration_number);
-    RETURN NEW;
-END;
-$$;
-
-DROP TRIGGER IF EXISTS student_registrations_normalize_number ON public.student_registrations;
-CREATE TRIGGER student_registrations_normalize_number
-    BEFORE INSERT OR UPDATE
-    ON public.student_registrations
-    FOR EACH ROW
-    EXECUTE FUNCTION public.normalize_registration_number();
-
-
--- ------------------------------------------------------------
--- 3. THE NUMBER IS CLAIMED WHILE THE ACCOUNT IS BORN
--- This trigger already creates the profile row. It now also takes the
--- number from the sign-up data. A clash aborts the insert, so the
--- account is never created ‚Äî which is what "the system refuses" means.
--- ------------------------------------------------------------
-
-CREATE OR REPLACE FUNCTION public.handle_new_auth_user()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-DECLARE
-    username_base TEXT;
-    candidate_username TEXT;
-    attempt INTEGER;
-    metadata JSONB;
-    account_kind TEXT;
-    claimed_number TEXT;
-    claimed_card TEXT;
-    clash_name TEXT;
-BEGIN
-    metadata := COALESCE(NEW.raw_user_meta_data, '{}'::JSONB);
-    account_kind := LOWER(BTRIM(COALESCE(metadata->>'account_kind', '')));
-    claimed_number := public.normalize_id_number(metadata->>'registration_number');
-    claimed_card := public.normalize_id_number(metadata->>'staff_id_number');
-
-    -- Whatever an older app version sends, the number is only ever
-    -- claimed once, and a member never has one.
-    IF account_kind = 'member' THEN
-        claimed_number := '';
-        claimed_card := '';
-    END IF;
-
-    username_base := LOWER(
-        REGEXP_REPLACE(
-            COALESCE(
-                metadata->>'username',
-                SPLIT_PART(COALESCE(NEW.email, NEW.phone, 'student'), '@', 1)
-            ),
-            '[^a-zA-Z0-9_]',
-            '',
-            'g'
-        )
-    );
-    username_base := LEFT(username_base, 20);
-    IF char_length(username_base) < 3 THEN
-        username_base := 'student';
-    END IF;
-
-    FOR attempt IN 0..5 LOOP
-        candidate_username := CASE
-            WHEN attempt = 0 THEN username_base
-            ELSE LEFT(username_base, 19) || '_' || LEFT(NEW.id::TEXT, 8) ||
-                 CASE WHEN attempt > 1 THEN '_' || (attempt - 1)::TEXT ELSE '' END
-        END;
-
-        BEGIN
-            INSERT INTO public.profiles (
-                id,
-                username,
-                full_name,
-                course,
-                role,
-                staff_id_number
-            )
-            VALUES (
-                NEW.id,
-                candidate_username,
-                LEFT(COALESCE(metadata->>'full_name', 'Member'), 100),
-                LEFT(COALESCE(metadata->>'course', ''), 120),
-                CASE WHEN account_kind = 'member' THEN 'member' ELSE 'student' END,
-                CASE WHEN account_kind IN ('lecturer', 'security') THEN claimed_card ELSE '' END
-            )
-            ON CONFLICT (id) DO NOTHING;
-            EXIT;
-        EXCEPTION WHEN unique_violation THEN
-            GET STACKED DIAGNOSTICS clash_name = CONSTRAINT_NAME;
-            IF clash_name = 'profiles_staff_id_key' THEN
-                RAISE EXCEPTION 'That staff ID card already belongs to another account. Nobody can register twice with one card.'
-                    USING ERRCODE = '23505';
-            END IF;
-            IF attempt = 5 THEN
-                RAISE;
-            END IF;
-        END;
-    END LOOP;
-
-    IF account_kind = 'student' OR account_kind = '' THEN
-        IF claimed_number <> '' THEN
-            BEGIN
-                INSERT INTO public.student_registrations (user_id, registration_number)
-                VALUES (NEW.id, claimed_number);
-            EXCEPTION WHEN unique_violation THEN
-                RAISE EXCEPTION 'That registration number is already known to the university system. Check it, or ask an admin. Even two people with the same name cannot share one number.'
-                    USING ERRCODE = '23505';
-            END;
-        END IF;
-    END IF;
-
-    IF account_kind = 'lecturer' AND claimed_card = '' THEN
-        RAISE EXCEPTION 'A lecturer registers with the number on their staff ID card.'
-            USING ERRCODE = '22023';
-    END IF;
-
-    RETURN NEW;
-END;
-$$;
-
-REVOKE ALL ON FUNCTION public.handle_new_auth_user() FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION public.normalize_member_numbers() FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION public.normalize_submission_numbers() FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION public.normalize_registration_number() FROM PUBLIC, anon, authenticated;
-
--- Sign-up happens before anyone is authenticated, so only the service
--- role path (the trigger itself) may run it; nothing new is granted.
-
-
--- ------------------------------------------------------------
--- 4. WHO MAY OPEN UNITS, CLASS PLANS AND LECTURER LISTS
--- A member has no university record. A student who has never given a
--- number is still new to this rule, so the Classes screen asks them for
--- it instead of failing with a permission error.
--- ------------------------------------------------------------
-
-CREATE OR REPLACE FUNCTION public.may_use_classes()
-RETURNS BOOLEAN
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-    SELECT COALESCE((
-        SELECT p.role = 'admin'
-            OR (p.role = 'security' AND p.employment_status = 'active')
-            OR (p.role = 'lecturer' AND p.employment_status = 'active')
-            OR (p.role = 'student' AND EXISTS (
-                    SELECT 1 FROM public.student_registrations AS r
-                    WHERE r.user_id = p.id
-                ))
-        FROM public.profiles AS p
-        WHERE p.id = auth.uid()
-    ), FALSE);
-$$;
-
-REVOKE ALL ON FUNCTION public.may_use_classes() FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.may_use_classes() TO authenticated;
-
-DROP POLICY IF EXISTS "Members view units" ON public.units;
-CREATE POLICY "Members view units"
-    ON public.units FOR SELECT TO authenticated
-    USING (public.may_use_classes());
-
-DROP POLICY IF EXISTS "Members view class sessions" ON public.class_sessions;
-CREATE POLICY "Members view class sessions"
-    ON public.class_sessions FOR SELECT TO authenticated
-    USING (public.may_use_classes());
-
-
--- ------------------------------------------------------------
--- 5. AN ADMIN CAN MOVE A NUMBER WHEN IT IS PROVEN WRONG
--- The unique claim stays; only an admin may break it, and every move is
--- written to the action log.
--- ------------------------------------------------------------
-
-CREATE OR REPLACE FUNCTION public.set_member_registration_number(
-    p_user_id UUID,
-    p_number TEXT
-)
-RETURNS VOID
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-DECLARE
-    number TEXT := public.normalize_id_number(p_number);
-BEGIN
-    IF NOT public.is_admin() THEN
-        RAISE EXCEPTION 'Only an admin can move a registration number.'
-            USING ERRCODE = '42501';
-    END IF;
-
-    IF number !~ '^[A-Za-z0-9][-./ A-Za-z0-9]{2,31}$' THEN
-        RAISE EXCEPTION 'A registration number is 3 to 32 letters or digits.'
-            USING ERRCODE = '22023';
-    END IF;
-
-    IF NOT EXISTS (SELECT 1 FROM public.profiles WHERE id = p_user_id) THEN
-        RAISE EXCEPTION 'No such member.' USING ERRCODE = 'P0002';
-    END IF;
-
-    BEGIN
-        INSERT INTO public.student_registrations (user_id, registration_number)
-        VALUES (p_user_id, number)
-        ON CONFLICT (user_id) DO UPDATE
-            SET registration_number = EXCLUDED.registration_number,
-                updated_at = NOW();
-    EXCEPTION WHEN unique_violation THEN
-        RAISE EXCEPTION 'That registration number already belongs to another account.'
-            USING ERRCODE = '23505';
-    END;
-
-    INSERT INTO public.admin_action_log (actor_id, target_user_id, action, detail)
-        VALUES (auth.uid(), p_user_id, 'registration_number', number);
-END;
-$$;
-
-REVOKE ALL ON FUNCTION public.set_member_registration_number(UUID, TEXT)
-    FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.set_member_registration_number(UUID, TEXT) TO authenticated;
-
-DO $$
-BEGIN
-    IF EXISTS (
-        SELECT 1 FROM pg_catalog.pg_constraint
-        WHERE conname = 'admin_action_log_action_check'
-          AND conrelid = 'public.admin_action_log'::regclass
-    ) THEN
-        ALTER TABLE public.admin_action_log
-            DROP CONSTRAINT admin_action_log_action_check;
-    END IF;
-END;
-$$;
-
-ALTER TABLE public.admin_action_log
-    ADD CONSTRAINT admin_action_log_action_check
-    CHECK (action IN ('approve', 'reject', 'set_role', 'reset_role_request',
-                      'lecturer_approve', 'lecturer_reject', 'archive_lecturer',
-                      'study_mode', 'registration_number'));
-
-
--- ------------------------------------------------------------
--- 6. TELL POSTGREST THE SHAPE CHANGED
--- ------------------------------------------------------------
-
-NOTIFY pgrst, 'reload schema';
-
-
--- ============ PART 14/24: migrations/20261017_bulletins.sql ============
-
--- ============================================================
--- CAMPUS CONNECT ‚Äî THE BULLETIN BOARD
--- An account that is not a student (a parent, a guardian, a relative
--- abroad, a well-wisher) gets information instead of a campus: news
--- written from inside the app about the world, the university and
--- the people in it.
---   * every signed-in account can read the board
---   * only a campus account may write, and only under its own author_id.
---     may_use_classes() is exactly that test: an admin, an active
---     lecturer or security member, or a student whose registration
---     number is on file
---   * an author can correct or remove its own item; anyone can report it
---     by simply telling an admin
---   * a section is 'world', 'university' or 'people'
--- Idempotent: safe to run more than once.
--- ============================================================
-
-
--- ------------------------------------------------------------
--- 1. THE BOARD
--- ------------------------------------------------------------
-
-CREATE TABLE IF NOT EXISTS public.bulletins (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    author_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    section TEXT NOT NULL DEFAULT 'university'
-        CHECK (section IN ('world', 'university', 'people')),
-    title TEXT NOT NULL CHECK (char_length(BTRIM(title)) BETWEEN 3 AND 120),
-    body TEXT NOT NULL CHECK (char_length(BTRIM(body)) BETWEEN 1 AND 4000),
-    link_url TEXT CHECK (link_url IS NULL OR link_url ~ '^https?://'),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS bulletins_section_created_idx
-    ON public.bulletins (section, created_at DESC);
-
-
--- ------------------------------------------------------------
--- 2. KEEP updated_at HONEST
--- ------------------------------------------------------------
-
-DROP TRIGGER IF EXISTS bulletins_set_updated_at ON public.bulletins;
-CREATE TRIGGER bulletins_set_updated_at
-    BEFORE UPDATE ON public.bulletins
-    FOR EACH ROW
-    EXECUTE FUNCTION public.set_updated_at();
-
-
--- ------------------------------------------------------------
--- 3. WHO MAY SEE AND WRITE
--- ------------------------------------------------------------
-
-ALTER TABLE public.bulletins ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS bulletins_readable ON public.bulletins;
-CREATE POLICY bulletins_readable ON public.bulletins
-    FOR SELECT TO authenticated
-    USING (TRUE);
-
-DROP POLICY IF EXISTS bulletins_campus_write ON public.bulletins;
-CREATE POLICY bulletins_campus_write ON public.bulletins
-    FOR INSERT TO authenticated
-    WITH CHECK (author_id = auth.uid() AND public.may_use_classes());
-
-DROP POLICY IF EXISTS bulletins_author_edit ON public.bulletins;
-CREATE POLICY bulletins_author_edit ON public.bulletins
-    FOR UPDATE TO authenticated
-    USING (author_id = auth.uid())
-    WITH CHECK (author_id = auth.uid());
-
-DROP POLICY IF EXISTS bulletins_author_remove ON public.bulletins;
-CREATE POLICY bulletins_author_remove ON public.bulletins
-    FOR DELETE TO authenticated
-    USING (author_id = auth.uid() OR public.is_admin());
-
-
--- ------------------------------------------------------------
--- 4. TELL POSTGREST THE SHAPE CHANGED
--- ------------------------------------------------------------
-
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.bulletins TO authenticated;
-
-NOTIFY pgrst, 'reload schema';
-
-
--- ============ PART 15/24: migrations/20261017_companies.sql ============
-
--- ============================================================
--- CAMPUS CONNECT ‚Äî THE COMPANY DIRECTORY
--- A university is not the only place a person belongs. A director,
--- a manager or an employee of any company in the world registers with
--- the company's name, and the app then leads their feed with the people
--- they work with, exactly the way a campus zone leads a student with
--- their own school.
---   * the directory is world-wide: name, country, city, industry, website
---   * every signed-in account may read it and search it
---   * any signed-in account may ADD a company that is missing, and the row
---     remembers who added it
---   * only an admin may correct or remove a company, so one person's
---     typing cannot rename everybody's employer
---   * a member claims a company by writing its name on their own profile
---     (profiles.company). The name is kept as text, not as a foreign key,
---     for the same reason profiles.university is: a person must be able to
---     say where they belong before the directory happens to hold them.
---   * an account that carries a company may also write announcements, so a
---     company board is not locked behind a campus
--- Idempotent: safe to run more than once.
--- ============================================================
-
-
--- ------------------------------------------------------------
--- 1. THE DIRECTORY
--- ------------------------------------------------------------
-
-CREATE TABLE IF NOT EXISTS public.companies (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name TEXT NOT NULL CHECK (char_length(BTRIM(name)) BETWEEN 2 AND 120),
-    name_key TEXT GENERATED ALWAYS AS (LOWER(BTRIM(name))) STORED,
-    country TEXT CHECK (country IS NULL OR char_length(BTRIM(country)) <= 80),
-    city TEXT CHECK (city IS NULL OR char_length(BTRIM(city)) <= 80),
-    industry TEXT CHECK (industry IS NULL OR char_length(BTRIM(industry)) <= 80),
-    website TEXT CHECK (website IS NULL OR website ~ '^https?://'),
-    note TEXT CHECK (note IS NULL OR char_length(BTRIM(note)) <= 400),
-    added_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT companies_name_key_unique UNIQUE (name_key)
-);
-
-CREATE INDEX IF NOT EXISTS companies_country_idx
-    ON public.companies (LOWER(BTRIM(country)));
-
-CREATE INDEX IF NOT EXISTS companies_industry_idx
-    ON public.companies (LOWER(BTRIM(industry)));
-
-
--- ------------------------------------------------------------
--- 2. KEEP updated_at HONEST
--- ------------------------------------------------------------
-
-DROP TRIGGER IF EXISTS companies_set_updated_at ON public.companies;
-CREATE TRIGGER companies_set_updated_at
-    BEFORE UPDATE ON public.companies
-    FOR EACH ROW
-    EXECUTE FUNCTION public.set_updated_at();
-
-
--- ------------------------------------------------------------
--- 3. WHO MAY SEE AND WRITE
--- Reading is for every signed-in account: a directory of companies is
--- public information and a parent may look up where their child works.
--- Adding is open to everyone because a company missing from the list is
--- a company that cannot be claimed. Correcting is not.
--- ------------------------------------------------------------
-
-ALTER TABLE public.companies ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS companies_readable ON public.companies;
-CREATE POLICY companies_readable ON public.companies
-    FOR SELECT TO authenticated
-    USING (TRUE);
-
-DROP POLICY IF EXISTS companies_anyone_may_add ON public.companies;
-CREATE POLICY companies_anyone_may_add ON public.companies
-    FOR INSERT TO authenticated
-    WITH CHECK (added_by = auth.uid());
-
-DROP POLICY IF EXISTS companies_admin_edit ON public.companies;
-CREATE POLICY companies_admin_edit ON public.companies
-    FOR UPDATE TO authenticated
-    USING (public.is_admin())
-    WITH CHECK (public.is_admin());
-
-DROP POLICY IF EXISTS companies_admin_remove ON public.companies;
-CREATE POLICY companies_admin_remove ON public.companies
-    FOR DELETE TO authenticated
-    USING (public.is_admin());
-
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.companies TO authenticated;
-
-
--- ------------------------------------------------------------
--- 4. WHICH COMPANY A MEMBER BELONGS TO
--- Two plain columns, so an account that has never mentioned a company is
--- simply blank rather than broken, and the feed treats a blank as
--- "has not answered" instead of "works somewhere else".
--- ------------------------------------------------------------
-
-ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS company TEXT;
-ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS company_role TEXT;
-
-COMMENT ON COLUMN public.profiles.company IS
-    'The company this member claims, spelled as it is in public.companies.';
-COMMENT ON COLUMN public.profiles.company_role IS
-    'director, staff or member - what they do there, nothing else.';
-
-CREATE INDEX IF NOT EXISTS profiles_company_idx
-    ON public.profiles (LOWER(BTRIM(company)));
-
--- ------------------------------------------------------------
--- 4b. ONE DIRECTOR PER COMPANY
--- Many accounts may share one company, but only one may call itself the
--- Director of that name. First reconcile any old duplicates - the earliest
--- claim keeps the seat, the rest drop to staff - then guard the seat with a
--- partial unique index keyed the way the app normalises the name. Nothing is
--- deleted; staff and everyone without a company are untouched.
--- ------------------------------------------------------------
-
-DO $$
-BEGIN
-    UPDATE public.profiles AS p
-    SET company_role = 'staff'
-    WHERE p.company_role = 'director'
-      AND BTRIM(COALESCE(p.company, '')) <> ''
-      AND p.id <> (
-          SELECT keep.id
-          FROM public.profiles AS keep
-          WHERE keep.company_role = 'director'
-            AND LOWER(BTRIM(keep.company)) = LOWER(BTRIM(p.company))
-          ORDER BY keep.created_at ASC, keep.id ASC
-          LIMIT 1
-      );
-END $$;
-
-CREATE UNIQUE INDEX IF NOT EXISTS profiles_one_director_per_company
-    ON public.profiles (LOWER(BTRIM(company)))
-    WHERE company_role = 'director' AND BTRIM(COALESCE(company, '')) <> '';
-
-
--- ------------------------------------------------------------
--- 5. A COMPANY ACCOUNT MAY WRITE ANNOUNCEMENTS
--- The bulletin board itself (PART 14) only lets a campus account write.
--- A director who is not a student has nothing to say on a campus board,
--- so a second, separate policy opens the same table to a member who
--- carries a company. Postgres treats these two INSERT policies as
--- alternatives, so adding one takes nothing away from the other.
--- ------------------------------------------------------------
-
-CREATE OR REPLACE FUNCTION public.is_company_member()
-RETURNS BOOLEAN
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-    SELECT COALESCE((
-        SELECT BTRIM(COALESCE(p.company, '')) <> ''
-        FROM public.profiles AS p
-        WHERE p.id = auth.uid()
-    ), FALSE);
-$$;
-
-REVOKE ALL ON FUNCTION public.is_company_member() FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.is_company_member() TO authenticated;
-
-DROP POLICY IF EXISTS bulletins_company_write ON public.bulletins;
-CREATE POLICY bulletins_company_write ON public.bulletins
-    FOR INSERT TO authenticated
-    WITH CHECK (author_id = auth.uid() AND public.is_company_member());
-
--- The board sorts into columns. A company writes into one of its own.
--- This is the constraint Postgres named by itself when the column was
--- created, so dropping it by that name is the whole edit.
-ALTER TABLE public.bulletins
-    DROP CONSTRAINT IF EXISTS bulletins_section_check;
-ALTER TABLE public.bulletins
-    ADD CONSTRAINT bulletins_section_check CHECK (
-        section IN ('world', 'university', 'people', 'company')
-    );
-
-
--- ------------------------------------------------------------
--- 6. TELL POSTGREST THE SHAPE CHANGED
--- ------------------------------------------------------------
-
-NOTIFY pgrst, 'reload schema';
-
-
--- ============ PART 16/24: migrations/20261017_realtime_broadcast.sql ============
-
--- PART 16: realtime broadcast for the typing / recording indicators.
---
--- "typing‚Ä¶" and "recording a voice message‚Ä¶" are never stored: they ride as
--- realtime broadcast frames, so there is no table to build here. Supabase
--- decides who may send and receive those frames with row-level security on its
--- internal realtime.messages table, and a project that was never given a policy
--- drops the frames quietly. Two policies fix that: signed-in users only, and
--- only on the chat-activity-* channels this app opens.
---
--- Everything is wrapped so a project that lacks the table, the column or the
--- grant prints a notice instead of aborting the rest of the paste.
-
-DO $do$
-DECLARE
-    channel_column text;
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM information_schema.tables
-        WHERE table_schema = 'realtime' AND table_name = 'messages'
-    ) THEN
-        RAISE NOTICE 'realtime.messages is missing: typing indicators will not appear.';
-        RETURN;
-    END IF;
-
-    SELECT c.column_name INTO channel_column
-    FROM information_schema.columns AS c
-    WHERE c.table_schema = 'realtime'
-      AND c.table_name = 'messages'
-      AND c.column_name IN ('channel_name', 'topic')
-    ORDER BY array_position(ARRAY['channel_name', 'topic'], c.column_name)
-    LIMIT 1;
-
-    IF channel_column IS NULL THEN
-        RAISE NOTICE 'realtime.messages has no channel column: typing indicators will not appear.';
-        RETURN;
-    END IF;
-
-    -- realtime.messages belongs to Supabase itself, so the role running this may
-    -- not be allowed to policy it. That must not stop the rest of the paste.
-    BEGIN
-        DROP POLICY IF EXISTS chat_activity_broadcast_read ON realtime.messages;
-        EXECUTE format(
-            'CREATE POLICY chat_activity_broadcast_read ON realtime.messages
-                 FOR SELECT TO authenticated USING (%I LIKE ''chat-activity-%%'')',
-            channel_column
-        );
-
-        DROP POLICY IF EXISTS chat_activity_broadcast_write ON realtime.messages;
-        EXECUTE format(
-            'CREATE POLICY chat_activity_broadcast_write ON realtime.messages
-                 FOR INSERT TO authenticated WITH CHECK (%I LIKE ''chat-activity-%%'')',
-            channel_column
-        );
-
-        RAISE NOTICE 'Broadcast policies created on realtime.messages using %.', channel_column;
-    EXCEPTION WHEN OTHERS THEN
-        RAISE NOTICE 'Could not add the broadcast policies: %. The typing indicator may stay silent.', SQLERRM;
-    END;
-END
-$do$;
-
-DO $do$
-BEGIN
-    GRANT SELECT, INSERT ON realtime.messages TO authenticated;
-EXCEPTION WHEN OTHERS THEN
-    RAISE NOTICE 'Could not re-grant realtime.messages (already granted, or not permitted): %', SQLERRM;
-END
-$do$;
-
-NOTIFY pgrst, 'reload schema';
-
-
--- ============ PART 17/24: migrations/20261017_private_groups.sql ============
-
--- PART 17: private group chats, the WhatsApp shape.
---
--- The community tables already exist, but everything they made was public: the
--- is_public default was TRUE and the only way to put a person in a group was
--- for that person to walk in themselves. A group you make with four friends is
--- the other shape ‚Äî nobody can see its name, its members or its messages
--- unless you are in it. So this part flips the default, adds a function that
--- creates a group with a chosen list of people, and a function that hands the
--- chat list everything it needs in one call.
---
--- A member row for someone else still cannot be inserted through the plain
--- policies (they only let you add yourself), which is why the adding runs
--- inside SECURITY DEFINER functions that check the role first.
-
-ALTER TABLE public.communities
-    ALTER COLUMN is_public SET DEFAULT FALSE;
-
-CREATE TABLE IF NOT EXISTS public.community_reads (
-    community_id UUID NOT NULL REFERENCES public.communities(id) ON DELETE CASCADE,
-    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    last_read_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    PRIMARY KEY (community_id, user_id)
-);
-
-ALTER TABLE public.community_reads ENABLE ROW LEVEL SECURITY;
-GRANT SELECT, INSERT, UPDATE ON public.community_reads TO authenticated;
-
-DROP POLICY IF EXISTS "Members own their own read marker"
-    ON public.community_reads;
-CREATE POLICY "Members own their own read marker"
-    ON public.community_reads FOR ALL TO authenticated
-    USING (user_id = (SELECT auth.uid()))
-    WITH CHECK (user_id = (SELECT auth.uid()));
-
-CREATE INDEX IF NOT EXISTS community_reads_user_idx
-    ON public.community_reads (user_id, last_read_at DESC);
-
-CREATE OR REPLACE FUNCTION public.create_group(
-    p_name TEXT,
-    p_member_ids UUID[] DEFAULT ARRAY[]::UUID[]
-)
-RETURNS UUID
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-DECLARE
-    new_community_id UUID;
-    current_user_id UUID := auth.uid();
-BEGIN
-    IF current_user_id IS NULL THEN
-        RAISE EXCEPTION 'You must be signed in to create a group.';
-    END IF;
-    IF char_length(trim(COALESCE(p_name, ''))) NOT BETWEEN 3 AND 80 THEN
-        RAISE EXCEPTION 'Group names must be between 3 and 80 characters.';
-    END IF;
-    IF COALESCE(array_length(p_member_ids, 1), 0) > 200 THEN
-        RAISE EXCEPTION 'A group takes at most 200 people at a time.';
-    END IF;
-
-    INSERT INTO public.communities (owner_id, name, description, kind, is_public)
-    VALUES (current_user_id, trim(p_name), '', 'group', FALSE)
-    RETURNING id INTO new_community_id;
-
-    INSERT INTO public.community_members (community_id, user_id, role)
-    VALUES (new_community_id, current_user_id, 'owner')
-    ON CONFLICT (community_id, user_id) DO NOTHING;
-
-    /* Only a real account can be pulled in, and a block on either side keeps
-       the person out: nobody ends up in a group with someone they blocked. */
-    INSERT INTO public.community_members (community_id, user_id, role)
-    SELECT new_community_id, candidate.user_id, 'member'
-    FROM unnest(COALESCE(p_member_ids, ARRAY[]::UUID[])) AS candidate(user_id)
-    WHERE candidate.user_id <> current_user_id
-      AND EXISTS (
-          SELECT 1
-          FROM public.profiles AS profile
-          WHERE profile.id = candidate.user_id
-      )
-      AND NOT EXISTS (
-          SELECT 1
-          FROM public.user_blocks AS blocker
-          WHERE (blocker.blocker_id = current_user_id AND blocker.blocked_id = candidate.user_id)
-             OR (blocker.blocker_id = candidate.user_id AND blocker.blocked_id = current_user_id)
-      )
-    ON CONFLICT (community_id, user_id) DO NOTHING;
-
-    RETURN new_community_id;
-END;
-$$;
-
-CREATE OR REPLACE FUNCTION public.add_group_members(
-    p_community_id UUID,
-    p_user_ids UUID[]
-)
-RETURNS INT
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-DECLARE
-    current_user_id UUID := auth.uid();
-    total_members INT;
-BEGIN
-    IF current_user_id IS NULL THEN
-        RAISE EXCEPTION 'You must be signed in to add people.';
-    END IF;
-    IF NOT public.can_manage_community(p_community_id) THEN
-        RAISE EXCEPTION 'Only the owner or an admin can add people to this group.';
-    END IF;
-    IF COALESCE(array_length(p_user_ids, 1), 0) > 200 THEN
-        RAISE EXCEPTION 'A group takes at most 200 people at a time.';
-    END IF;
-
-    INSERT INTO public.community_members (community_id, user_id, role)
-    SELECT p_community_id, candidate.user_id, 'member'
-    FROM unnest(COALESCE(p_user_ids, ARRAY[]::UUID[])) AS candidate(user_id)
-    WHERE candidate.user_id <> current_user_id
-      AND EXISTS (
-          SELECT 1
-          FROM public.profiles AS profile
-          WHERE profile.id = candidate.user_id
-      )
-      AND NOT EXISTS (
-          SELECT 1
-          FROM public.user_blocks AS blocker
-          WHERE (blocker.blocker_id = current_user_id AND blocker.blocked_id = candidate.user_id)
-             OR (blocker.blocker_id = candidate.user_id AND blocker.blocked_id = current_user_id)
-      )
-    ON CONFLICT (community_id, user_id) DO NOTHING;
-
-    SELECT count(*) INTO total_members
-    FROM public.community_members AS member
-    WHERE member.community_id = p_community_id;
-
-    RETURN total_members;
-END;
-$$;
-
-/* One call paints the whole chat list: every group I am in with who made it,
-   how many are inside, the last message and how many I have not read. Reading
-   it through the plain tables would take four round trips per group. */
-CREATE OR REPLACE FUNCTION public.my_groups()
-RETURNS TABLE (
-    id UUID,
-    name TEXT,
-    description TEXT,
-    owner_id UUID,
-    my_role TEXT,
-    member_count BIGINT,
-    last_message_at TIMESTAMPTZ,
-    last_sender_id UUID,
-    last_content TEXT,
-    last_media_url TEXT,
-    unread_count BIGINT
-)
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-    SELECT community.id,
-           community.name,
-           community.description,
-           community.owner_id,
-           membership.role,
-           counter.member_count,
-           latest.created_at,
-           latest.sender_id,
-           latest.content,
-           latest.media_url,
-           COALESCE(unread.unread_count, 0)
-    FROM public.community_members AS membership
-    JOIN public.communities AS community
-        ON community.id = membership.community_id
-    CROSS JOIN LATERAL (
-        SELECT count(*) AS member_count
-        FROM public.community_members AS every_member
-        WHERE every_member.community_id = community.id
-    ) AS counter
-    LEFT JOIN public.community_reads AS marker
-        ON marker.community_id = community.id
-       AND marker.user_id = membership.user_id
-    LEFT JOIN LATERAL (
-        SELECT message.created_at,
-               message.sender_id,
-               message.content,
-               message.media_url
-        FROM public.community_messages AS message
-        WHERE message.community_id = community.id
-        ORDER BY message.created_at DESC
-        LIMIT 1
-    ) AS latest ON TRUE
-    LEFT JOIN LATERAL (
-        SELECT count(*) AS unread_count
-        FROM public.community_messages AS message
-        WHERE message.community_id = community.id
-          AND message.sender_id <> membership.user_id
-          AND message.created_at >
-              COALESCE(marker.last_read_at, 'epoch'::TIMESTAMPTZ)
-    ) AS unread ON TRUE
-    WHERE membership.user_id = (SELECT auth.uid())
-      AND community.kind = 'group';
-$$;
-
-CREATE OR REPLACE FUNCTION public.mark_group_read(p_community_id UUID)
-RETURNS VOID
-LANGUAGE sql
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-    INSERT INTO public.community_reads (community_id, user_id, last_read_at)
-    VALUES (p_community_id, (SELECT auth.uid()), NOW())
-    ON CONFLICT (community_id, user_id)
-    DO UPDATE SET last_read_at =
-        GREATEST(community_reads.last_read_at, EXCLUDED.last_read_at);
-$$;
-
-REVOKE ALL ON FUNCTION public.create_group(TEXT, UUID[]) FROM PUBLIC, anon;
-REVOKE ALL ON FUNCTION public.add_group_members(UUID, UUID[]) FROM PUBLIC, anon;
-REVOKE ALL ON FUNCTION public.my_groups() FROM PUBLIC, anon;
-REVOKE ALL ON FUNCTION public.mark_group_read(UUID) FROM PUBLIC, anon;
-
-GRANT EXECUTE ON FUNCTION public.create_group(TEXT, UUID[]) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.add_group_members(UUID, UUID[]) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.my_groups() TO authenticated;
-GRANT EXECUTE ON FUNCTION public.mark_group_read(UUID) TO authenticated;
-
-NOTIFY pgrst, 'reload schema';
-
-
--- ============ PART 18/24: migrations/20261017_push_tokens.sql ============
-
--- PART 18: the device list behind push alerts.
---
--- Realtime only reaches a phone that is awake and open. A phone that has been
--- swiped away from the recents screen needs Firebase Cloud Messaging to wake
--- it, and FCM needs one registration token per device. The table below is that
--- list: nothing is stored about the message itself, only which phone belongs to
--- which student.
---
--- A token is close to a key ‚Äî whoever holds one can make that phone ring. So a
--- student may only ever read or delete their own rows, and there is no INSERT
--- policy at all: writing goes through register_device_token, which stamps
--- auth.uid() itself and therefore cannot be pointed at another account.
-
-CREATE TABLE IF NOT EXISTS public.device_tokens (
-    user_id UUID NOT NULL
-        REFERENCES auth.users(id) ON DELETE CASCADE,
-
-    token TEXT NOT NULL,
-
-    platform TEXT NOT NULL DEFAULT 'android'
-        CHECK (platform IN ('android', 'ios', 'web')),
-
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-
-    PRIMARY KEY (token, user_id)
-);
-
-ALTER TABLE public.device_tokens ENABLE ROW LEVEL SECURITY;
-GRANT SELECT, DELETE ON public.device_tokens TO authenticated;
-
-DROP POLICY IF EXISTS "Owners read their own devices" ON public.device_tokens;
-CREATE POLICY "Owners read their own devices"
-    ON public.device_tokens FOR SELECT TO authenticated
-    USING (user_id = (SELECT auth.uid()));
-
-DROP POLICY IF EXISTS "Owners forget their own devices" ON public.device_tokens;
-CREATE POLICY "Owners forget their own devices"
-    ON public.device_tokens FOR DELETE TO authenticated
-    USING (user_id = (SELECT auth.uid()));
-
-CREATE INDEX IF NOT EXISTS device_tokens_user_idx
-    ON public.device_tokens (user_id);
-
-CREATE OR REPLACE FUNCTION public.register_device_token(
-    p_token TEXT,
-    p_platform TEXT DEFAULT 'android'
-)
-RETURNS VOID
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-DECLARE
-    current_user_id UUID := auth.uid();
-    clean_token TEXT := trim(COALESCE(p_token, ''));
-    clean_platform TEXT := CASE
-        WHEN p_platform IN ('android', 'ios', 'web') THEN p_platform
-        ELSE 'android'
-    END;
-BEGIN
-    IF current_user_id IS NULL THEN
-        RAISE EXCEPTION 'You must be signed in to store a device.';
-    END IF;
-    -- An FCM token is a long opaque string. Anything shorter was never a token,
-    -- and storing junk here would only make the phone silently miss alerts.
-    IF char_length(clean_token) NOT BETWEEN 20 AND 600 THEN
-        RAISE EXCEPTION 'That device token does not look real.';
-    END IF;
-
-    INSERT INTO public.device_tokens (user_id, token, platform, updated_at)
-    VALUES (current_user_id, clean_token, clean_platform, NOW())
-    ON CONFLICT (token, user_id)
-    DO UPDATE SET platform = EXCLUDED.platform, updated_at = NOW();
-
-    -- A phone that is never opened again leaves a dead token behind and FCM
-    -- keeps answering with an error for it. Thirty days of silence retires it.
-    DELETE FROM public.device_tokens
-    WHERE device_tokens.user_id = current_user_id
-      AND device_tokens.updated_at < NOW() - INTERVAL '30 days';
-END $$;
-
--- Signing out has to remove this device from the list, otherwise the next
--- student to pick up the phone keeps getting somebody else's alerts.
-CREATE OR REPLACE FUNCTION public.forget_device_token(p_token TEXT)
-RETURNS VOID
-LANGUAGE sql
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-    DELETE FROM public.device_tokens
-    WHERE user_id = auth.uid()
-      AND token = trim(COALESCE(p_token, ''));
-$$;
-
-REVOKE ALL ON FUNCTION public.register_device_token(TEXT, TEXT) FROM PUBLIC, anon;
-REVOKE ALL ON FUNCTION public.forget_device_token(TEXT) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.register_device_token(TEXT, TEXT) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.forget_device_token(TEXT) TO authenticated;
-
-NOTIFY pgrst, 'reload schema';
-
-
--- ============ PART 19/24: migrations/20261018_campus_identity.sql ============
-
--- ============================================================
--- CAMPUS CONNECT ‚Äî ONE PERSON, ONE SCHOOL, HIS OWN PROGRAMME
--- Part 19 of the setup. Idempotent: safe to run more than once.
---
--- The school rules this adds:
---   * a campus account says which university it belongs to while it is
---     being created, because the notices, the class lists and the people
---     zone are all hung off that one name
---   * a student, lecturer or staff account never loses its university
---     again; only an admin moves a member between schools
---   * one National ID card is approved for one staff account, so the same
---     person cannot verify twice with two email addresses
---   * an admin can correct the school or the programme a member chose
---   * a lecturer chooses his own programme himself and it stays his;
---     every lecturer still has exactly the same lecturer tasks
---
--- Depends on the roles part (is_admin), the programmes part (programmes,
--- profiles.programme_id) and the lecturer credentials part (normalize_id_number,
--- lecturer_submissions). That is why the one-shot file is pasted whole.
--- ============================================================
-
-
--- ------------------------------------------------------------
--- 1. A CAMPUS ACCOUNT NAMES ITS UNIVERSITY WHILE IT IS BORN
--- The same trigger that creates the profile row now also reads the school
--- out of the sign-up data. A blank school aborts the insert, so no account
--- exists at all ‚Äî which is what "the system refuses" means.
--- ------------------------------------------------------------
-
-CREATE OR REPLACE FUNCTION public.handle_new_auth_user()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-DECLARE
-    username_base TEXT;
-    candidate_username TEXT;
-    attempt INTEGER;
-    metadata JSONB;
-    account_kind TEXT;
-    claimed_number TEXT;
-    claimed_card TEXT;
-    claimed_university TEXT;
-    clash_name TEXT;
-BEGIN
-    metadata := COALESCE(NEW.raw_user_meta_data, '{}'::JSONB);
-    account_kind := LOWER(BTRIM(COALESCE(metadata->>'account_kind', '')));
-    claimed_number := public.normalize_id_number(metadata->>'registration_number');
-    claimed_card := public.normalize_id_number(metadata->>'staff_id_number');
-    claimed_university := LEFT(BTRIM(COALESCE(metadata->>'university', '')), 100);
-
-    -- Whatever an older app version sends, the number is only ever
-    -- claimed once, and a member never has one.
-    IF account_kind = 'member' THEN
-        claimed_number := '';
-        claimed_card := '';
-    END IF;
-
-    -- A company and a parent belong to no campus, so they are not asked.
-    IF account_kind IN ('student', 'lecturer', 'security') AND claimed_university = '' THEN
-        RAISE EXCEPTION 'Name the university or college you belong to before this account can be created.'
-            USING ERRCODE = '22023';
-    END IF;
-
-    username_base := LOWER(
-        REGEXP_REPLACE(
-            COALESCE(
-                metadata->>'username',
-                SPLIT_PART(COALESCE(NEW.email, NEW.phone, 'student'), '@', 1)
-            ),
-            '[^a-zA-Z0-9_]',
-            '',
-            'g'
-        )
-    );
-    username_base := LEFT(username_base, 20);
-    IF char_length(username_base) < 3 THEN
-        username_base := 'student';
-    END IF;
-
-    FOR attempt IN 0..5 LOOP
-        candidate_username := CASE
-            WHEN attempt = 0 THEN username_base
-            ELSE LEFT(username_base, 19) || '_' || LEFT(NEW.id::TEXT, 8) ||
-                 CASE WHEN attempt > 1 THEN '_' || (attempt - 1)::TEXT ELSE '' END
-        END;
-
-        BEGIN
-            INSERT INTO public.profiles (
-                id,
-                username,
-                full_name,
-                course,
-                role,
-                staff_id_number
-            )
-            VALUES (
-                NEW.id,
-                candidate_username,
-                LEFT(COALESCE(metadata->>'full_name', 'Member'), 100),
-                LEFT(COALESCE(metadata->>'course', ''), 120),
-                CASE WHEN account_kind = 'member' THEN 'member' ELSE 'student' END,
-                CASE WHEN account_kind IN ('lecturer', 'security') THEN claimed_card ELSE '' END
-            )
-            ON CONFLICT (id) DO NOTHING;
-            EXIT;
-        EXCEPTION WHEN unique_violation THEN
-            GET STACKED DIAGNOSTICS clash_name = CONSTRAINT_NAME;
-            IF clash_name = 'profiles_staff_id_key' THEN
-                RAISE EXCEPTION 'That staff ID card already belongs to another account. Nobody can register twice with one card.'
-                    USING ERRCODE = '23505';
-            END IF;
-            IF attempt = 5 THEN
-                RAISE;
-            END IF;
-        END;
-    END LOOP;
-
-    IF account_kind = 'student' OR account_kind = '' THEN
-        IF claimed_number <> '' THEN
-            BEGIN
-                INSERT INTO public.student_registrations (user_id, registration_number)
-                VALUES (NEW.id, claimed_number);
-            EXCEPTION WHEN unique_violation THEN
-                RAISE EXCEPTION 'That registration number is already known to the university system. Check it, or ask an admin. Even two people with the same name cannot share one number.'
-                    USING ERRCODE = '23505';
-            END;
-        END IF;
-    END IF;
-
-    IF account_kind = 'lecturer' AND claimed_card = '' THEN
-        RAISE EXCEPTION 'A lecturer registers with the number on their staff ID card.'
-            USING ERRCODE = '22023';
-    END IF;
-
-    -- The school the member named is written next to the profile. The
-    -- column comes from the roles part; a database that has not reached
-    -- it yet keeps the answer on the account instead of losing the signup.
-    IF claimed_university <> '' THEN
-        BEGIN
-            UPDATE public.profiles
-               SET university = claimed_university
-             WHERE id = NEW.id;
-        EXCEPTION WHEN undefined_column THEN
-            RAISE NOTICE 'profiles.university is not here yet, so % stays on the account alone.', claimed_university;
-        END;
-    END IF;
-
-    RETURN NEW;
-END;
-$$;
-
-REVOKE ALL ON FUNCTION public.handle_new_auth_user() FROM PUBLIC, anon, authenticated;
-
-
--- ------------------------------------------------------------
--- 2. A CAMPUS ACCOUNT NEVER LOSES ITS UNIVERSITY
--- The app writes the whole profile row on every save, so a field cleared
--- by accident would silently drop a member out of his own zone. An admin
--- may still move a member between schools.
--- ------------------------------------------------------------
-
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM information_schema.columns
-        WHERE table_schema = 'public' AND table_name = 'profiles' AND column_name = 'university'
-    ) THEN
-        RAISE NOTICE 'profiles.university is missing, so rule 2 is skipped until the roles part runs.';
-        RETURN;
-    END IF;
-
-    CREATE OR REPLACE FUNCTION public.enforce_profile_campus_identity()
-    RETURNS TRIGGER
-    LANGUAGE plpgsql
-    VOLATILE
-    SET search_path = ''
-    AS $fn$
-    BEGIN
-        -- to_jsonb() is used for the company on purpose: a company account
-        -- has no campus and must never be stopped by this rule, including
-        -- on a database where the companies part has not run.
-        IF NEW.role IN ('student', 'lecturer', 'security')
-           AND COALESCE(NULLIF(BTRIM(COALESCE((to_jsonb(NEW) ->> 'company'), '')), ''), '') = ''
-           AND NULLIF(BTRIM(COALESCE(NEW.university, '')), '') IS NULL
-           AND NOT public.is_admin()
-        THEN
-            RAISE EXCEPTION 'A student, lecturer or staff account always belongs to a university. Ask an admin to move it to another school.'
-                USING ERRCODE = '22023';
-        END IF;
-        RETURN NEW;
-    END;
-    $fn$;
-
-    REVOKE ALL ON FUNCTION public.enforce_profile_campus_identity() FROM PUBLIC, anon, authenticated;
-
-    DROP TRIGGER IF EXISTS profiles_enforce_campus_identity ON public.profiles;
-    CREATE TRIGGER profiles_enforce_campus_identity
-        BEFORE UPDATE OF university, role ON public.profiles
-        FOR EACH ROW EXECUTE FUNCTION public.enforce_profile_campus_identity();
-END;
-$$;
-
-
--- ------------------------------------------------------------
--- 3. ONE NATIONAL ID CARD, ONE APPROVED STAFF ACCOUNT
--- A lecturer is verified with his National ID. Without this rule the same
--- person could be approved on a second account under a second email
--- address. Re-sending one's own documents stays allowed: only a DIFFERENT
--- account is refused.
--- ------------------------------------------------------------
-
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM information_schema.columns
-        WHERE table_schema = 'public' AND table_name = 'lecturer_submissions'
-          AND column_name = 'national_id_number'
-    ) THEN
-        RAISE NOTICE 'lecturer_submissions.national_id_number is missing, so rule 3 is skipped until the credentials part runs.';
-        RETURN;
-    END IF;
-
-    CREATE OR REPLACE FUNCTION public.enforce_one_person_one_staff_account()
-    RETURNS TRIGGER
-    LANGUAGE plpgsql
-    VOLATILE
-    SECURITY DEFINER
-    SET search_path = ''
-    AS $fn$
-    DECLARE
-        other UUID;
-    BEGIN
-        IF COALESCE(NEW.status, '') <> 'approved' THEN
-            RETURN NEW;
-        END IF;
-        IF NULLIF(BTRIM(COALESCE(NEW.national_id_number, '')), '') IS NULL THEN
-            RETURN NEW;
-        END IF;
-
-        SELECT submission.user_id INTO other
-          FROM public.lecturer_submissions AS submission
-         WHERE LOWER(BTRIM(submission.national_id_number)) = LOWER(BTRIM(NEW.national_id_number))
-           AND submission.status = 'approved'
-           AND submission.user_id <> NEW.user_id
-         LIMIT 1;
-
-        IF other IS NOT NULL THEN
-            RAISE EXCEPTION 'That National ID is already approved on another account. One person gets one staff account.'
-                USING ERRCODE = '23505';
-        END IF;
-
-        RETURN NEW;
-    END;
-    $fn$;
-
-    REVOKE ALL ON FUNCTION public.enforce_one_person_one_staff_account() FROM PUBLIC, anon, authenticated;
-
-    DROP TRIGGER IF EXISTS lecturer_submissions_one_person ON public.lecturer_submissions;
-    CREATE TRIGGER lecturer_submissions_one_person
-        BEFORE INSERT OR UPDATE OF status, national_id_number ON public.lecturer_submissions
-        FOR EACH ROW EXECUTE FUNCTION public.enforce_one_person_one_staff_account();
-END;
-$$;
-
-
--- ------------------------------------------------------------
--- 4. WHAT THE SCHOOL (AN ADMIN) MAY CORRECT
--- A member picks his own school and, if he teaches, his own programme.
--- When he gets it wrong, only an admin can move him.
--- ------------------------------------------------------------
-
-CREATE OR REPLACE FUNCTION public.set_member_university(
-    p_user UUID,
-    p_university TEXT
-)
-RETURNS TEXT
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-DECLARE
-    cleaned TEXT := LEFT(BTRIM(COALESCE(p_university, '')), 100);
-BEGIN
-    IF NOT public.is_admin() THEN
-        RAISE EXCEPTION 'Only an admin can change which school a member belongs to.'
-            USING ERRCODE = '42501';
-    END IF;
-    IF cleaned = '' THEN
-        RAISE EXCEPTION 'A member has to be moved to a named school, not away from one.'
-            USING ERRCODE = '22023';
-    END IF;
-
-    UPDATE public.profiles
-       SET university = cleaned
-     WHERE id = p_user;
-
-    IF NOT FOUND THEN
-        RAISE EXCEPTION 'That member has no profile row.'
-            USING ERRCODE = 'P0002';
-    END IF;
-
-    RETURN cleaned;
-END;
-$$;
-
-CREATE OR REPLACE FUNCTION public.set_member_programme(
-    p_user UUID,
-    p_programme_id UUID
-)
-RETURNS VOID
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-BEGIN
-    IF NOT public.is_admin() THEN
-        RAISE EXCEPTION 'Only an admin can move a member to another programme.'
-            USING ERRCODE = '42501';
-    END IF;
-
-    -- A programme that the school has not published cannot be given out.
-    IF p_programme_id IS NOT NULL AND NOT EXISTS (
-        SELECT 1 FROM public.programmes WHERE id = p_programme_id
-    ) THEN
-        RAISE EXCEPTION 'That programme is not in the school catalogue.'
-            USING ERRCODE = '22023';
-    END IF;
-
-    UPDATE public.profiles
-       SET programme_id = p_programme_id
-     WHERE id = p_user;
-
-    IF NOT FOUND THEN
-        RAISE EXCEPTION 'That member has no profile row.'
-            USING ERRCODE = 'P0002';
-    END IF;
-END;
-$$;
-
-REVOKE ALL ON FUNCTION public.set_member_university(UUID, TEXT) FROM PUBLIC, anon;
-REVOKE ALL ON FUNCTION public.set_member_programme(UUID, UUID) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.set_member_university(UUID, TEXT) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.set_member_programme(UUID, UUID) TO authenticated;
-ALTER FUNCTION public.set_member_university(UUID, TEXT) OWNER TO postgres;
-ALTER FUNCTION public.set_member_programme(UUID, UUID) OWNER TO postgres;
-
-
--- ------------------------------------------------------------
--- 5. TELL POSTGREST THE SHAPE CHANGED
--- ------------------------------------------------------------
-
-NOTIFY pgrst, 'reload schema';
-
-
--- ------------------------------------------------------------
--- 6. WHAT SHOULD COME BACK
--- Every row reads 'ok' when this part is in place.
--- ------------------------------------------------------------
-
-SELECT
-    'programme rpc' AS check,
-    CASE WHEN EXISTS (
-        SELECT 1 FROM pg_catalog.pg_proc
-        WHERE proname = 'set_member_programme'
-          AND pronamespace = 'public'::regnamespace
-    ) THEN 'ok' ELSE 'MISSING' END AS result
-UNION ALL
-SELECT 'university rpc',
-    CASE WHEN EXISTS (
-        SELECT 1 FROM pg_catalog.pg_proc
-        WHERE proname = 'set_member_university'
-          AND pronamespace = 'public'::regnamespace
-    ) THEN 'ok' ELSE 'MISSING' END
-UNION ALL
-SELECT 'signup guard',
-    CASE WHEN pg_catalog.pg_get_functiondef(
-        (SELECT oid FROM pg_catalog.pg_proc
-          WHERE proname = 'handle_new_auth_user'
-            AND pronamespace = 'public'::regnamespace
-          LIMIT 1)
-    ) LIKE '%claimed_university%' THEN 'ok' ELSE 'MISSING' END
-UNION ALL
-SELECT 'one person trigger',
-    CASE WHEN EXISTS (
-        SELECT 1 FROM pg_catalog.pg_trigger AS trigger_row
-          JOIN pg_catalog.pg_class AS table_class ON table_class.oid = trigger_row.tgrelid
-         WHERE trigger_row.tgname = 'lecturer_submissions_one_person'
-           AND table_class.relname = 'lecturer_submissions'
-           AND trigger_row.tgisinternal = FALSE
-    ) THEN 'ok' ELSE 'MISSING' END;
-
-
--- ============ PART 20/24: migrations/20261019_chat_organize.sql ============
-
--- ============================================================
--- CAMPUS CONNECT ‚Äî CHATS YOU ARCHIVE, MUTE, LOCK OR LABEL
--- Part 20 of the setup. Idempotent: safe to run more than once.
---
--- The chat list already knows who a member blocked and who they starred.
--- This adds the four things a student expects to set on one conversation
--- after pressing it for a moment, the way WhatsApp does:
---   * archived  - the chat leaves the main list but nothing is lost; it
---                 waits under its own heading until it is unarchived
---   * muted     - the phone stays quiet when that person or group writes,
---                 while the messages still arrive and still read as unread
---   * locked    - the phone must recognise this member (fingerprint, face
---                 or the code they set) before that chat opens
---   * chat_list - a short label, so "Squad" or "Class units" can hold the
---                 chats a member wants together
---   * theme     - the colour set chosen for that conversation ("preset:plum"
---                 or "color:#7a3cff"); empty means the built-in palette, so
---                 the app's default look is never stored as a preference
---   * cleared_at- everything older than this instant is gone from this
---                 member's view of the chat. The other person keeps their
---                 copy, exactly as WhatsApp's Clear chat behaves
---   * hidden_at - the chat also leaves the list until that person writes
---                 again, which is what Delete chat means here
---
--- Nothing in this table destroys a message. Both timestamps only ever say
--- "do not show this member what happened before this moment", so a chat
--- cleared by mistake can be brought back by an admin who knows the number.
---
--- One row per (member, conversation). A conversation is either a person or
--- a group, so peer_id deliberately carries NO foreign key: the same column
--- holds a profile id and a community id, and a group can be deleted out
--- from under a chat without taking the member's mute setting with it.
---
--- Nobody but the owner ever reads or writes these flags. They are not
--- visible to the other person, so muting or archiving a chat cannot tip
--- them off, and an admin reviewing accounts has no reason to see them.
---
--- The app works without this part: until it is run, the same four settings
--- are kept on the phone itself. Running it upgrades them to follow the
--- member onto any device they sign in from.
--- ============================================================
-
-
--- ------------------------------------------------------------
--- 1. ONE ROW PER MEMBER PER CONVERSATION
--- ------------------------------------------------------------
-
-CREATE TABLE IF NOT EXISTS public.conversation_settings (
-    user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
-    peer_id UUID NOT NULL,
-    archived BOOLEAN NOT NULL DEFAULT FALSE,
-    muted BOOLEAN NOT NULL DEFAULT FALSE,
-    locked BOOLEAN NOT NULL DEFAULT FALSE,
-    chat_list TEXT,
-    theme TEXT,
-    cleared_at TIMESTAMPTZ,
-    hidden_at TIMESTAMPTZ,
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    PRIMARY KEY (user_id, peer_id),
-    CONSTRAINT conversation_settings_list_length
-        CHECK (chat_list IS NULL OR char_length(BTRIM(chat_list)) BETWEEN 1 AND 40),
-    CONSTRAINT conversation_settings_theme_length
-        CHECK (theme IS NULL OR char_length(BTRIM(theme)) <= 40)
-);
-
-/* An older copy of this part may already have been pasted without the two
-   timestamps or the colour choice, and CREATE TABLE IF NOT EXISTS would then
-   have skipped them. */
-ALTER TABLE public.conversation_settings
-    ADD COLUMN IF NOT EXISTS cleared_at TIMESTAMPTZ,
-    ADD COLUMN IF NOT EXISTS hidden_at TIMESTAMPTZ,
-    ADD COLUMN IF NOT EXISTS theme TEXT;
-
-CREATE INDEX IF NOT EXISTS conversation_settings_user_idx
-    ON public.conversation_settings (user_id);
-
-CREATE INDEX IF NOT EXISTS conversation_settings_archived_idx
-    ON public.conversation_settings (user_id) WHERE archived;
-
-
--- ------------------------------------------------------------
--- 2. KEEP updated_at HONEST
--- ------------------------------------------------------------
-
-DROP TRIGGER IF EXISTS conversation_settings_set_updated_at
-    ON public.conversation_settings;
-CREATE TRIGGER conversation_settings_set_updated_at
-    BEFORE UPDATE ON public.conversation_settings
-    FOR EACH ROW
-    EXECUTE FUNCTION public.set_updated_at();
-
-
--- ------------------------------------------------------------
--- 3. ONLY THE OWNER, ALWAYS
--- Four separate policies rather than one permissive catch-all, so a
--- member can change a flag but cannot move a row onto somebody else's
--- account: the WITH CHECK side is what stops that.
--- ------------------------------------------------------------
-
-ALTER TABLE public.conversation_settings ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS conversation_settings_owner_read ON public.conversation_settings;
-CREATE POLICY conversation_settings_owner_read ON public.conversation_settings
-    FOR SELECT TO authenticated
-    USING (user_id = auth.uid());
-
-DROP POLICY IF EXISTS conversation_settings_owner_add ON public.conversation_settings;
-CREATE POLICY conversation_settings_owner_add ON public.conversation_settings
-    FOR INSERT TO authenticated
-    WITH CHECK (user_id = auth.uid());
-
-DROP POLICY IF EXISTS conversation_settings_owner_change ON public.conversation_settings;
-CREATE POLICY conversation_settings_owner_change ON public.conversation_settings
-    FOR UPDATE TO authenticated
-    USING (user_id = auth.uid())
-    WITH CHECK (user_id = auth.uid());
-
-DROP POLICY IF EXISTS conversation_settings_owner_remove ON public.conversation_settings;
-CREATE POLICY conversation_settings_owner_remove ON public.conversation_settings
-    FOR DELETE TO authenticated
-    USING (user_id = auth.uid());
-
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.conversation_settings TO authenticated;
-REVOKE ALL ON public.conversation_settings FROM anon;
-
-
-NOTIFY pgrst, 'reload schema';
-
-
--- ============ PART 21/24: migrations/20261020_phone_identity.sql ============
--- ============================================================
--- PART 21: A PHONE NUMBER IS AN ADDRESS
--- Campus Connect now lets a student, a lecturer or a security guard join with
--- the number on their SIM card alone. Two things have to be true at once: the
--- app must be able to find the account behind a number, and the number must
--- stay off the profile card of anybody who did not choose to show it. So the
--- digits get a column of their own, which the privacy mask never reads, and
--- the only door to that column is one function that answers one number with
--- one member.
---
--- Safe to run more than once: every statement is IF NOT EXISTS,
--- CREATE OR REPLACE, or an idempotent ALTER/GRANT.
--- Run this file AFTER database/schema.sql and AFTER every earlier part.
--- ============================================================
-
-
--- ------------------------------------------------------------
--- 1. THE SHAPE OF A NUMBER
--- One rule for the whole app: digits only, and a local 07XX XXX XXX is the
--- same subscriber as 2547XX XXX XXX. IMMUTABLE because an index expression
--- and a trigger both demand that.
--- ------------------------------------------------------------
-
-CREATE OR REPLACE FUNCTION public.normalize_phone_digits(p_value TEXT)
-RETURNS TEXT
-LANGUAGE sql
-IMMUTABLE
-SET search_path = ''
-AS $$
-    SELECT CASE
-        WHEN char_length(b.trimmed) = 10 AND b.trimmed LIKE '0%'
-            THEN '254' || RIGHT(b.trimmed, 9)
-        ELSE b.trimmed
-    END
-    FROM (
-        SELECT REGEXP_REPLACE(COALESCE(p_value, ''), '[^0-9]', '', 'g') AS trimmed
-    ) AS b;
-$$;
-
-REVOKE ALL ON FUNCTION public.normalize_phone_digits(TEXT) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.normalize_phone_digits(TEXT) TO authenticated;
-
-
--- ------------------------------------------------------------
--- 2. A COLUMN THE PRIVACY MASK NEVER READS
--- contact_phone is what a member shows on his card; phone_digits is what the
--- school uses to route a message or a call to him. Only the second one is
--- kept when the member stops showing the first, and the check lets nothing
--- but a real number reach it.
--- ------------------------------------------------------------
-
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM information_schema.columns
-        WHERE table_schema = 'public'
-          AND table_name = 'profiles'
-          AND column_name = 'phone_digits'
-    ) THEN
-        ALTER TABLE public.profiles
-            ADD COLUMN phone_digits TEXT NOT NULL DEFAULT '';
-    END IF;
-END;
-$$;
-
-ALTER TABLE public.profiles
-    DROP CONSTRAINT IF EXISTS profiles_phone_digits_shape_check;
-ALTER TABLE public.profiles
-    ADD CONSTRAINT profiles_phone_digits_shape_check
-    CHECK (phone_digits = '' OR phone_digits ~ '^[0-9]{7,15}$');
-
-
--- ------------------------------------------------------------
--- 3. CATCH THE NUMBER BEFORE THE CARD HIDES IT
--- The sharing trigger used to blank a number the moment its owner stopped
--- showing it, which quietly deleted his address from the whole school. The
--- digits are now copied out of the way first, so hiding a number on a card
--- costs nothing but the display.
--- ------------------------------------------------------------
-
-CREATE OR REPLACE FUNCTION public.enforce_profile_contact_sharing()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-SET search_path = ''
-AS $$
-DECLARE
-    captured TEXT;
-BEGIN
-    IF BTRIM(COALESCE(NEW.contact_phone, '')) <> '' THEN
-        captured := public.normalize_phone_digits(NEW.contact_phone);
-        IF captured ~ '^[0-9]{7,15}$' THEN
-            NEW.phone_digits := captured;
-        END IF;
-    END IF;
-    IF NOT NEW.share_email THEN
-        NEW.contact_email := '';
-    END IF;
-    IF NOT NEW.share_phone THEN
-        NEW.contact_phone := '';
-    END IF;
-    RETURN NEW;
-END;
-$$;
-
-REVOKE ALL ON FUNCTION public.enforce_profile_contact_sharing() FROM PUBLIC, anon, authenticated;
-
-
--- ------------------------------------------------------------
--- 4. GIVE BACK THE NUMBERS THE OLD MASK ALREADY ATE
--- Everyone who ever ticked "show my contact phone" still has the number on
--- the card, so those digits are copied across once. A number two accounts
--- both claim is left alone rather than given to one of them, so the next
--- step can still promise one number, one account.
--- ------------------------------------------------------------
-
-UPDATE public.profiles AS profile
-   SET phone_digits = public.normalize_phone_digits(profile.contact_phone)
-  FROM (
-        SELECT public.normalize_phone_digits(card.contact_phone) AS digits
-        FROM public.profiles AS card
-        WHERE BTRIM(COALESCE(card.contact_phone, '')) <> ''
-        GROUP BY 1
-        HAVING COUNT(*) = 1
-     ) AS single
- WHERE profile.phone_digits = ''
-   AND public.normalize_phone_digits(profile.contact_phone) = single.digits
-   AND single.digits ~ '^[0-9]{7,15}$';
-
-
--- ------------------------------------------------------------
--- 5. ONE NUMBER, ONE ACCOUNT
--- The same guarantee the registration number already has: nobody can open a
--- second account on a number somebody else claimed. Both indexes only look
--- at rows that actually carry a number, so an older member with none stays
--- out of the way.
--- ------------------------------------------------------------
-
-DO $$
-BEGIN
-    BEGIN
-        CREATE UNIQUE INDEX profiles_phone_digits_key
-            ON public.profiles (phone_digits)
-            WHERE phone_digits <> '';
-    EXCEPTION WHEN unique_violation THEN
-        -- Two accounts already hold one number, so the promise cannot be made
-        -- over that pair. A plain index still answers the search, and the
-        -- notice says which pair an admin has to separate.
-        RAISE NOTICE 'Two accounts already share one phone number, so the one-number rule is not enforced yet. Check: %',
-            (SELECT string_agg(digits, ', ') FROM (
-                SELECT phone_digits AS digits FROM public.profiles
-                WHERE phone_digits <> ''
-                GROUP BY phone_digits HAVING COUNT(*) > 1
-            ) AS clashes);
-        CREATE INDEX IF NOT EXISTS profiles_phone_digits_key
-            ON public.profiles (phone_digits)
-            WHERE phone_digits <> '';
-    END;
-END;
-$$;
-
-CREATE INDEX IF NOT EXISTS profiles_phone_digits_search_idx
-    ON public.profiles USING GIN (phone_digits gin_trgm_ops)
-    WHERE phone_digits <> '';
-
--- The tail index is what makes "you dialled 07‚Ä¶, the account is stored as
--- 2547‚Ä¶" a cheap lookup instead of a scan of every member.
-CREATE INDEX IF NOT EXISTS profiles_phone_digits_tail_idx
-    ON public.profiles (RIGHT(phone_digits, 9))
-    WHERE phone_digits <> '';
-
-
--- ------------------------------------------------------------
--- 6. THE ONE DOOR: ASK FOR A MEMBER BY NUMBER
--- SECURITY DEFINER, so it can read the column the policies keep to
--- themselves, but it hands back no more than the profile page would have
--- shown anyway: the card of a member the caller may already see, with the
--- number left off unless its owner shows it. A caller has to give at least
--- seven digits, an exact match beats a last-nine match, and a blocked pair
--- answers nothing at all.
--- ------------------------------------------------------------
-
-CREATE OR REPLACE FUNCTION public.find_member_by_phone(p_phone TEXT)
-RETURNS TABLE (
-    id UUID,
-    username TEXT,
-    full_name TEXT,
-    gender TEXT,
-    course TEXT,
-    bio TEXT,
-    avatar_url TEXT,
-    contact_email TEXT,
-    contact_phone TEXT,
-    share_email BOOLEAN,
-    share_phone BOOLEAN,
-    is_discoverable BOOLEAN,
-    university TEXT,
-    role TEXT,
-    verification_status TEXT,
-    employment_status TEXT,
-    study_mode TEXT
-)
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-    SELECT profile.id,
-           profile.username,
-           profile.full_name,
-           profile.gender,
-           profile.course,
-           profile.bio,
-           profile.avatar_url,
-           profile.contact_email,
-           profile.contact_phone,
-           profile.share_email,
-           profile.share_phone,
-           profile.is_discoverable,
-           profile.university,
-           profile.role,
-           profile.verification_status,
-           profile.employment_status,
-           profile.study_mode
-    FROM public.profiles AS profile
-    WHERE (SELECT auth.uid()) IS NOT NULL
-      AND char_length(public.normalize_phone_digits(p_phone)) >= 7
-      AND profile.phone_digits <> ''
-      AND profile.id <> (SELECT auth.uid())
-      AND NOT public.is_blocked_between((SELECT auth.uid()), profile.id)
-      AND (
-            profile.is_discoverable
-            OR public.are_mutual_connections((SELECT auth.uid()), profile.id)
-            OR EXISTS (
-                SELECT 1
-                FROM public.messages AS chat
-                WHERE (chat.sender_id = (SELECT auth.uid()) AND chat.receiver_id = profile.id)
-                   OR (chat.receiver_id = (SELECT auth.uid()) AND chat.sender_id = profile.id)
-            )
-          )
-      AND (
-            profile.phone_digits = public.normalize_phone_digits(p_phone)
-            OR RIGHT(profile.phone_digits, 9) = RIGHT(public.normalize_phone_digits(p_phone), 9)
-          )
-    ORDER BY (profile.phone_digits = public.normalize_phone_digits(p_phone)) DESC,
-             profile.id
-    LIMIT 5;
-$$;
-
-REVOKE ALL ON FUNCTION public.find_member_by_phone(TEXT) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.find_member_by_phone(TEXT) TO authenticated;
-
-
--- ------------------------------------------------------------
--- 7. AN ACCOUNT BORN FROM A NUMBER KEEPS IT
--- The number is claimed while the account is still being made, so a phone
--- that loses its connection halfway through a sign-up never leaves a member
--- with an address nobody can dial. The check runs before anything is
--- written, so a refused sign-up leaves no half a profile behind either.
--- ------------------------------------------------------------
-
-CREATE OR REPLACE FUNCTION public.handle_new_auth_user()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-DECLARE
-    username_base TEXT;
-    candidate_username TEXT;
-    attempt INTEGER;
-    metadata JSONB;
-    account_kind TEXT;
-    claimed_number TEXT;
-    claimed_card TEXT;
-    claimed_university TEXT;
-    claimed_phone TEXT;
-    clash_name TEXT;
-BEGIN
-    metadata := COALESCE(NEW.raw_user_meta_data, '{}'::JSONB);
-    account_kind := LOWER(BTRIM(COALESCE(metadata->>'account_kind', '')));
-    claimed_number := public.normalize_id_number(metadata->>'registration_number');
-    claimed_card := public.normalize_id_number(metadata->>'staff_id_number');
-    claimed_university := LEFT(BTRIM(COALESCE(metadata->>'university', '')), 100);
-    claimed_phone := public.normalize_phone_digits(metadata->>'phone');
-    IF claimed_phone ~ '^[0-9]{7,15}$' IS NOT TRUE THEN
-        claimed_phone := '';
-    END IF;
-
-    -- Whatever an older app version sends, the number is only ever
-    -- claimed once, and a member never has one.
-    IF account_kind = 'member' THEN
-        claimed_number := '';
-        claimed_card := '';
-    END IF;
-
-    -- A company and a parent belong to no campus, so they are not asked.
-    IF account_kind IN ('student', 'lecturer', 'security') AND claimed_university = '' THEN
-        RAISE EXCEPTION 'Name the university or college you belong to before this account can be created.'
-            USING ERRCODE = '22023';
-    END IF;
-
-    IF claimed_phone <> '' AND EXISTS (
-        SELECT 1 FROM public.profiles AS taken
-        WHERE taken.phone_digits = claimed_phone
-    ) THEN
-        RAISE EXCEPTION 'That phone number already has a Campus Connect account. Log in with it, or ask an admin.'
-            USING ERRCODE = '23505';
-    END IF;
-
-    username_base := LOWER(
-        REGEXP_REPLACE(
-            COALESCE(
-                metadata->>'username',
-                SPLIT_PART(COALESCE(NEW.email, NEW.phone, 'student'), '@', 1)
-            ),
-            '[^a-zA-Z0-9_]',
-            '',
-            'g'
-        )
-    );
-    username_base := LEFT(username_base, 20);
-    IF char_length(username_base) < 3 THEN
-        username_base := 'student';
-    END IF;
-
-    FOR attempt IN 0..5 LOOP
-        candidate_username := CASE
-            WHEN attempt = 0 THEN username_base
-            ELSE LEFT(username_base, 19) || '_' || LEFT(NEW.id::TEXT, 8) ||
-                 CASE WHEN attempt > 1 THEN '_' || (attempt - 1)::TEXT ELSE '' END
-        END;
-
-        BEGIN
-            INSERT INTO public.profiles (
-                id,
-                username,
-                full_name,
-                course,
-                role,
-                staff_id_number,
-                phone_digits
-            )
-            VALUES (
-                NEW.id,
-                candidate_username,
-                LEFT(COALESCE(metadata->>'full_name', 'Member'), 100),
-                LEFT(COALESCE(metadata->>'course', ''), 120),
-                CASE WHEN account_kind = 'member' THEN 'member' ELSE 'student' END,
-                CASE WHEN account_kind IN ('lecturer', 'security') THEN claimed_card ELSE '' END,
-                claimed_phone
-            )
-            ON CONFLICT (id) DO NOTHING;
-            EXIT;
-        EXCEPTION WHEN unique_violation THEN
-            GET STACKED DIAGNOSTICS clash_name = CONSTRAINT_NAME;
-            IF clash_name = 'profiles_staff_id_key' THEN
-                RAISE EXCEPTION 'That staff ID card already belongs to another account. Nobody can register twice with one card.'
-                    USING ERRCODE = '23505';
-            END IF;
-            IF clash_name = 'profiles_phone_digits_key' THEN
-                RAISE EXCEPTION 'That phone number already has a Campus Connect account. Log in with it, or ask an admin.'
-                    USING ERRCODE = '23505';
-            END IF;
-            IF attempt = 5 THEN
-                RAISE;
-            END IF;
-        END;
-    END LOOP;
-
-    IF account_kind = 'student' OR account_kind = '' THEN
-        IF claimed_number <> '' THEN
-            BEGIN
-                INSERT INTO public.student_registrations (user_id, registration_number)
-                VALUES (NEW.id, claimed_number);
-            EXCEPTION WHEN unique_violation THEN
-                RAISE EXCEPTION 'That registration number is already known to the university system. Check it, or ask an admin. Even two people with the same name cannot share one number.'
-                    USING ERRCODE = '23505';
-            END;
-        END IF;
-    END IF;
-
-    IF account_kind = 'lecturer' AND claimed_card = '' THEN
-        RAISE EXCEPTION 'A lecturer registers with the number on their staff ID card.'
-            USING ERRCODE = '22023';
-    END IF;
-
-    -- The school the member named is written next to the profile. The
-    -- column comes from the roles part; a database that has not reached
-    -- it yet keeps the answer on the account instead of losing the signup.
-    IF claimed_university <> '' THEN
-        BEGIN
-            UPDATE public.profiles
-               SET university = claimed_university
-             WHERE id = NEW.id;
-        EXCEPTION WHEN undefined_column THEN
-            RAISE NOTICE 'profiles.university is not here yet, so % stays on the account alone.', claimed_university;
-        END;
-    END IF;
-
-    RETURN NEW;
-END;
-$$;
-
-REVOKE ALL ON FUNCTION public.handle_new_auth_user() FROM PUBLIC, anon, authenticated;
-
-
--- ------------------------------------------------------------
--- 8. THE SAME ANSWER FOR A NUMBER ADDED AFTER THE ACCOUNT
--- A member who joins with an email and only later writes his number on his
--- profile is found the same way: the trigger in step 3 copies the digits out
--- of whatever the app saves, so there is nothing else to run. The number
--- itself stays on the card only as long as its owner shows it.
--- ------------------------------------------------------------
-
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_trigger
-        WHERE tgname = 'profiles_enforce_contact_sharing'
-          AND tgrelid = 'public.profiles'::REGCLASS
-          AND NOT tgisinternal
-    ) THEN
-        CREATE TRIGGER profiles_enforce_contact_sharing
-            BEFORE INSERT OR UPDATE
-            ON public.profiles
-            FOR EACH ROW
-            EXECUTE FUNCTION public.enforce_profile_contact_sharing();
-    END IF;
-END;
-$$;
-
-
--- ------------------------------------------------------------
--- 9. TELL POSTGREST THE SHAPE CHANGED
--- ------------------------------------------------------------
-
-NOTIFY pgrst, 'reload schema';
-
-
--- ------------------------------------------------------------
--- 10. WHAT SHOULD COME BACK
--- Expected: three rows, all result = 'ok'.
--- ------------------------------------------------------------
-
-SELECT 'column: profiles.phone_digits' AS check_name,
-       CASE WHEN (
-           SELECT COUNT(*) FROM information_schema.columns
-           WHERE table_schema = 'public'
-             AND table_name = 'profiles'
-             AND column_name = 'phone_digits'
-       ) = 1 THEN 'ok' ELSE 'FAILED (a phone number cannot be looked up)' END AS result
-UNION ALL
-SELECT 'phone function: ' || wanted.name,
-       CASE WHEN (
-           SELECT COUNT(*)
-           FROM pg_proc AS p
-           JOIN pg_namespace AS n ON n.oid = p.pronamespace
-           WHERE n.nspname = 'public' AND p.proname = wanted.name
-       ) = 1 THEN 'ok' ELSE 'FAILED (dialling a number from the app will not work)' END
-FROM (VALUES ('normalize_phone_digits'), ('find_member_by_phone')) AS wanted(name)
-UNION ALL
-SELECT 'one number per account',
-       CASE WHEN (
-           SELECT COUNT(*) FROM (
-               SELECT phone_digits FROM public.profiles
-               WHERE phone_digits <> ''
-               GROUP BY phone_digits HAVING COUNT(*) > 1
-           ) AS clashes
-       ) = 0 THEN 'ok' ELSE 'FAILED: two accounts already share one number' END;
-
-
--- ============ PART 22/24: migrations/20261020_campus_services.sql ============
--- ============================================================
--- CAMPUS CONNECT ‚Äî THE CAMPUS SERVICES DEPARTMENTS
--- A university is more than a chat. A student also needs a bed, a meal,
--- a chapel and a name on the class list, and each of those belongs to a
--- different department. This part puts all four in the database, one
--- switch per school, so a school that has no catering simply never
--- turns catering on and nobody sees an empty screen.
---   * campus_services: one row per school with four switches
---     (accommodation, catering, chaplaincy, attendance). A school that is
---     not in the table has nothing, which is the truth until somebody who
---     works there says otherwise. Nothing is invented for another
---     university: its own staff turn its own services on.
---   * hostels + hostel_rooms + hostel_bookings: a student asks for a bed
---     in a named hostel for one semester, and the housing office decides.
---     The four Kabarak men's hostels are seeded because the school's own
---     member named them; no hostel exists here that nobody named.
---   * meal_plans: the catering department posts what it serves and costs.
---   * chaplaincy_events + prayer_requests: a chaplain publishes the
---     year's church programme for their own school and answers the
---     requests students send in. A prayer request is never public.
---   * class_checkins: a lecturer opens a short window with a code and the
---     students in the room (or on the online link) check in. The roll is
---     built from those rows, so an attendance list is something a student
---     cannot type.
---   * the role 'chaplain' is added, alongside the four roles that already
---     exist. Only an admin grants it, exactly the way every other role is
---     granted.
--- Everything here is scoped by school name, the same way profiles.university
--- is: the name is the key because a person must be able to belong to a
--- school before that school has been set up.
--- Idempotent: safe to run more than once.
--- ============================================================
-
-
--- ------------------------------------------------------------
--- 1. A CHAPLAIN IS A ROLE, NOT A HACK
--- 'chaplain' joins the roles that already exist, in the check on the
--- column and in the check on what a member is allowed to ask for.
--- ------------------------------------------------------------
-
-DO $$
-BEGIN
-    IF EXISTS (
-        SELECT 1 FROM pg_constraint
-        WHERE conname = 'profiles_role_check' AND conrelid = 'public.profiles'::regclass
-    ) THEN
-        ALTER TABLE public.profiles DROP CONSTRAINT profiles_role_check;
-    END IF;
-    ALTER TABLE public.profiles
-        ADD CONSTRAINT profiles_role_check
-        CHECK (role IN ('student', 'lecturer', 'security', 'admin', 'member', 'chaplain'));
-END
-$$;
-
-DO $$
-BEGIN
-    IF EXISTS (
-        SELECT 1 FROM pg_constraint
-        WHERE conname = 'profiles_requested_role_check'
-          AND conrelid = 'public.profiles'::regclass
-    ) THEN
-        ALTER TABLE public.profiles DROP CONSTRAINT profiles_requested_role_check;
-    END IF;
-    ALTER TABLE public.profiles
-        ADD CONSTRAINT profiles_requested_role_check
-        CHECK (requested_role IN ('', 'student', 'lecturer', 'security', 'chaplain'));
-END
-$$;
-
-
--- ------------------------------------------------------------
--- 2. THE FOUR SWITCHES PER SCHOOL
--- One row says which departments of this app that school actually runs.
--- A member of that school's staff (or any admin) flips them.
--- ------------------------------------------------------------
-
-CREATE TABLE IF NOT EXISTS public.campus_services (
-    school TEXT NOT NULL,
-    school_key TEXT GENERATED ALWAYS AS (LOWER(BTRIM(school))) STORED,
-    accommodation BOOLEAN NOT NULL DEFAULT FALSE,
-    catering BOOLEAN NOT NULL DEFAULT FALSE,
-    chaplaincy BOOLEAN NOT NULL DEFAULT FALSE,
-    attendance BOOLEAN NOT NULL DEFAULT FALSE,
-    note TEXT NOT NULL DEFAULT '' CHECK (char_length(note) <= 400),
-    updated_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT campus_services_school_unique UNIQUE (school_key)
-);
-
-
--- ------------------------------------------------------------
--- 3. WHO RUNS A DEPARTMENT
--- is_admin() covers the owner of the app. Below it, a school's own staff
--- run their own school and nothing else: a lecturer at one campus cannot
--- open a hostel booking at another.
--- ------------------------------------------------------------
-
-CREATE OR REPLACE FUNCTION public.my_school_key()
-RETURNS TEXT
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-    SELECT LOWER(BTRIM(COALESCE(
-        (SELECT p.university FROM public.profiles AS p WHERE p.id = auth.uid()),
-        ''
-    )));
-$$;
-
-CREATE OR REPLACE FUNCTION public.is_school_staff(p_school_key TEXT)
-RETURNS BOOLEAN
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-    SELECT COALESCE((
-        SELECT p.role = 'admin'
-            OR (p.role IN ('lecturer', 'security')
-                AND p.employment_status = 'active'
-                AND LOWER(BTRIM(p.university)) = LOWER(BTRIM(COALESCE(p_school_key, ''))))
-        FROM public.profiles AS p
-        WHERE p.id = auth.uid()
-    ), FALSE);
-$$;
-
-CREATE OR REPLACE FUNCTION public.may_lead_chaplaincy(p_school_key TEXT)
-RETURNS BOOLEAN
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-    SELECT COALESCE((
-        SELECT p.role = 'admin'
-            OR (p.role = 'chaplain'
-                AND LOWER(BTRIM(p.university)) = LOWER(BTRIM(COALESCE(p_school_key, ''))))
-        FROM public.profiles AS p
-        WHERE p.id = auth.uid()
-    ), FALSE);
-$$;
-
-REVOKE ALL ON FUNCTION public.my_school_key() FROM PUBLIC, anon;
-REVOKE ALL ON FUNCTION public.is_school_staff(TEXT) FROM PUBLIC, anon;
-REVOKE ALL ON FUNCTION public.may_lead_chaplaincy(TEXT) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.my_school_key() TO authenticated;
-GRANT EXECUTE ON FUNCTION public.is_school_staff(TEXT) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.may_lead_chaplaincy(TEXT) TO authenticated;
-
-ALTER TABLE public.campus_services ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS campus_services_readable ON public.campus_services;
-CREATE POLICY campus_services_readable ON public.campus_services
-    FOR SELECT TO authenticated
-    USING (TRUE);
-
-DROP POLICY IF EXISTS campus_services_staff_write ON public.campus_services;
-CREATE POLICY campus_services_staff_write ON public.campus_services
-    FOR INSERT TO authenticated
-    WITH CHECK (updated_by = auth.uid() AND public.is_school_staff(school_key));
-
-DROP POLICY IF EXISTS campus_services_staff_edit ON public.campus_services;
-CREATE POLICY campus_services_staff_edit ON public.campus_services
-    FOR UPDATE TO authenticated
-    USING (public.is_school_staff(school_key))
-    WITH CHECK (public.is_school_staff(school_key));
-
-GRANT SELECT, INSERT, UPDATE ON public.campus_services TO authenticated;
-REVOKE ALL ON public.campus_services FROM anon, public;
-
-
--- ------------------------------------------------------------
--- 4. THE HOSTELS
--- A hostel is a name attached to a school, not a global row: two schools
--- can both have a "Baringo" and mean different buildings by it.
--- ------------------------------------------------------------
-
-CREATE TABLE IF NOT EXISTS public.hostels (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    school TEXT NOT NULL,
-    school_key TEXT GENERATED ALWAYS AS (LOWER(BTRIM(school))) STORED,
-    name TEXT NOT NULL CHECK (char_length(BTRIM(name)) BETWEEN 2 AND 80),
-    name_key TEXT GENERATED ALWAYS AS (LOWER(BTRIM(name))) STORED,
-    gender TEXT NOT NULL DEFAULT 'mixed'
-        CHECK (gender IN ('men', 'women', 'mixed')),
-    address TEXT NOT NULL DEFAULT '' CHECK (char_length(address) <= 160),
-    note TEXT NOT NULL DEFAULT '' CHECK (char_length(note) <= 400),
-    verified BOOLEAN NOT NULL DEFAULT FALSE,
-    added_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT hostels_school_name_unique UNIQUE (school_key, name_key)
-);
-
-CREATE TABLE IF NOT EXISTS public.hostel_rooms (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    hostel_id UUID NOT NULL REFERENCES public.hostels(id) ON DELETE CASCADE,
-    label TEXT NOT NULL CHECK (char_length(BTRIM(label)) BETWEEN 1 AND 40),
-    sharing TEXT NOT NULL DEFAULT 'other'
-        CHECK (sharing IN ('single', 'twin', 'double', 'four', 'other')),
-    capacity INT NOT NULL DEFAULT 1 CHECK (capacity BETWEEN 1 AND 12),
-    fee_semester NUMERIC(10, 2) CHECK (fee_semester IS NULL OR fee_semester >= 0),
-    meal_included BOOLEAN NOT NULL DEFAULT FALSE,
-    note TEXT NOT NULL DEFAULT '' CHECK (char_length(note) <= 200),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT hostel_rooms_label_unique UNIQUE (hostel_id, label)
-);
-
-CREATE TABLE IF NOT EXISTS public.hostel_bookings (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    room_id UUID NOT NULL REFERENCES public.hostel_rooms(id) ON DELETE CASCADE,
-    student_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-    semester TEXT NOT NULL CHECK (char_length(BTRIM(semester)) BETWEEN 3 AND 40),
-    status TEXT NOT NULL DEFAULT 'pending'
-        CHECK (status IN ('pending', 'approved', 'rejected', 'cancelled')),
-    request_note TEXT NOT NULL DEFAULT '' CHECK (char_length(request_note) <= 400),
-    decision_note TEXT NOT NULL DEFAULT '' CHECK (char_length(decision_note) <= 400),
-    decided_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
-    decided_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
--- One live request per student per semester. A cancelled or rejected one
--- frees the place, so a student who was refused can ask for another room
--- without an admin touching the database.
-CREATE UNIQUE INDEX IF NOT EXISTS hostel_bookings_one_live_per_semester
-    ON public.hostel_bookings (student_id, LOWER(BTRIM(semester)))
-    WHERE status IN ('pending', 'approved');
-
-CREATE INDEX IF NOT EXISTS hostels_school_idx ON public.hostels (school_key);
-CREATE INDEX IF NOT EXISTS hostel_bookings_room_idx
-    ON public.hostel_bookings (room_id, status);
-CREATE INDEX IF NOT EXISTS hostel_bookings_student_idx
-    ON public.hostel_bookings (student_id);
-
-ALTER TABLE public.hostels ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.hostel_rooms ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.hostel_bookings ENABLE ROW LEVEL SECURITY;
-
--- Which beds this account already holds. A policy cannot read its own table
--- (Postgres answers with a recursion error), so the answer comes from a
--- definer function that reads it once and hands back pairs.
-CREATE OR REPLACE FUNCTION public.my_approved_beds()
-RETURNS TABLE (room_id UUID, semester_key TEXT)
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-    SELECT b.room_id, LOWER(BTRIM(b.semester))
-    FROM public.hostel_bookings AS b
-    WHERE b.student_id = auth.uid()
-      AND b.status = 'approved';
-$$;
-
-REVOKE ALL ON FUNCTION public.my_approved_beds() FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.my_approved_beds() TO authenticated;
-
--- A list of hostels is on every prospectus: reading is open, writing is not.
-DROP POLICY IF EXISTS hostels_readable ON public.hostels;
-CREATE POLICY hostels_readable ON public.hostels
-    FOR SELECT TO authenticated
-    USING (TRUE);
-
-DROP POLICY IF EXISTS hostels_staff_write ON public.hostels;
-CREATE POLICY hostels_staff_write ON public.hostels
-    FOR INSERT TO authenticated
-    WITH CHECK (added_by = auth.uid() AND public.is_school_staff(school_key));
-
-DROP POLICY IF EXISTS hostels_staff_edit ON public.hostels;
-CREATE POLICY hostels_staff_edit ON public.hostels
-    FOR UPDATE TO authenticated
-    USING (public.is_school_staff(school_key))
-    WITH CHECK (public.is_school_staff(school_key));
-
-DROP POLICY IF EXISTS hostels_staff_remove ON public.hostels;
-CREATE POLICY hostels_staff_remove ON public.hostels
-    FOR DELETE TO authenticated
-    USING (public.is_school_staff(school_key));
-
-DROP POLICY IF EXISTS hostel_rooms_readable ON public.hostel_rooms;
-CREATE POLICY hostel_rooms_readable ON public.hostel_rooms
-    FOR SELECT TO authenticated
-    USING (TRUE);
-
-DROP POLICY IF EXISTS hostel_rooms_staff_write ON public.hostel_rooms;
-CREATE POLICY hostel_rooms_staff_write ON public.hostel_rooms
-    FOR INSERT TO authenticated
-    WITH CHECK (EXISTS (
-        SELECT 1 FROM public.hostels AS h
-        WHERE h.id = hostel_rooms.hostel_id
-          AND public.is_school_staff(h.school_key)
-    ));
-
-DROP POLICY IF EXISTS hostel_rooms_staff_edit ON public.hostel_rooms;
-CREATE POLICY hostel_rooms_staff_edit ON public.hostel_rooms
-    FOR UPDATE TO authenticated
-    USING (EXISTS (
-        SELECT 1 FROM public.hostels AS h
-        WHERE h.id = hostel_rooms.hostel_id
-          AND public.is_school_staff(h.school_key)
-    ))
-    WITH CHECK (EXISTS (
-        SELECT 1 FROM public.hostels AS h
-        WHERE h.id = hostel_rooms.hostel_id
-          AND public.is_school_staff(h.school_key)
-    ));
-
-DROP POLICY IF EXISTS hostel_rooms_staff_remove ON public.hostel_rooms;
-CREATE POLICY hostel_rooms_staff_remove ON public.hostel_rooms
-    FOR DELETE TO authenticated
-    USING (EXISTS (
-        SELECT 1 FROM public.hostels AS h
-        WHERE h.id = hostel_rooms.hostel_id
-          AND public.is_school_staff(h.school_key)
-    ));
-
--- A student sees their own requests; the housing office of that school
--- sees every request for its own beds; and a student who has been given a
--- bed sees the others approved into the same room for the same semester,
--- because a roommate is the first person a new student wants to know.
-DROP POLICY IF EXISTS hostel_bookings_own ON public.hostel_bookings;
-CREATE POLICY hostel_bookings_own ON public.hostel_bookings
-    FOR SELECT TO authenticated
-    USING (
-        student_id = auth.uid()
-        OR public.is_admin()
-        OR EXISTS (
-            SELECT 1 FROM public.hostel_rooms AS r
-            JOIN public.hostels AS h ON h.id = r.hostel_id
-            WHERE r.id = hostel_bookings.room_id
-              AND public.is_school_staff(h.school_key)
-        )
-        OR EXISTS (
-            SELECT 1 FROM public.my_approved_beds() AS mine
-            WHERE mine.room_id = hostel_bookings.room_id
-              AND mine.semester_key = LOWER(BTRIM(hostel_bookings.semester))
-        )
-    );
-
-DROP POLICY IF EXISTS hostel_bookings_student_ask ON public.hostel_bookings;
-CREATE POLICY hostel_bookings_student_ask ON public.hostel_bookings
-    FOR INSERT TO authenticated
-    WITH CHECK (student_id = auth.uid());
-
-DROP POLICY IF EXISTS hostel_bookings_student_cancel ON public.hostel_bookings;
-CREATE POLICY hostel_bookings_student_cancel ON public.hostel_bookings
-    FOR UPDATE TO authenticated
-    USING (student_id = auth.uid() AND status = 'pending')
-    WITH CHECK (student_id = auth.uid() AND status = 'cancelled');
-
--- Two policies cover this table: the one a student uses to cancel their own
--- waiting request, and this one for the office. Each is checked on its own
--- terms, so a student cancelling can never reach the decision columns.
-DROP POLICY IF EXISTS hostel_bookings_office_edit ON public.hostel_bookings;
-CREATE POLICY hostel_bookings_office_edit ON public.hostel_bookings
-    FOR UPDATE TO authenticated
-    USING (EXISTS (
-        SELECT 1 FROM public.hostel_rooms AS r
-        JOIN public.hostels AS h ON h.id = r.hostel_id
-        WHERE r.id = hostel_bookings.room_id
-          AND public.is_school_staff(h.school_key)
-    ))
-    WITH CHECK (status IN ('approved', 'rejected', 'cancelled'));
-
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.hostels TO authenticated;
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.hostel_rooms TO authenticated;
-GRANT SELECT, INSERT, UPDATE ON public.hostel_bookings TO authenticated;
-REVOKE ALL ON public.hostels FROM anon, public;
-REVOKE ALL ON public.hostel_rooms FROM anon, public;
-REVOKE ALL ON public.hostel_bookings FROM anon, public;
-
-
--- ------------------------------------------------------------
--- 5. A BED IS APPROVED BY AN OFFICE, NOT BY A STUDENT
--- approve is the one write a student cannot make for themselves, and a
--- room cannot fill past the beds it has. Both belong in a definer, and
--- the count of approved bookings is the only number that matters.
--- ------------------------------------------------------------
-
-CREATE OR REPLACE FUNCTION public.decide_hostel_booking(
-    p_booking_id UUID,
-    p_decision TEXT,
-    p_note TEXT DEFAULT ''
-)
-RETURNS TEXT
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-DECLARE
-    v_room UUID;
-    v_school TEXT;
-    v_semester TEXT;
-    v_taken INT;
-    v_capacity INT;
-BEGIN
-    IF p_decision NOT IN ('approved', 'rejected', 'cancelled') THEN
-        RAISE EXCEPTION 'That decision is not one the housing office can make.'
-            USING ERRCODE = '22023';
-    END IF;
-
-    SELECT r.id, h.school_key, b.semester
-      INTO v_room, v_school, v_semester
-    FROM public.hostel_bookings AS b
-    JOIN public.hostel_rooms AS r ON r.id = b.room_id
-    JOIN public.hostels AS h ON h.id = r.hostel_id
-    WHERE b.id = p_booking_id;
-
-    IF v_room IS NULL THEN
-        RAISE EXCEPTION 'No such booking.' USING ERRCODE = 'P0002';
-    END IF;
-
-    IF NOT public.is_school_staff(v_school) THEN
-        RAISE EXCEPTION 'Only the housing office of that school can decide a bed.'
-            USING ERRCODE = '42501';
-    END IF;
-
-    IF p_decision = 'approved' THEN
-        SELECT capacity INTO v_capacity FROM public.hostel_rooms WHERE id = v_room;
-        SELECT COUNT(*) INTO v_taken
-        FROM public.hostel_bookings
-        WHERE room_id = v_room
-          AND LOWER(BTRIM(semester)) = LOWER(BTRIM(v_semester))
-          AND status = 'approved'
-          AND id <> p_booking_id;
-        IF v_taken >= v_capacity THEN
-            RAISE EXCEPTION 'That room is full for % - % of % beds are already approved.',
-                v_semester, v_taken, v_capacity
-                USING ERRCODE = 'P0001';
-        END IF;
-    END IF;
-
-    UPDATE public.hostel_bookings
-        SET status = p_decision,
-            decision_note = LEFT(BTRIM(COALESCE(p_note, '')), 400),
-            decided_by = auth.uid(),
-            decided_at = NOW()
-        WHERE id = p_booking_id;
-
-    RETURN p_decision;
-END;
-$$;
-
-CREATE OR REPLACE FUNCTION public.ask_for_hostel_bed(
-    p_room_id UUID,
-    p_semester TEXT,
-    p_note TEXT DEFAULT ''
-)
-RETURNS UUID
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-DECLARE
-    v_id UUID;
-    v_school TEXT;
-    v_accommodation BOOLEAN;
-BEGIN
-    IF NOT public.may_use_classes() THEN
-        RAISE EXCEPTION 'A bed is only asked for once your registration number is on file.'
-            USING ERRCODE = '42501';
-    END IF;
-
-    SELECT h.school_key INTO v_school
-    FROM public.hostel_rooms AS r
-    JOIN public.hostels AS h ON h.id = r.hostel_id
-    WHERE r.id = p_room_id;
-
-    IF v_school IS NULL THEN
-        RAISE EXCEPTION 'No such room.' USING ERRCODE = 'P0002';
-    END IF;
-
-    SELECT accommodation INTO v_accommodation
-    FROM public.campus_services WHERE school_key = v_school;
-
-    IF v_accommodation IS DISTINCT FROM TRUE THEN
-        RAISE EXCEPTION 'That school does not take hostel requests here.'
-            USING ERRCODE = 'P0001';
-    END IF;
-
-    INSERT INTO public.hostel_bookings (room_id, student_id, semester, request_note)
-        VALUES (
-            p_room_id,
-            auth.uid(),
-            LEFT(BTRIM(p_semester), 40),
-            LEFT(BTRIM(COALESCE(p_note, '')), 400)
-        )
-        RETURNING id INTO v_id;
-
-    RETURN v_id;
-END;
-$$;
-
-REVOKE ALL ON FUNCTION public.decide_hostel_booking(UUID, TEXT, TEXT) FROM PUBLIC, anon;
-REVOKE ALL ON FUNCTION public.ask_for_hostel_bed(UUID, TEXT, TEXT) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.decide_hostel_booking(UUID, TEXT, TEXT) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.ask_for_hostel_bed(UUID, TEXT, TEXT) TO authenticated;
-
-
--- ------------------------------------------------------------
--- 5b. THE TWO LISTS A BOOKING APPEARS IN
--- A booking joins three tables before it means anything to a person: the
--- room, the hostel, and for the office the student who asked. That join is
--- written once, here, so no page has to guess how PostgREST spells it and a
--- housing office is not handed a table of strangers' profiles.
--- ------------------------------------------------------------
-
-CREATE OR REPLACE FUNCTION public.my_bed_requests()
-RETURNS TABLE (
-    booking_id UUID,
-    hostel_name TEXT,
-    room_label TEXT,
-    room_capacity INT,
-    school TEXT,
-    semester TEXT,
-    status TEXT,
-    request_note TEXT,
-    decision_note TEXT,
-    decided_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ
-)
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-    SELECT b.id, h.name, r.label, r.capacity, h.school, b.semester, b.status,
-           b.request_note, b.decision_note, b.decided_at, b.created_at
-    FROM public.hostel_bookings AS b
-    JOIN public.hostel_rooms AS r ON r.id = b.room_id
-    JOIN public.hostels AS h ON h.id = r.hostel_id
-    WHERE b.student_id = auth.uid()
-    ORDER BY b.created_at DESC
-    LIMIT 40;
-$$;
-
-CREATE OR REPLACE FUNCTION public.school_bed_requests(p_school_key TEXT)
-RETURNS TABLE (
-    booking_id UUID,
-    student_id UUID,
-    student_name TEXT,
-    registration_number TEXT,
-    hostel_name TEXT,
-    room_label TEXT,
-    room_capacity INT,
-    beds_approved INT,
-    semester TEXT,
-    status TEXT,
-    request_note TEXT,
-    decided_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ
-)
-LANGUAGE plpgsql
-STABLE
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-BEGIN
-    IF NOT public.is_school_staff(p_school_key) THEN
-        RAISE EXCEPTION 'Only the housing office of that school sees its requests.'
-            USING ERRCODE = '42501';
-    END IF;
-
-    RETURN QUERY
-    SELECT b.id,
-           b.student_id,
-           p.full_name,
-           r0.registration_number,
-           h.name,
-           r.label,
-           r.capacity,
-           (SELECT COUNT(*)::INT
-              FROM public.hostel_bookings AS x
-             WHERE x.room_id = b.room_id
-               AND x.status = 'approved'
-               AND LOWER(BTRIM(x.semester)) = LOWER(BTRIM(b.semester))),
-           b.semester,
-           b.status,
-           b.request_note,
-           b.decided_at,
-           b.created_at
-    FROM public.hostel_bookings AS b
-    JOIN public.hostel_rooms AS r ON r.id = b.room_id
-    JOIN public.hostels AS h ON h.id = r.hostel_id
-    JOIN public.profiles AS p ON p.id = b.student_id
-    LEFT JOIN public.student_registrations AS r0 ON r0.user_id = b.student_id
-    WHERE h.school_key = LOWER(BTRIM(COALESCE(p_school_key, '')))
-    ORDER BY b.created_at DESC
-    LIMIT 200;
-END;
-$$;
-
-REVOKE ALL ON FUNCTION public.my_bed_requests() FROM PUBLIC, anon;
-REVOKE ALL ON FUNCTION public.school_bed_requests(TEXT) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.my_bed_requests() TO authenticated;
-GRANT EXECUTE ON FUNCTION public.school_bed_requests(TEXT) TO authenticated;
-
-DROP TRIGGER IF EXISTS hostels_set_updated_at ON public.hostels;
-CREATE TRIGGER hostels_set_updated_at
-    BEFORE UPDATE ON public.hostels
-    FOR EACH ROW
-    EXECUTE FUNCTION public.set_updated_at();
-
-DROP TRIGGER IF EXISTS hostel_rooms_set_updated_at ON public.hostel_rooms;
-CREATE TRIGGER hostel_rooms_set_updated_at
-    BEFORE UPDATE ON public.hostel_rooms
-    FOR EACH ROW
-    EXECUTE FUNCTION public.set_updated_at();
-
-DROP TRIGGER IF EXISTS hostel_bookings_set_updated_at ON public.hostel_bookings;
-CREATE TRIGGER hostel_bookings_set_updated_at
-    BEFORE UPDATE ON public.hostel_bookings
-    FOR EACH ROW
-    EXECUTE FUNCTION public.set_updated_at();
-
-
--- ------------------------------------------------------------
--- 6. CATERING
--- One row is one plan: what it includes, what it costs and over which
--- dates. A plan may belong to a hostel (the hall that cooks it) or to the
--- school as a whole.
--- ------------------------------------------------------------
-
-CREATE TABLE IF NOT EXISTS public.meal_plans (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    school TEXT NOT NULL,
-    school_key TEXT GENERATED ALWAYS AS (LOWER(BTRIM(school))) STORED,
-    hostel_id UUID REFERENCES public.hostels(id) ON DELETE SET NULL,
-    name TEXT NOT NULL CHECK (char_length(BTRIM(name)) BETWEEN 2 AND 80),
-    kind TEXT NOT NULL DEFAULT 'full'
-        CHECK (kind IN ('full', 'half', 'light', 'self_catering', 'other')),
-    price_weekly NUMERIC(10, 2) CHECK (price_weekly IS NULL OR price_weekly >= 0),
-    price_semester NUMERIC(10, 2) CHECK (price_semester IS NULL OR price_semester >= 0),
-    menu TEXT NOT NULL DEFAULT '' CHECK (char_length(menu) <= 2000),
-    note TEXT NOT NULL DEFAULT '' CHECK (char_length(note) <= 400),
-    starts_on DATE,
-    ends_on DATE,
-    created_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS meal_plans_school_idx ON public.meal_plans (school_key, created_at DESC);
-
-ALTER TABLE public.meal_plans ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS meal_plans_readable ON public.meal_plans;
-CREATE POLICY meal_plans_readable ON public.meal_plans
-    FOR SELECT TO authenticated
-    USING (TRUE);
-
-DROP POLICY IF EXISTS meal_plans_staff_write ON public.meal_plans;
-CREATE POLICY meal_plans_staff_write ON public.meal_plans
-    FOR INSERT TO authenticated
-    WITH CHECK (created_by = auth.uid() AND public.is_school_staff(school_key));
-
-DROP POLICY IF EXISTS meal_plans_staff_edit ON public.meal_plans;
-CREATE POLICY meal_plans_staff_edit ON public.meal_plans
-    FOR UPDATE TO authenticated
-    USING (public.is_school_staff(school_key))
-    WITH CHECK (public.is_school_staff(school_key));
-
-DROP POLICY IF EXISTS meal_plans_staff_remove ON public.meal_plans;
-CREATE POLICY meal_plans_staff_remove ON public.meal_plans
-    FOR DELETE TO authenticated
-    USING (public.is_school_staff(school_key));
-
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.meal_plans TO authenticated;
-REVOKE ALL ON public.meal_plans FROM anon, public;
-
-DROP TRIGGER IF EXISTS meal_plans_set_updated_at ON public.meal_plans;
-CREATE TRIGGER meal_plans_set_updated_at
-    BEFORE UPDATE ON public.meal_plans
-    FOR EACH ROW
-    EXECUTE FUNCTION public.set_updated_at();
-
-
--- ------------------------------------------------------------
--- 7. THE CHAPLAINCY
--- The chaplain publishes the year's programme: chapel on Wednesday, the
--- crusade in March, a retreat in August. A dated event and a repeating
--- series are the same row, because a school's calendar is half of each.
--- ------------------------------------------------------------
-
-CREATE TABLE IF NOT EXISTS public.chaplaincy_events (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    school TEXT NOT NULL,
-    school_key TEXT GENERATED ALWAYS AS (LOWER(BTRIM(school))) STORED,
-    title TEXT NOT NULL CHECK (char_length(BTRIM(title)) BETWEEN 3 AND 120),
-    kind TEXT NOT NULL DEFAULT 'chapel'
-        CHECK (kind IN ('chapel', 'crusade', 'prayer', 'fellowship', 'service', 'retreat', 'other')),
-    term TEXT NOT NULL DEFAULT '' CHECK (char_length(term) <= 60),
-    starts_at TIMESTAMPTZ,
-    ends_at TIMESTAMPTZ,
-    venue TEXT NOT NULL DEFAULT '' CHECK (char_length(venue) <= 160),
-    description TEXT NOT NULL DEFAULT '' CHECK (char_length(description) <= 2000),
-    repeat TEXT NOT NULL DEFAULT 'none' CHECK (repeat IN ('none', 'weekly', 'monthly')),
-    weekday INT CHECK (weekday IS NULL OR weekday BETWEEN 1 AND 7),
-    start_time TIME,
-    contact TEXT NOT NULL DEFAULT '' CHECK (char_length(contact) <= 120),
-    created_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT chaplaincy_events_when_check CHECK (
-        starts_at IS NOT NULL
-        OR (repeat <> 'none' AND weekday IS NOT NULL AND start_time IS NOT NULL)
-    ),
-    CONSTRAINT chaplaincy_events_span_check CHECK (ends_at IS NULL OR starts_at IS NULL OR ends_at > starts_at)
-);
-
-CREATE INDEX IF NOT EXISTS chaplaincy_events_school_idx
-    ON public.chaplaincy_events (school_key, starts_at DESC NULLS LAST, created_at DESC);
-
-ALTER TABLE public.chaplaincy_events ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS chaplaincy_events_readable ON public.chaplaincy_events;
-CREATE POLICY chaplaincy_events_readable ON public.chaplaincy_events
-    FOR SELECT TO authenticated
-    USING (TRUE);
-
-DROP POLICY IF EXISTS chaplaincy_chaplain_write ON public.chaplaincy_events;
-CREATE POLICY chaplaincy_chaplain_write ON public.chaplaincy_events
-    FOR INSERT TO authenticated
-    WITH CHECK (created_by = auth.uid() AND public.may_lead_chaplaincy(school_key));
-
-DROP POLICY IF EXISTS chaplaincy_chaplain_edit ON public.chaplaincy_events;
-CREATE POLICY chaplaincy_chaplain_edit ON public.chaplaincy_events
-    FOR UPDATE TO authenticated
-    USING (public.may_lead_chaplaincy(school_key))
-    WITH CHECK (public.may_lead_chaplaincy(school_key));
-
-DROP POLICY IF EXISTS chaplaincy_chaplain_remove ON public.chaplaincy_events;
-CREATE POLICY chaplaincy_chaplain_remove ON public.chaplaincy_events
-    FOR DELETE TO authenticated
-    USING (public.may_lead_chaplaincy(school_key));
-
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.chaplaincy_events TO authenticated;
-REVOKE ALL ON public.chaplaincy_events FROM anon, public;
-
-DROP TRIGGER IF EXISTS chaplaincy_events_set_updated_at ON public.chaplaincy_events;
-CREATE TRIGGER chaplaincy_events_set_updated_at
-    BEFORE UPDATE ON public.chaplaincy_events
-    FOR EACH ROW
-    EXECUTE FUNCTION public.set_updated_at();
-
-
--- ------------------------------------------------------------
--- 8. PRAYER REQUESTS
--- Unlike every other table here, a request is not a catalogue. The
--- student who wrote it and the chaplaincy of their school are the only
--- accounts that ever see it.
--- ------------------------------------------------------------
-
-CREATE TABLE IF NOT EXISTS public.prayer_requests (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    school TEXT NOT NULL DEFAULT '',
-    school_key TEXT GENERATED ALWAYS AS (LOWER(BTRIM(school))) STORED,
-    student_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-    request TEXT NOT NULL CHECK (char_length(BTRIM(request)) BETWEEN 1 AND 1000),
-    kind TEXT NOT NULL DEFAULT 'prayer'
-        CHECK (kind IN ('prayer', 'counsel', 'thanksgiving', 'other')),
-    answerable BOOLEAN NOT NULL DEFAULT TRUE,
-    status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'answered')),
-    reply TEXT NOT NULL DEFAULT '' CHECK (char_length(reply) <= 1000),
-    answered_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
-    answered_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
-
-CREATE INDEX IF NOT EXISTS prayer_requests_school_status_idx
-    ON public.prayer_requests (school_key, status, created_at DESC);
-
-ALTER TABLE public.prayer_requests ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS prayer_requests_own_or_chaplaincy ON public.prayer_requests;
-CREATE POLICY prayer_requests_own_or_chaplaincy ON public.prayer_requests
-    FOR SELECT TO authenticated
-    USING (student_id = auth.uid() OR public.may_lead_chaplaincy(school_key));
-
-DROP POLICY IF EXISTS prayer_requests_student_write ON public.prayer_requests;
-CREATE POLICY prayer_requests_student_write ON public.prayer_requests
-    FOR INSERT TO authenticated
-    WITH CHECK (student_id = auth.uid() AND answerable);
-
-DROP POLICY IF EXISTS prayer_requests_chaplaincy_answer ON public.prayer_requests;
-CREATE POLICY prayer_requests_chaplaincy_answer ON public.prayer_requests
-    FOR UPDATE TO authenticated
-    USING (public.may_lead_chaplaincy(school_key))
-    WITH CHECK (public.may_lead_chaplaincy(school_key) AND student_id = OLD.student_id);
-
-DROP POLICY IF EXISTS prayer_requests_student_remove ON public.prayer_requests;
-CREATE POLICY prayer_requests_student_remove ON public.prayer_requests
-    FOR DELETE TO authenticated
-    USING (student_id = auth.uid() AND status = 'open');
-
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.prayer_requests TO authenticated;
-REVOKE ALL ON public.prayer_requests FROM anon, public;
-
-DROP TRIGGER IF EXISTS prayer_requests_set_updated_at ON public.prayer_requests;
-CREATE TRIGGER prayer_requests_set_updated_at
-    BEFORE UPDATE ON public.prayer_requests
-    FOR EACH ROW
-    EXECUTE FUNCTION public.set_updated_at();
-
-
--- ------------------------------------------------------------
--- 9. THE CLASS LIST THAT WRITES ITSELF
--- A lecturer opens a window, reads out a code, and every student who is
--- actually in the class presses once. The names come out of the rows
--- below, so an attendance list is never something a student typed.
--- ------------------------------------------------------------
-
-CREATE OR REPLACE FUNCTION public.class_occurrence_date(p_weekday INT)
-RETURNS DATE
-LANGUAGE sql
-STABLE
-SET search_path = ''
-AS $$
-    SELECT CURRENT_DATE - (EXTRACT(ISODOW FROM CURRENT_DATE)::INT - p_weekday)
-$$;
-
-REVOKE ALL ON FUNCTION public.class_occurrence_date(INT) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.class_occurrence_date(INT) TO authenticated;
-
-ALTER TABLE public.class_sessions
-    ADD COLUMN IF NOT EXISTS checkin_code TEXT NOT NULL DEFAULT '',
-    ADD COLUMN IF NOT EXISTS checkin_opens_at TIMESTAMPTZ,
-    ADD COLUMN IF NOT EXISTS checkin_expires_at TIMESTAMPTZ,
-    ADD COLUMN IF NOT EXISTS checkin_occurrence DATE;
-
-CREATE TABLE IF NOT EXISTS public.class_checkins (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    class_id UUID NOT NULL REFERENCES public.class_sessions(id) ON DELETE CASCADE,
-    student_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-    occurrence_date DATE NOT NULL,
-    method TEXT NOT NULL DEFAULT 'code' CHECK (method IN ('code', 'corrected')),
-    checked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT class_checkins_once_per_class UNIQUE (class_id, student_id, occurrence_date)
-);
-
-CREATE INDEX IF NOT EXISTS class_checkins_roll_idx
-    ON public.class_checkins (class_id, occurrence_date, checked_at);
-
-ALTER TABLE public.class_checkins ENABLE ROW LEVEL SECURITY;
-
--- A student sees their own mark. The lecturer who owns the class sees the
--- whole list; nobody else gets anything.
-DROP POLICY IF EXISTS class_checkins_own_or_owner ON public.class_checkins;
-CREATE POLICY class_checkins_own_or_owner ON public.class_checkins
-    FOR SELECT TO authenticated
-    USING (
-        student_id = auth.uid()
-        OR public.is_admin()
-        OR EXISTS (
-            SELECT 1 FROM public.class_sessions AS s
-            WHERE s.id = class_checkins.class_id
-              AND s.lecturer_id = auth.uid()
-        )
-    );
-
-GRANT SELECT ON public.class_checkins TO authenticated;
-REVOKE ALL ON public.class_checkins FROM anon, public;
-
-CREATE OR REPLACE FUNCTION public.open_class_checkin(p_class_id UUID, p_minutes INT DEFAULT 20)
-RETURNS TEXT
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-DECLARE
-    v_lecturer UUID;
-    v_weekday INT;
-    v_code TEXT;
-    v_window INT;
-BEGIN
-    SELECT s.lecturer_id, s.weekday INTO v_lecturer, v_weekday
-    FROM public.class_sessions AS s
-    WHERE s.id = p_class_id;
-
-    IF v_lecturer IS NULL THEN
-        RAISE EXCEPTION 'No such class.' USING ERRCODE = 'P0002';
-    END IF;
-
-    IF v_lecturer <> auth.uid() AND NOT public.is_admin() THEN
-        RAISE EXCEPTION 'Only the lecturer taking that class can open its register.'
-            USING ERRCODE = '42501';
-    END IF;
-
-    v_window := LEAST(GREATEST(COALESCE(p_minutes, 20), 1), 120);
-    SELECT UPPER(SUBSTR(MD5(RANDOM()::TEXT || CLOCK_TIMESTAMP()::TEXT), 1, 6)) INTO v_code;
-
-    UPDATE public.class_sessions
-        SET checkin_code = v_code,
-            checkin_opens_at = NOW(),
-            checkin_expires_at = NOW() + MAKE_INTERVAL(mins => v_window),
-            checkin_occurrence = public.class_occurrence_date(v_weekday)
-        WHERE id = p_class_id;
-
-    RETURN v_code;
-END;
-$$;
-
-CREATE OR REPLACE FUNCTION public.check_into_class(p_class_id UUID, p_code TEXT)
-RETURNS INT
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-DECLARE
-    v_expected TEXT;
-    v_expires TIMESTAMPTZ;
-    v_on DATE;
-    v_weekday INT;
-BEGIN
-    SELECT s.checkin_code, s.checkin_expires_at, s.checkin_occurrence, s.weekday
-      INTO v_expected, v_expires, v_on, v_weekday
-    FROM public.class_sessions AS s
-    WHERE s.id = p_class_id;
-
-    IF v_expected IS NULL THEN
-        RAISE EXCEPTION 'No such class.' USING ERRCODE = 'P0002';
-    END IF;
-
-    -- The register is opened by the lecturer, never by the app alone. This
-    -- is the whole difference between an attendance list and a wish list.
-    IF v_expected = '' OR v_expires IS NULL OR v_expires < NOW() THEN
-        RAISE EXCEPTION 'That register is closed. Ask the lecturer to open it again.'
-            USING ERRCODE = 'P0001';
-    END IF;
-
-    IF UPPER(BTRIM(COALESCE(p_code, ''))) <> v_expected THEN
-        RAISE EXCEPTION 'That code is not the one on the board.'
-            USING ERRCODE = '22023';
-    END IF;
-
-    IF NOT public.may_use_classes() THEN
-        RAISE EXCEPTION 'A class list needs your registration number on file.'
-            USING ERRCODE = '42501';
-    END IF;
-
-    IF v_on IS NULL THEN
-        v_on := public.class_occurrence_date(v_weekday);
-    END IF;
-
-    INSERT INTO public.class_checkins (class_id, student_id, occurrence_date)
-        VALUES (p_class_id, auth.uid(), v_on)
-    ON CONFLICT (class_id, student_id, occurrence_date) DO NOTHING;
-
-    RETURN FOUND::INT;
-END;
-$$;
-
-CREATE OR REPLACE FUNCTION public.class_attendance(
-    p_class_id UUID,
-    p_occurrence DATE DEFAULT NULL
-)
-RETURNS TABLE (
-    member_id UUID,
-    full_name TEXT,
-    username TEXT,
-    registration_number TEXT,
-    programme TEXT,
-    study_year INT,
-    semester INT,
-    checked_at TIMESTAMPTZ
-)
-LANGUAGE plpgsql
-STABLE
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-DECLARE
-    v_lecturer UUID;
-BEGIN
-    SELECT s.lecturer_id INTO v_lecturer
-    FROM public.class_sessions AS s
-    WHERE s.id = p_class_id;
-
-    IF v_lecturer IS NULL THEN
-        RAISE EXCEPTION 'No such class.' USING ERRCODE = 'P0002';
-    END IF;
-
-    IF v_lecturer <> auth.uid() AND NOT public.is_admin() THEN
-        RAISE EXCEPTION 'Only the lecturer taking that class reads its attendance.'
-            USING ERRCODE = '42501';
-    END IF;
-
-    RETURN QUERY
-    SELECT c.student_id,
-           p.full_name,
-           p.username,
-           r.registration_number,
-           g.name,
-           p.study_year,
-           p.semester,
-           c.checked_at
-    FROM public.class_checkins AS c
-    JOIN public.profiles AS p ON p.id = c.student_id
-    LEFT JOIN public.student_registrations AS r ON r.user_id = p.id
-    LEFT JOIN public.programmes AS g ON g.id = p.programme_id
-    WHERE c.class_id = p_class_id
-      AND (p_occurrence IS NULL OR c.occurrence_date = p_occurrence)
-    ORDER BY p.full_name;
-END;
-$$;
-
-REVOKE ALL ON FUNCTION public.open_class_checkin(UUID, INT) FROM PUBLIC, anon;
-REVOKE ALL ON FUNCTION public.check_into_class(UUID, TEXT) FROM PUBLIC, anon;
-REVOKE ALL ON FUNCTION public.class_attendance(UUID, DATE) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.open_class_checkin(UUID, INT) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.check_into_class(UUID, TEXT) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.class_attendance(UUID, DATE) TO authenticated;
-
-DROP TRIGGER IF EXISTS campus_services_set_updated_at ON public.campus_services;
-CREATE TRIGGER campus_services_set_updated_at
-    BEFORE UPDATE ON public.campus_services
-    FOR EACH ROW
-    EXECUTE FUNCTION public.set_updated_at();
-
-
--- ------------------------------------------------------------
--- 10. THE APPROVAL PATH NOW KNOWS THE FIFTH ROLE
--- A person asks for the role, an admin grants it. These are the same two
--- functions that already do that for a lecturer or a security member,
--- with 'chaplain' added to the lists they check.
--- ------------------------------------------------------------
-
-CREATE OR REPLACE FUNCTION public.approve_membership(p_user_id UUID)
-RETURNS VOID
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-BEGIN
-    IF NOT public.is_admin() THEN
-        RAISE EXCEPTION 'Only an admin can approve a role request.'
-            USING ERRCODE = '42501';
-    END IF;
-
-    UPDATE public.profiles
-        SET verification_status = 'approved',
-            role = CASE WHEN requested_role IN ('lecturer', 'security', 'chaplain')
-                        THEN requested_role ELSE role END
-        WHERE id = p_user_id;
-
-    IF NOT FOUND THEN
-        RAISE EXCEPTION 'No such member.' USING ERRCODE = 'P0002';
-    END IF;
-
-    INSERT INTO public.admin_action_log (actor_id, target_user_id, action)
-        VALUES (auth.uid(), p_user_id, 'approve');
-END;
-$$;
-
-CREATE OR REPLACE FUNCTION public.set_user_role(p_user_id UUID, p_role TEXT)
-RETURNS VOID
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-BEGIN
-    IF NOT public.is_admin() THEN
-        RAISE EXCEPTION 'Only an admin can change a role.'
-            USING ERRCODE = '42501';
-    END IF;
-
-    IF p_role NOT IN ('student', 'lecturer', 'security', 'admin', 'member', 'chaplain') THEN
-        RAISE EXCEPTION 'Unknown role.' USING ERRCODE = '22023';
-    END IF;
-
-    -- Refuse to lock everybody out of the admin screen.
-    IF p_role <> 'admin'
-       AND (SELECT role FROM public.profiles WHERE id = p_user_id) = 'admin'
-       AND (SELECT COUNT(*) FROM public.profiles WHERE role = 'admin') <= 1 THEN
-        RAISE EXCEPTION 'That is the last admin. Appoint another admin first.'
-            USING ERRCODE = 'P0001';
-    END IF;
-
-    UPDATE public.profiles
-        SET role = p_role,
-            verification_status = 'approved',
-            requested_role = ''
-        WHERE id = p_user_id;
-
-    IF NOT FOUND THEN
-        RAISE EXCEPTION 'No such member.' USING ERRCODE = 'P0002';
-    END IF;
-
-    INSERT INTO public.admin_action_log (actor_id, target_user_id, action, detail)
-        VALUES (auth.uid(), p_user_id, 'set_role', p_role);
-END;
-$$;
-
-CREATE OR REPLACE FUNCTION public.enforce_profile_role_integrity()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-BEGIN
-    IF auth.uid() IS NULL THEN
-        RETURN NEW;
-    END IF;
-
-    IF TG_OP = 'INSERT' THEN
-        IF public.is_admin() AND NEW.role IS NOT NULL THEN
-            RETURN NEW;
-        END IF;
-        -- Sign-up can carry a request, never a role.
-        NEW.role := 'student';
-        IF NEW.requested_role IN ('lecturer', 'security', 'chaplain') THEN
-            NEW.verification_status := 'pending';
-        ELSE
-            NEW.verification_status := 'approved';
-            NEW.requested_role := '';
-        END IF;
-        RETURN NEW;
-    END IF;
-
-    -- A member may ask for a role; only an admin may grant one.
-    IF NEW.requested_role IS DISTINCT FROM OLD.requested_role THEN
-        IF NEW.requested_role = ''
-           AND OLD.role = 'student'
-           AND NOT public.is_admin() THEN
-            NEW.verification_status := 'approved';
-            RETURN NEW;
-        END IF;
-
-        IF NEW.requested_role <> '' AND NOT public.is_admin() THEN
-            IF OLD.verification_status = 'rejected' AND OLD.requested_role = NEW.requested_role THEN
-                RAISE EXCEPTION 'An admin already rejected that role request.'
-                    USING ERRCODE = '42501';
-            END IF;
-            NEW.verification_status := 'pending';
-            RETURN NEW;
-        END IF;
-    END IF;
-
-    IF NEW.role IS DISTINCT FROM OLD.role
-       OR NEW.verification_status IS DISTINCT FROM OLD.verification_status THEN
-        IF NOT public.is_admin() THEN
-            RAISE EXCEPTION 'Only an admin can change a role or approval status.'
-                USING ERRCODE = '42501';
-        END IF;
-    END IF;
-
-    RETURN NEW;
-END;
-$$;
-
-REVOKE ALL ON FUNCTION public.enforce_profile_role_integrity() FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION public.approve_membership(UUID) FROM PUBLIC, anon;
-REVOKE ALL ON FUNCTION public.set_user_role(UUID, TEXT) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.approve_membership(UUID) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.set_user_role(UUID, TEXT) TO authenticated;
-
-
--- ------------------------------------------------------------
--- 11. KABARAK, AS ITS OWN MEMBER DESCRIBED IT
--- Only what was actually named: the school and its four men's hostels.
--- No hall is invented here, so a ladies' hostel appears the moment
--- somebody who knows its name adds it. Every other school is left out of
--- this table on purpose - its own staff turn its own services on.
--- ------------------------------------------------------------
-
-INSERT INTO public.campus_services
-        (school, accommodation, catering, chaplaincy, attendance, updated_by)
-SELECT 'Kabarak University', TRUE, TRUE, TRUE, TRUE,
-       (SELECT p.id FROM public.profiles AS p WHERE p.role = 'admin' ORDER BY p.created_at LIMIT 1)
-ON CONFLICT (school_key) DO NOTHING;
-
-INSERT INTO public.hostels (school, name, gender, verified, added_by)
-SELECT 'Kabarak University', h.name, 'men', TRUE,
-       (SELECT p.id FROM public.profiles AS p WHERE p.role = 'admin' ORDER BY p.created_at LIMIT 1)
-FROM (VALUES ('Elementeita'), ('Bogoria'), ('Baringo'), ('Turkana')) AS h(name)
-ON CONFLICT (school_key, name_key) DO NOTHING;
-
-
--- ------------------------------------------------------------
--- 12. TELL POSTGREST THE SHAPE CHANGED
--- ------------------------------------------------------------
-
-NOTIFY pgrst, 'reload schema';
-
-
--- ------------------------------------------------------------
--- PART 22 CHECK: the two rows that a school cannot fix from the app
--- ------------------------------------------------------------
-
-SELECT 'campus service: Kabarak has its departments' AS check_name,
-       CASE WHEN COUNT(*) = 1 THEN 'ok'
-            ELSE 'MISSING (turn the four switches on for that school in the Services page)' END AS result
-FROM public.campus_services
-WHERE school_key = 'kabarak university'
-UNION ALL
-SELECT 'hostels named for Kabarak',
-       CASE WHEN COUNT(*) >= 4 THEN 'ok'
-            ELSE 'MISSING (the four men''s hostels the school named are not all in the list)' END
-FROM public.hostels
-WHERE school_key = 'kabarak university'
-UNION ALL
-SELECT 'register: an authenticated account may open it',
-       CASE WHEN has_function_privilege('authenticated', 'public.open_class_checkin(uuid, integer)', 'EXECUTE')
-            THEN 'ok' ELSE 'MISSING (a lecturer cannot open a class register)' END;
-
-
--- ============ PART 23/24: migrations/20261025_found_items.sql ============
--- ============================================================
--- PART 23: SOMEBODY PICKED UP A DOCUMENT
--- A student ID is lying on the road. Whoever picks it up photographs it,
--- types the number printed on it and says where they are standing. The
--- database - never the page - works out whose number it is and tells only
--- that person. Four rules hold here:
---   * it is never public. No post, no bulletin, no list any member can
---     browse. Only three accounts ever see a row: the hand that found it,
---     the desk of that school, and the person it belongs to.
---   * the owner is never told who found their document, and the finder is
---     never told the owner's phone number. The owner reads a place and a
---     time - which is all they need to walk there.
---   * the match happens inside the database, because student_registrations
---     is shut against browsing on purpose. A page that could look a number
---     up would hand the whole register to anyone who opened the console.
---   * a number cannot be walked. The same hand reporting the same number
---     twice in six hours is refused, and six reports in a day is the most
---     any account makes, so this feature cannot be used to test which
---     student numbers have accounts.
--- The answer a finder gets back is one bit: somebody was told, or this
--- number has no account here. Never a name.
--- The photo goes in the private bucket under the finder's own folder and
--- only two people can ever open it: the finder and the school's desk.
--- Idempotent: safe to run more than once.
--- ============================================================
-
-
--- ------------------------------------------------------------
--- 1. ONE ROW PER DOCUMENT PICKED UP
--- school is copied from the finder's own profile at the moment of
--- reporting, so the desk of that school finds the row even if the finder
--- later changes their university. number_key is the normalised form the
--- match is tried against; number_input stays exactly as typed, for the
--- desk to read a number the app could not match.
--- ------------------------------------------------------------
-
-CREATE TABLE IF NOT EXISTS public.found_items (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    school TEXT NOT NULL DEFAULT '',
-    school_key TEXT GENERATED ALWAYS AS (LOWER(BTRIM(school))) STORED,
-    reporter_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
-    kind TEXT NOT NULL DEFAULT 'other'
-        CONSTRAINT found_items_kind_check
-        CHECK (kind IN ('student_id', 'national_id', 'passport', 'drivers_license',
-                        'bank_card', 'phone', 'laptop', 'book', 'keys', 'wallet', 'other')),
-    number_input TEXT NOT NULL DEFAULT '',
-    number_key TEXT NOT NULL DEFAULT '',
-    place TEXT NOT NULL
-        CONSTRAINT found_items_place_length_check CHECK (char_length(place) <= 200),
-    held_at TEXT NOT NULL DEFAULT 'with_finder'
-        CONSTRAINT found_items_held_at_check
-        CHECK (held_at IN ('with_finder', 'security_desk', 'lost_office')),
-    found_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    photo_path TEXT,
-    status TEXT NOT NULL DEFAULT 'open'
-        CONSTRAINT found_items_status_check CHECK (status IN ('open', 'returned')),
-    matched_user_id UUID REFERENCES public.profiles(id) ON DELETE SET NULL,
-    matched_by TEXT
-        CONSTRAINT found_items_matched_by_check
-        CHECK (matched_by IN ('registration', 'staff_id', 'national_id')),
-    matched_at TIMESTAMPTZ,
-    owner_seen_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CONSTRAINT found_items_number_key_length_check CHECK (char_length(number_key) <= 32)
-);
-
-CREATE INDEX IF NOT EXISTS found_items_school_idx
-    ON public.found_items (school_key, created_at DESC);
-CREATE INDEX IF NOT EXISTS found_items_reporter_idx
-    ON public.found_items (reporter_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS found_items_owner_idx
-    ON public.found_items (matched_user_id, found_at DESC)
-    WHERE matched_user_id IS NOT NULL;
-CREATE INDEX IF NOT EXISTS found_items_number_key_idx
-    ON public.found_items (number_key, reporter_id, created_at DESC);
-
-ALTER TABLE public.found_items ENABLE ROW LEVEL SECURITY;
-
--- Read only, and only for the two accounts that touched the document.
--- There is no INSERT, UPDATE or DELETE policy at all: a page cannot write
--- a found item, only the functions below can.
-DROP POLICY IF EXISTS "Finder reads their own report" ON public.found_items;
-CREATE POLICY "Finder reads their own report"
-    ON public.found_items FOR SELECT TO authenticated
-    USING (reporter_id = (SELECT auth.uid()));
-
-DROP POLICY IF EXISTS "The desk of a school reads its own finds" ON public.found_items;
-CREATE POLICY "The desk of a school reads its own finds"
-    ON public.found_items FOR SELECT TO authenticated
-    USING (public.is_school_staff(school_key));
-
-GRANT SELECT ON public.found_items TO authenticated;
-
-
--- ------------------------------------------------------------
--- 2. REPORT A DOCUMENT. THE MATCHING HAPPENS HERE, IN THE DATABASE,
---    AND ONLY ONE BIT COMES BACK OUT.
--- ------------------------------------------------------------
-
-CREATE OR REPLACE FUNCTION public.report_found_item(
-    p_kind TEXT,
-    p_number TEXT,
-    p_place TEXT,
-    p_held_at TEXT,
-    p_photo_path TEXT,
-    p_found_at TIMESTAMPTZ DEFAULT NULL
-)
-RETURNS JSONB
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-DECLARE
-    me UUID := auth.uid();
-    kind_ok TEXT;
-    held_ok TEXT;
-    clean_number TEXT;
-    clean_place TEXT;
-    my_school TEXT;
-    item_id UUID;
-    owner_id UUID;
-    matched_by TEXT;
-    hit_count INT;
-BEGIN
-    IF me IS NULL THEN
-        RAISE EXCEPTION 'Sign in before reporting a document you found.'
-            USING ERRCODE = '42501';
-    END IF;
-
-    kind_ok := CASE WHEN p_kind IN ('student_id', 'national_id', 'passport', 'drivers_license',
-                                    'bank_card', 'phone', 'laptop', 'book', 'keys', 'wallet', 'other')
-                   THEN p_kind ELSE 'other' END;
-    held_ok := CASE WHEN p_held_at IN ('with_finder', 'security_desk', 'lost_office')
-                    THEN p_held_at ELSE 'with_finder' END;
-
-    clean_number := LEFT(public.normalize_id_number(p_number), 32);
-    clean_place := LEFT(BTRIM(COALESCE(p_place, '')), 200);
-
-    IF char_length(clean_number) < 3 THEN
-        RAISE EXCEPTION 'Type the number printed on the document, exactly as it is printed.'
-            USING ERRCODE = '22001';
-    END IF;
-    IF char_length(clean_place) < 3 THEN
-        RAISE EXCEPTION 'Say where you found it, so the owner knows where to come.'
-            USING ERRCODE = '22001';
-    END IF;
-
-    -- The same hand, the same number, twice in six hours is not a find.
-    SELECT COUNT(*) INTO hit_count
-    FROM public.found_items AS f
-    WHERE f.reporter_id = me
-      AND f.number_key = clean_number
-      AND f.created_at > NOW() - INTERVAL '6 hours';
-    IF hit_count > 0 THEN
-        RETURN jsonb_build_object('result', 'duplicate');
-    END IF;
-
-    -- Six reports a day is the most an account can make, so a list of
-    -- numbers can never be walked through this function.
-    SELECT COUNT(*) INTO hit_count
-    FROM public.found_items AS f
-    WHERE f.reporter_id = me
-      AND f.created_at > NOW() - INTERVAL '24 hours';
-    IF hit_count >= 6 THEN
-        RETURN jsonb_build_object('result', 'too_many');
-    END IF;
-
-    SELECT BTRIM(p.university) INTO my_school
-    FROM public.profiles AS p
-    WHERE p.id = me;
-    my_school := COALESCE(my_school, '');
-
-    INSERT INTO public.found_items
-            (school, reporter_id, kind, number_input, number_key, place, held_at, photo_path, found_at)
-    VALUES (my_school, me, kind_ok,
-            LEFT(BTRIM(COALESCE(p_number, '')), 40), clean_number, clean_place, held_ok,
-            NULLIF(LEFT(BTRIM(COALESCE(p_photo_path, '')), 400), ''),
-            COALESCE(p_found_at, NOW()))
-    RETURNING id INTO item_id;
-
-    -- Whose number is it? Three tables, tried in this order. Only the id
-    -- of the owner is ever read out of them, never a name or a phone.
-    SELECT s.user_id INTO owner_id
-    FROM public.student_registrations AS s
-    WHERE s.registration_number = clean_number
-    ORDER BY s.created_at
-    LIMIT 1;
-
-    IF owner_id IS NOT NULL THEN
-        matched_by := 'registration';
-    END IF;
-
-    IF owner_id IS NULL THEN
-        SELECT p.id INTO owner_id
-        FROM public.profiles AS p
-        WHERE public.normalize_id_number(p.staff_id_number) = clean_number
-          AND p.staff_id_number <> ''
-        ORDER BY p.created_at
-        LIMIT 1;
-
-        IF owner_id IS NOT NULL THEN
-            matched_by := 'staff_id';
-        END IF;
-    END IF;
-
-    IF owner_id IS NULL THEN
-        SELECT ls.user_id INTO owner_id
-        FROM public.lecturer_submissions AS ls
-        WHERE public.normalize_id_number(ls.national_id_number) = clean_number
-        ORDER BY ls.created_at
-        LIMIT 1;
-
-        IF owner_id IS NOT NULL THEN
-            matched_by := 'national_id';
-        END IF;
-    END IF;
-
-    IF owner_id IS NULL THEN
-        RETURN jsonb_build_object('result', 'unmatched', 'id', item_id);
-    END IF;
-
-    IF owner_id = me THEN
-        UPDATE public.found_items AS f
-           SET matched_user_id = owner_id,
-               matched_by = matched_by,
-               matched_at = NOW(),
-               owner_seen_at = NOW()
-         WHERE f.id = item_id;
-        RETURN jsonb_build_object('result', 'own', 'id', item_id);
-    END IF;
-
-    UPDATE public.found_items AS f
-       SET matched_user_id = owner_id,
-           matched_by = matched_by,
-           matched_at = NOW()
-     WHERE f.id = item_id;
-
-    INSERT INTO public.notifications (recipient_id, actor_id, kind, found_item_id)
-    VALUES (owner_id, me, 'found_item', item_id);
-
-    RETURN jsonb_build_object('result', 'matched', 'id', item_id);
-END;
-$$;
-
-
--- ------------------------------------------------------------
--- 3. WHAT THE OWNER IS TOLD - AND WHAT THE OWNER IS NEVER TOLD
--- No reporter column appears here. The person who lost the document reads
--- a place, a time and their own number; who picked it up stays with the
--- desk.
--- ------------------------------------------------------------
-
-CREATE OR REPLACE FUNCTION public.my_found_items()
-RETURNS TABLE (
-    item_id UUID,
-    kind TEXT,
-    number_key TEXT,
-    place TEXT,
-    held_at TEXT,
-    found_at TIMESTAMPTZ,
-    status TEXT,
-    school TEXT,
-    matched_at TIMESTAMPTZ,
-    owner_seen_at TIMESTAMPTZ
-)
-LANGUAGE plpgsql
-STABLE
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-BEGIN
-    IF auth.uid() IS NULL THEN
-        RAISE EXCEPTION 'Sign in first.'
-            USING ERRCODE = '42501';
-    END IF;
-
-    RETURN QUERY
-    SELECT f.id, f.kind, f.number_key, f.place, f.held_at, f.found_at, f.status,
-           f.school, f.matched_at, f.owner_seen_at
-    FROM public.found_items AS f
-    WHERE f.matched_user_id = auth.uid()
-    ORDER BY (f.owner_seen_at IS NULL) DESC, f.found_at DESC
-    LIMIT 30;
-END;
-$$;
-
-CREATE OR REPLACE FUNCTION public.seen_found_item(p_item_id UUID)
-RETURNS BOOLEAN
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-DECLARE
-    me UUID := auth.uid();
-BEGIN
-    IF me IS NULL THEN
-        RAISE EXCEPTION 'Sign in first.'
-            USING ERRCODE = '42501';
-    END IF;
-
-    UPDATE public.found_items AS f
-       SET owner_seen_at = NOW()
-     WHERE f.id = p_item_id
-       AND f.matched_user_id = me
-       AND f.owner_seen_at IS NULL;
-    RETURN FOUND;
-END;
-$$;
-
-
--- ------------------------------------------------------------
--- 4. WHAT THE FINDER SEES: THEIR OWN REPORTS, AND WHETHER ANYBODY WAS
---    TOLD. Never the owner's name - that is the desk's record, not theirs.
--- ------------------------------------------------------------
-
-CREATE OR REPLACE FUNCTION public.my_found_reports()
-RETURNS TABLE (
-    item_id UUID,
-    kind TEXT,
-    number_key TEXT,
-    place TEXT,
-    held_at TEXT,
-    found_at TIMESTAMPTZ,
-    status TEXT,
-    photo_path TEXT,
-    was_matched BOOLEAN,
-    created_at TIMESTAMPTZ
-)
-LANGUAGE plpgsql
-STABLE
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-BEGIN
-    IF auth.uid() IS NULL THEN
-        RAISE EXCEPTION 'Sign in first.'
-            USING ERRCODE = '42501';
-    END IF;
-
-    RETURN QUERY
-    SELECT f.id, f.kind, f.number_key, f.place, f.held_at, f.found_at, f.status,
-           f.photo_path, f.matched_user_id IS NOT NULL, f.created_at
-    FROM public.found_items AS f
-    WHERE f.reporter_id = auth.uid()
-    ORDER BY f.created_at DESC
-    LIMIT 40;
-END;
-$$;
-
-
--- ------------------------------------------------------------
--- 5. THE DESK: THE SCHOOL'S OWN OFFICE SEES EVERYTHING ABOUT ITS OWN
---    SCHOOL, INCLUDING WHO PICKED THE DOCUMENT UP AND THE PHOTOGRAPH.
--- ------------------------------------------------------------
-
-CREATE OR REPLACE FUNCTION public.school_found_items(p_school_key TEXT)
-RETURNS TABLE (
-    item_id UUID,
-    kind TEXT,
-    number_input TEXT,
-    number_key TEXT,
-    place TEXT,
-    held_at TEXT,
-    found_at TIMESTAMPTZ,
-    status TEXT,
-    photo_path TEXT,
-    finder_id UUID,
-    finder_name TEXT,
-    finder_phone TEXT,
-    owner_id UUID,
-    owner_name TEXT,
-    owner_phone TEXT,
-    matched_at TIMESTAMPTZ,
-    owner_seen_at TIMESTAMPTZ
-)
-LANGUAGE plpgsql
-STABLE
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-BEGIN
-    IF NOT public.is_school_staff(p_school_key) THEN
-        RAISE EXCEPTION 'Only the office of that school sees its found documents.'
-            USING ERRCODE = '42501';
-    END IF;
-
-    RETURN QUERY
-    SELECT f.id, f.kind, f.number_input, f.number_key, f.place, f.held_at, f.found_at,
-           f.status, f.photo_path,
-           f.reporter_id, r.full_name, r.contact_phone,
-           f.matched_user_id, o.full_name, o.contact_phone,
-           f.matched_at, f.owner_seen_at
-    FROM public.found_items AS f
-    JOIN public.profiles AS r ON r.id = f.reporter_id
-    LEFT JOIN public.profiles AS o ON o.id = f.matched_user_id
-    WHERE f.school_key = LOWER(BTRIM(COALESCE(p_school_key, '')))
-    ORDER BY f.created_at DESC
-    LIMIT 200;
-END;
-$$;
-
-
--- ------------------------------------------------------------
--- 6. CLOSING A FIND
--- The finder says where the document now is; the desk or the owner says
--- it has gone back into the right hands. Nobody else can touch a row.
--- ------------------------------------------------------------
-
-CREATE OR REPLACE FUNCTION public.set_found_item_result(
-    p_item_id UUID,
-    p_status TEXT,
-    p_held_at TEXT
-)
-RETURNS BOOLEAN
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-DECLARE
-    me UUID := auth.uid();
-    row_status TEXT;
-    allowed BOOLEAN;
-BEGIN
-    IF me IS NULL THEN
-        RAISE EXCEPTION 'Sign in first.'
-            USING ERRCODE = '42501';
-    END IF;
-
-    IF p_status NOT IN ('open', 'returned') THEN
-        RAISE EXCEPTION 'That is not a state a found document can be in.'
-            USING ERRCODE = '22001';
-    END IF;
-    IF p_held_at IS NOT NULL AND p_held_at NOT IN ('with_finder', 'security_desk', 'lost_office') THEN
-        RAISE EXCEPTION 'That is not a place a found document is kept.'
-            USING ERRCODE = '22001';
-    END IF;
-
-    SELECT f.status INTO row_status
-    FROM public.found_items AS f
-    WHERE f.id = p_item_id;
-
-    IF row_status IS NULL THEN
-        RAISE EXCEPTION 'That document is not on record.'
-            USING ERRCODE = 'P0002';
-    END IF;
-
-    SELECT (
-        f.reporter_id = me
-        OR public.is_school_staff(f.school_key)
-        OR (f.matched_user_id = me AND p_status = 'returned')
-    ) INTO allowed
-    FROM public.found_items AS f
-    WHERE f.id = p_item_id;
-
-    IF NOT COALESCE(allowed, FALSE) THEN
-        RAISE EXCEPTION 'Only the finder, the owner or the desk of that school can change this.'
-            USING ERRCODE = '42501';
-    END IF;
-
-    UPDATE public.found_items AS f
-       SET status = p_status,
-           held_at = COALESCE(p_held_at, f.held_at),
-           owner_seen_at = CASE WHEN f.matched_user_id = me THEN COALESCE(f.owner_seen_at, NOW())
-                                ELSE f.owner_seen_at END
-     WHERE f.id = p_item_id;
-    RETURN TRUE;
-END;
-$$;
-
-REVOKE ALL ON FUNCTION public.report_found_item(TEXT, TEXT, TEXT, TEXT, TEXT, TIMESTAMPTZ) FROM PUBLIC, anon;
-REVOKE ALL ON FUNCTION public.my_found_items() FROM PUBLIC, anon;
-REVOKE ALL ON FUNCTION public.seen_found_item(UUID) FROM PUBLIC, anon;
-REVOKE ALL ON FUNCTION public.my_found_reports() FROM PUBLIC, anon;
-REVOKE ALL ON FUNCTION public.school_found_items(TEXT) FROM PUBLIC, anon;
-REVOKE ALL ON FUNCTION public.set_found_item_result(UUID, TEXT, TEXT) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.report_found_item(TEXT, TEXT, TEXT, TEXT, TEXT, TIMESTAMPTZ) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.my_found_items() TO authenticated;
-GRANT EXECUTE ON FUNCTION public.seen_found_item(UUID) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.my_found_reports() TO authenticated;
-GRANT EXECUTE ON FUNCTION public.school_found_items(TEXT) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.set_found_item_result(UUID, TEXT, TEXT) TO authenticated;
-
-
--- ------------------------------------------------------------
--- 7. THE PHOTOGRAPH OF A DOCUMENT
--- It is uploaded into the private bucket inside the finder's own folder,
--- which the existing insert policy already allows. This policy is the read
--- side: the finder opens their own file, and the desk of the school opens a
--- file a found item actually points at. Nobody else, not even a mutual
--- connection, ever gets a signed URL for it.
--- ------------------------------------------------------------
-
-DROP POLICY IF EXISTS "The desk opens a found document photo" ON storage.objects;
-CREATE POLICY "The desk opens a found document photo"
-    ON storage.objects FOR SELECT TO authenticated
-    USING (
-        bucket_id = 'campus-private-media'
-        AND EXISTS (
-            SELECT 1
-            FROM public.found_items AS f
-            WHERE ('private-media:' || storage.objects.name) = f.photo_path
-              AND (
-                    f.reporter_id = (SELECT auth.uid())
-                    OR public.is_school_staff(f.school_key)
-                  )
-        )
-    );
-
-
--- ------------------------------------------------------------
--- 8. THE OWNER'S ALERT IS STILL JUST A PRIVATE NOTIFICATION
--- It joins the kinds that already exist and points at the row it came
--- from, so the app can read the safe columns through my_found_items()
--- instead of showing a notification built from somebody else's name.
--- ------------------------------------------------------------
-
-ALTER TABLE public.notifications
-    ADD COLUMN IF NOT EXISTS found_item_id UUID
-        REFERENCES public.found_items(id) ON DELETE CASCADE;
-
-CREATE INDEX IF NOT EXISTS notifications_found_item_idx
-    ON public.notifications (found_item_id)
-    WHERE found_item_id IS NOT NULL;
-
-DO $$
-BEGIN
-    ALTER TABLE public.notifications DROP CONSTRAINT IF EXISTS notifications_kind_check;
-    ALTER TABLE public.notifications
-        ADD CONSTRAINT notifications_kind_check
-        CHECK (kind IN ('reaction', 'comment', 'follow', 'message', 'friend_request', 'found_item'));
-END;
-$$;
-
-
--- ------------------------------------------------------------
--- 9. A FOUND DOCUMENT IS NOT A POST, SO IT IS NOT IN REALTIME EITHER
--- The alert row that my_found_items() leaves behind lives in notifications,
--- which is already published. found_items itself stays out of the
--- publication on purpose: nothing about a stranger's document should ever
--- arrive on another phone.
--- ------------------------------------------------------------
-
-DROP TRIGGER IF EXISTS found_items_set_updated_at ON public.found_items;
-CREATE TRIGGER found_items_set_updated_at
-    BEFORE UPDATE ON public.found_items
-    FOR EACH ROW
-    EXECUTE FUNCTION public.set_updated_at();
-
-NOTIFY pgrst, 'reload schema';
-
-
--- ------------------------------------------------------------
--- PART 23 CHECK: the doors a found document needs
--- ------------------------------------------------------------
-
-SELECT 'table: found_items' AS check_name,
-       CASE WHEN t.table_name IS NOT NULL THEN 'ok' ELSE 'MISSING (no document can be reported yet)' END AS result
-FROM (SELECT 'found_items'::TEXT AS n) AS want
-LEFT JOIN information_schema.tables AS t
-       ON t.table_schema = 'public' AND t.table_name = want.n
-UNION ALL
-SELECT 'function: ' || f.function_name,
-       CASE WHEN x.specific_name IS NOT NULL THEN 'ok'
-            ELSE 'MISSING (a found document cannot be reported or read back)' END
-FROM (VALUES ('report_found_item'), ('my_found_items'), ('seen_found_item'),
-             ('my_found_reports'), ('school_found_items'), ('set_found_item_result')) AS f(function_name)
-LEFT JOIN information_schema.routines AS x
-       ON x.routine_schema = 'public' AND x.routine_name = f.function_name
-UNION ALL
-SELECT 'notification: found_item is an allowed kind',
-       CASE WHEN EXISTS (
-                SELECT 1 FROM pg_constraint AS c
-                WHERE c.conrelid = 'public.notifications'::REGCLASS
-                  AND c.conname = 'notifications_kind_check'
-                  AND pg_get_constraintdef(c.oid) LIKE '%found_item%'
-            ) THEN 'ok' ELSE 'MISSING (the owner would never be alerted)' END
-UNION ALL
-SELECT 'policy: the desk can open a document photo',
-       CASE WHEN COUNT(*) = 1 THEN 'ok' ELSE 'MISSING (the photograph of a found document stays unreadable)' END
-FROM pg_policies
-WHERE schemaname = 'storage' AND tablename = 'objects'
-  AND policyname = 'The desk opens a found document photo'
-UNION ALL
-SELECT 'policy: a found item cannot be written from a page',
-       CASE WHEN COUNT(*) = 2 THEN 'ok'
-            ELSE 'MISSING (' || COUNT(*) || ' policies on found_items, expected 2 read-only ones)' END
-FROM pg_policies
-WHERE schemaname = 'public' AND tablename = 'found_items'
-ORDER BY check_name;
-
--- ==================== PROFILE AVATARS ================================
--- Profile photos use a dedicated public bucket so other signed-in members can
--- display them. Each account may write only inside its own UUID folder.
-BEGIN;
-
-INSERT INTO storage.buckets (
-    id, name, public, file_size_limit, allowed_mime_types
-)
-VALUES (
-    'avatars',
-    'avatars',
-    TRUE,
-    10485760,
-    ARRAY['image/*']
-)
-ON CONFLICT (id) DO UPDATE
-SET name = EXCLUDED.name,
-    public = TRUE,
-    file_size_limit = EXCLUDED.file_size_limit,
-    allowed_mime_types = EXCLUDED.allowed_mime_types;
-
-DROP POLICY IF EXISTS "Users upload own avatar" ON storage.objects;
-CREATE POLICY "Users upload own avatar"
-    ON storage.objects FOR INSERT TO authenticated
-    WITH CHECK (
-        bucket_id = 'avatars'
-        AND (storage.foldername(name))[1] = (SELECT auth.uid())::TEXT
-    );
-
-DROP POLICY IF EXISTS "Anyone can view avatars" ON storage.objects;
-CREATE POLICY "Anyone can view avatars"
-    ON storage.objects FOR SELECT TO public
-    USING (bucket_id = 'avatars');
-
-COMMIT;
-
-
--- FINAL CHECK: every row should read ok
--- ===================================================================
-SELECT 'publication: ' || t.table_name AS check_name,
-       CASE WHEN pt.tablename IS NOT NULL THEN 'ok' ELSE 'NOT PUBLISHED FOR REALTIME' END AS result
-FROM (VALUES ('messages'), ('community_messages'), ('call_signals'), ('notifications')) AS t(table_name)
-LEFT JOIN pg_publication_tables AS pt
-       ON pt.pubname = 'supabase_realtime'
-      AND pt.schemaname = 'public'
-      AND pt.tablename = t.table_name
-UNION ALL
-SELECT 'table: ' || t.table_name,
-       CASE WHEN tb.table_name IS NOT NULL THEN 'ok' ELSE 'MISSING' END
-FROM (VALUES ('user_blocks'), ('user_presence'), ('call_signals'), ('friend_requests'),
-             ('message_attachments'), ('notification_preferences'), ('student_registrations'),
-             ('contact_names'), ('message_reactions'), ('message_stars'), ('lecturer_submissions'),
-             ('programmes'), ('units'), ('class_sessions'), ('bulletins'), ('companies'),
-             ('community_reads'), ('device_tokens'), ('conversation_settings'),
-             ('campus_services'), ('hostels'), ('hostel_rooms'), ('hostel_bookings'),
-             ('meal_plans'), ('chaplaincy_events'), ('prayer_requests'), ('class_checkins'),
-             ('found_items')) AS t(table_name)
-LEFT JOIN information_schema.tables AS tb
-       ON tb.table_schema = 'public' AND tb.table_name = t.table_name
-UNION ALL
-SELECT 'group function: ' || f.function_name,
-       CASE WHEN x.specific_name IS NOT NULL THEN 'ok' ELSE 'MISSING (groups will not work)' END
-FROM (VALUES ('create_group'), ('add_group_members'), ('my_groups'), ('mark_group_read')) AS f(function_name)
-LEFT JOIN information_schema.routines AS x
-       ON x.routine_schema = 'public' AND x.routine_name = f.function_name
-UNION ALL
-SELECT 'push function: ' || f.function_name,
-       CASE WHEN x.specific_name IS NOT NULL THEN 'ok' ELSE 'MISSING (push alerts will not work)' END
-FROM (VALUES ('register_device_token'), ('forget_device_token')) AS f(function_name)
-LEFT JOIN information_schema.routines AS x
-       ON x.routine_schema = 'public' AND x.routine_name = f.function_name
-UNION ALL
-SELECT 'identity function: ' || f.function_name,
-       CASE WHEN x.specific_name IS NOT NULL THEN 'ok' ELSE 'MISSING (admins cannot correct a school or programme)' END
-FROM (VALUES ('set_member_university'), ('set_member_programme')) AS f(function_name)
-LEFT JOIN information_schema.routines AS x
-       ON x.routine_schema = 'public' AND x.routine_name = f.function_name
-UNION ALL
-SELECT 'column: conversation_settings.' || c.column_name,
-       CASE WHEN x.column_name IS NOT NULL THEN 'ok' ELSE 'MISSING (archive, mute, lock and colours will stay on this phone only)' END
-FROM (VALUES ('archived'), ('muted'), ('locked'), ('chat_list'), ('theme'), ('cleared_at'), ('hidden_at')) AS c(column_name)
-LEFT JOIN information_schema.columns AS x
-       ON x.table_schema = 'public' AND x.table_name = 'conversation_settings' AND x.column_name = c.column_name
-UNION ALL
-SELECT 'column: messages.' || c.column_name,
-       CASE WHEN x.column_name IS NOT NULL THEN 'ok' ELSE 'MISSING' END
-FROM (VALUES ('edited_at'), ('deleted_for_everyone'), ('deleted_by'), ('reply_to'), ('reply_preview')) AS c(column_name)
-LEFT JOIN information_schema.columns AS x
-       ON x.table_schema = 'public' AND x.table_name = 'messages' AND x.column_name = c.column_name
-UNION ALL
-SELECT 'column: profiles.' || c.column_name,
-       CASE WHEN x.column_name IS NOT NULL THEN 'ok' ELSE 'MISSING' END
-FROM (VALUES ('role'), ('verification_status'), ('is_discoverable'), ('university'),
-               ('staff_id_number'), ('employment_status'), ('study_mode'), ('lecturer_since'), ('company'), ('company_role'),
-               ('phone_digits')) AS c(column_name)
-LEFT JOIN information_schema.columns AS x
-       ON x.table_schema = 'public' AND x.table_name = 'profiles' AND x.column_name = c.column_name
-UNION ALL
-SELECT 'phone function: ' || f.function_name,
-       CASE WHEN x.specific_name IS NOT NULL THEN 'ok' ELSE 'MISSING (dialling a number from the app will not work)' END
-FROM (VALUES ('normalize_phone_digits'), ('find_member_by_phone')) AS f(function_name)
-LEFT JOIN information_schema.routines AS x
-       ON x.routine_schema = 'public' AND x.routine_name = f.function_name
-UNION ALL
-SELECT 'services function: ' || f.function_name,
-       CASE WHEN x.specific_name IS NOT NULL THEN 'ok' ELSE 'MISSING (hostels, chaplaincy or the class register will not work)' END
-FROM (VALUES ('my_school_key'), ('is_school_staff'), ('may_lead_chaplaincy'),
-             ('ask_for_hostel_bed'), ('decide_hostel_booking'), ('my_bed_requests'),
-             ('school_bed_requests'), ('class_occurrence_date'),
-             ('open_class_checkin'), ('check_into_class'), ('class_attendance')) AS f(function_name)
-LEFT JOIN information_schema.routines AS x
-       ON x.routine_schema = 'public' AND x.routine_name = f.function_name
-UNION ALL
-SELECT 'found function: ' || f.function_name,
-       CASE WHEN x.specific_name IS NOT NULL THEN 'ok' ELSE 'MISSING (a found document cannot be reported or claimed)' END
-FROM (VALUES ('report_found_item'), ('my_found_items'), ('seen_found_item'),
-             ('my_found_reports'), ('school_found_items'), ('set_found_item_result')) AS f(function_name)
-LEFT JOIN information_schema.routines AS x
-       ON x.routine_schema = 'public' AND x.routine_name = f.function_name
-ORDER BY check_name;
-
--- ============ PART 24/24: migrations/20261106_promotions.sql ============
--- ============================================================
--- CAMPUS CONNECT ‚Äî PAID PLACEMENTS FOR LOCAL BUSINESSES
--- A hostel, a print shop or a food vendor pays the builder of this app
--- directly (M-Pesa Send Money, agreed by hand), and the builder then puts
--- that business at the front of the feed for a set number of days.
---   * nothing here takes money. There is no gateway, no card, no silent
---     deduction, no percent of anything. The payment happens outside the
---     app, between two people who both said yes.
---   * the row is the advertisement, not a post. A student's own post is
---     never marked promoted, because that would let somebody buy a place
---     in front of a classmate's words without the classmate agreeing.
---   * everyone signed in may read the live ones; only an admin may write,
---     so a promotion cannot be created or edited by the business itself
---     through the app.
---   * a window of dates is stored, not a flag. The feed shows a placement
---     only while NOW() is inside it, so an ad retires itself at the moment
---     the week he sold is over, whether or not anybody remembers to switch
---     it off.
---   * school_key is free text on purpose, the same way profiles.company
---     is: a placement for the whole country has an empty key, a placement
---     sold for one campus carries that campus spelled the way the app
---     spells it. A blank is "everywhere", never "nobody".
--- Idempotent: safe to run more than once.
--- ============================================================
-
-
--- ------------------------------------------------------------
--- 1. THE TWO HELPS THIS TABLE NEEDS
--- Both already exist in the main schema, so this is a re-declaration of
--- the definitions that are already there, in exactly those words. It is
--- here so that this one file can be pasted on its own and still work.
--- ------------------------------------------------------------
-
-CREATE OR REPLACE FUNCTION public.set_updated_at()
-RETURNS TRIGGER
-LANGUAGE plpgsql
-SET search_path = ''
-AS $$
-BEGIN
-    NEW.updated_at = NOW();
-    RETURN NEW;
-END;
-$$;
-
-CREATE OR REPLACE FUNCTION public.is_admin()
-RETURNS BOOLEAN
-LANGUAGE sql
-STABLE
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-    SELECT COALESCE(
-        (SELECT p.role = 'admin' FROM public.profiles AS p WHERE p.id = auth.uid()),
-        FALSE
-    );
-$$;
-
-REVOKE ALL ON FUNCTION public.is_admin() FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.is_admin() TO authenticated;
-
-
--- ------------------------------------------------------------
--- 2. THE PLACEMENTS
--- ------------------------------------------------------------
-
-CREATE TABLE IF NOT EXISTS public.promotions (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    business TEXT NOT NULL CHECK (char_length(BTRIM(business)) BETWEEN 2 AND 80),
-    headline TEXT NOT NULL CHECK (char_length(BTRIM(headline)) BETWEEN 4 AND 120),
-    body TEXT CHECK (body IS NULL OR char_length(BTRIM(body)) <= 600),
-    image_url TEXT CHECK (image_url IS NULL OR char_length(BTRIM(image_url)) <= 2048),
-    contact TEXT CHECK (contact IS NULL OR char_length(BTRIM(contact)) <= 40),
-    link TEXT CHECK (link IS NULL OR link ~ '^https?://'),
-    school_key TEXT NOT NULL DEFAULT '' CHECK (char_length(BTRIM(school_key)) <= 120),
-    starts_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    ends_at TIMESTAMPTZ NOT NULL,
-    price_note TEXT CHECK (price_note IS NULL OR char_length(BTRIM(price_note)) <= 200),
-    created_by UUID REFERENCES auth.users(id) ON DELETE SET NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    -- A window that has already closed is kept, never deleted: it is the
-    -- record of a week somebody paid for.
-    CONSTRAINT promotions_window_makes_sense CHECK (ends_at > starts_at),
-    -- An ad with neither a phone number nor a link tells the student
-    -- nothing he can act on, so it is not allowed in.
-    CONSTRAINT promotions_reachable CHECK (
-        BTRIM(COALESCE(contact, '')) <> '' OR BTRIM(COALESCE(link, '')) <> ''
-    )
-);
-
-COMMENT ON TABLE public.promotions IS
-    'Placements sold by hand and shown at the front of the feed while their date window is open.';
-COMMENT ON COLUMN public.promotions.school_key IS
-    'Empty means every campus. Otherwise the school this placement was sold to, spelled the way the app spells it.';
-COMMENT ON COLUMN public.promotions.price_note IS
-    'What he agreed with the business - a private note, never shown to a student.';
-
--- The feed asks one question of this table: what is live right now.
-CREATE INDEX IF NOT EXISTS promotions_live_idx
-    ON public.promotions (ends_at DESC, starts_at DESC);
-
-
--- ------------------------------------------------------------
--- 3. KEEP updated_at HONEST
--- ------------------------------------------------------------
-
-DROP TRIGGER IF EXISTS promotions_set_updated_at ON public.promotions;
-CREATE TRIGGER promotions_set_updated_at
-    BEFORE UPDATE ON public.promotions
-    FOR EACH ROW
-    EXECUTE FUNCTION public.set_updated_at();
-
-
--- ------------------------------------------------------------
--- 4. WHO MAY SEE AND WRITE
--- Reading is for every signed-in account, because an advertisement in a
--- student app is still content the student is meant to look at. Writing
--- is for an admin alone.
--- ------------------------------------------------------------
-
-ALTER TABLE public.promotions ENABLE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS promotions_readable ON public.promotions;
-CREATE POLICY promotions_readable ON public.promotions
-    FOR SELECT TO authenticated
-    USING (TRUE);
-
-DROP POLICY IF EXISTS promotions_admin_add ON public.promotions;
-CREATE POLICY promotions_admin_add ON public.promotions
-    FOR INSERT TO authenticated
-    WITH CHECK (public.is_admin() AND created_by = auth.uid());
-
-DROP POLICY IF EXISTS promotions_admin_edit ON public.promotions;
-CREATE POLICY promotions_admin_edit ON public.promotions
-    FOR UPDATE TO authenticated
-    USING (public.is_admin())
-    WITH CHECK (public.is_admin());
-
-DROP POLICY IF EXISTS promotions_admin_remove ON public.promotions;
-CREATE POLICY promotions_admin_remove ON public.promotions
-    FOR DELETE TO authenticated
-    USING (public.is_admin());
-
-GRANT SELECT, INSERT, UPDATE, DELETE ON public.promotions TO authenticated;
-
-
--- ------------------------------------------------------------
--- 5. WHAT IS LIVE FOR THIS CAMPUS
--- One call instead of a client-side filter, because the clock that must
--- decide when a paid week ends is the database clock, not the clock of
--- whichever phone happens to be open. SECURITY INVOKER is deliberate and
--- is the default: the policies above still read as the student asking.
--- ------------------------------------------------------------
-
-CREATE OR REPLACE FUNCTION public.live_promotions(p_school_key TEXT)
-RETURNS SETOF public.promotions
-LANGUAGE sql
-STABLE
-SET search_path = ''
-AS $$
-    SELECT p.*
-    FROM public.promotions AS p
-    WHERE p.starts_at <= NOW()
-      AND p.ends_at > NOW()
-      AND (BTRIM(COALESCE(p.school_key, '')) = ''
-           OR BTRIM(COALESCE(p.school_key, '')) = BTRIM(COALESCE(p_school_key, '')))
-    ORDER BY p.starts_at DESC
-    LIMIT 4
-$$;
-
-COMMENT ON FUNCTION public.live_promotions(TEXT) IS
-    'The placements a student is allowed to see at this moment, newest sale first.';
-
-GRANT EXECUTE ON FUNCTION public.live_promotions(TEXT) TO authenticated;
-
-
--- ------------------------------------------------------------
--- 6. WHAT ONE ADMIN OPERATION LOOKS LIKE
--- Retiring early is an UPDATE of ends_at, not a DELETE, so the history of
--- what was sold stays in the table.
--- ------------------------------------------------------------
-
-CREATE OR REPLACE FUNCTION public.retire_promotion(p_promotion_id UUID)
-RETURNS BOOLEAN
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-BEGIN
-    IF NOT public.is_admin() THEN
-        RAISE EXCEPTION 'Only an admin may retire a placement.'
-            USING ERRCODE = '42501';
-    END IF;
-
-    UPDATE public.promotions
-       SET ends_at = NOW()
-     WHERE id = p_promotion_id
-       AND ends_at > NOW();
-
-    IF NOT FOUND THEN
-        RAISE EXCEPTION 'That placement is not running.'
-            USING ERRCODE = 'P0002';
-    END IF;
-
-    RETURN TRUE;
-END;
-$$;
-
-REVOKE ALL ON FUNCTION public.retire_promotion(UUID) FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.retire_promotion(UUID) TO authenticated;
-
-
--- ------------------------------------------------------------
--- 7. PROOF THIS FILE RAN
--- ------------------------------------------------------------
-
-SELECT 'promotions table: ' ||
-       CASE WHEN to_regclass('public.promotions') IS NOT NULL
-            THEN 'ok' ELSE 'MISSING (paid placements cannot be shown)' END
-AS check_name
-UNION ALL
-SELECT 'promotions has a live window: ' ||
-       CASE WHEN EXISTS (
-           SELECT 1 FROM pg_constraint
-           WHERE conrelid = 'public.promotions'::regclass
-             AND conname = 'promotions_window_makes_sense')
-            THEN 'ok' ELSE 'MISSING (a placement could be sold with no end)' END
-UNION ALL
-SELECT 'promotions readable by a member: ' ||
-       CASE WHEN EXISTS (
-           SELECT 1 FROM pg_policies
-           WHERE schemaname = 'public' AND tablename = 'promotions'
-             AND policyname = 'promotions_readable')
-            THEN 'ok' ELSE 'MISSING (students will see no placements)' END
-UNION ALL
-SELECT 'promotions admin-only writes: ' ||
-       CASE WHEN EXISTS (
-           SELECT 1 FROM pg_policies
-           WHERE schemaname = 'public' AND tablename = 'promotions'
-             AND policyname = 'promotions_admin_edit')
-            THEN 'ok' ELSE 'MISSING (any account could sell a placement)' END
-UNION ALL
-SELECT 'function: live_promotions(text): ' ||
-       CASE WHEN has_function_privilege('authenticated',
-               'public.live_promotions(text)', 'EXECUTE')
-            THEN 'ok' ELSE 'MISSING (the feed cannot ask what is live)' END
-UNION ALL
-SELECT 'function: retire_promotion(uuid): ' ||
-       CASE WHEN has_function_privilege('authenticated',
-               'public.retire_promotion(uuid)', 'EXECUTE')
-            THEN 'ok' ELSE 'MISSING (an admin cannot retire a placement)' END
-ORDER BY check_name;
-
-
--- ============================================================
--- HOSTEL_PAYMENT_CONFIRMATION.sql: payment receipts, semester expiry, all Kabarak halls/rooms.
--- Safe to rerun with the complete setup.
--- ============================================================
-
--- Hostel payment proof, semester expiry and Kabarak room inventory.
--- Safe to run more than once in the Supabase SQL editor.
-
-ALTER TABLE public.hostel_bookings
-    ADD COLUMN IF NOT EXISTS semester_started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    ADD COLUMN IF NOT EXISTS semester_ends_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '6 months'),
-    ADD COLUMN IF NOT EXISTS payment_status TEXT NOT NULL DEFAULT 'unpaid',
-    ADD COLUMN IF NOT EXISTS payment_method TEXT,
-    ADD COLUMN IF NOT EXISTS payment_reference TEXT NOT NULL DEFAULT '',
-    ADD COLUMN IF NOT EXISTS payment_proof_path TEXT,
-    ADD COLUMN IF NOT EXISTS payment_submitted_at TIMESTAMPTZ,
-    ADD COLUMN IF NOT EXISTS payment_verified_at TIMESTAMPTZ,
-    ADD COLUMN IF NOT EXISTS payment_verified_by UUID REFERENCES public.profiles(id) ON DELETE SET NULL;
-
-ALTER TABLE public.hostel_bookings DROP CONSTRAINT IF EXISTS hostel_bookings_status_check;
-ALTER TABLE public.hostel_bookings ADD CONSTRAINT hostel_bookings_status_check
-    CHECK (status IN ('pending', 'approved', 'rejected', 'cancelled', 'expired'));
-ALTER TABLE public.hostel_bookings DROP CONSTRAINT IF EXISTS hostel_bookings_payment_status_check;
-ALTER TABLE public.hostel_bookings ADD CONSTRAINT hostel_bookings_payment_status_check
-    CHECK (payment_status IN ('unpaid', 'submitted', 'verified', 'rejected', 'expired'));
-ALTER TABLE public.hostel_bookings DROP CONSTRAINT IF EXISTS hostel_bookings_payment_method_check;
-ALTER TABLE public.hostel_bookings ADD CONSTRAINT hostel_bookings_payment_method_check
-    CHECK (payment_method IS NULL OR payment_method IN ('mpesa', 'bank'));
-ALTER TABLE public.hostel_bookings DROP CONSTRAINT IF EXISTS hostel_bookings_payment_reference_check;
-ALTER TABLE public.hostel_bookings ADD CONSTRAINT hostel_bookings_payment_reference_check
-    CHECK (char_length(payment_reference) <= 100);
-ALTER TABLE public.hostel_rooms DROP CONSTRAINT IF EXISTS hostel_rooms_sharing_check;
-ALTER TABLE public.hostel_rooms ADD CONSTRAINT hostel_rooms_sharing_check
-    CHECK (sharing IN ('single', 'twin', 'double', 'triple', 'four', 'other'));
-
-UPDATE public.hostel_bookings
-   SET semester_started_at = COALESCE(semester_started_at, created_at),
-       semester_ends_at = COALESCE(semester_ends_at, created_at + INTERVAL '6 months')
- WHERE semester_started_at IS NULL OR semester_ends_at IS NULL;
-
-CREATE INDEX IF NOT EXISTS hostel_bookings_payment_queue_idx
-    ON public.hostel_bookings (payment_status, semester_ends_at);
-
--- Private receipts: students can upload only under their own user/booking
--- path. Students and the matching school's housing staff can read them.
-INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-VALUES ('hostel-payment-proofs', 'hostel-payment-proofs', FALSE, 8388608,
-        ARRAY['image/jpeg','image/png','image/webp','application/pdf'])
-ON CONFLICT (id) DO UPDATE
-    SET public = FALSE,
-        file_size_limit = 8388608,
-        allowed_mime_types = EXCLUDED.allowed_mime_types;
-
-DROP POLICY IF EXISTS hostel_payment_proofs_read ON storage.objects;
-CREATE POLICY hostel_payment_proofs_read ON storage.objects
-    FOR SELECT TO authenticated
-    USING (
-        bucket_id = 'hostel-payment-proofs'
-        AND (
-            (storage.foldername(name))[1] = auth.uid()::TEXT
-            OR EXISTS (
-                SELECT 1
-                FROM public.hostel_bookings AS b
-                JOIN public.hostel_rooms AS r ON r.id = b.room_id
-                JOIN public.hostels AS h ON h.id = r.hostel_id
-                WHERE b.id::TEXT = (storage.foldername(name))[2]
-                  AND public.is_school_staff(h.school_key)
-            )
-        )
-    );
-
-DROP POLICY IF EXISTS hostel_payment_proofs_upload ON storage.objects;
-CREATE POLICY hostel_payment_proofs_upload ON storage.objects
-    FOR INSERT TO authenticated
-    WITH CHECK (
-        bucket_id = 'hostel-payment-proofs'
-        AND (storage.foldername(name))[1] = auth.uid()::TEXT
-        AND EXISTS (
-            SELECT 1 FROM public.hostel_bookings AS b
-            WHERE b.id::TEXT = (storage.foldername(name))[2]
-              AND b.student_id = auth.uid()
-              AND b.status IN ('pending', 'approved')
-              AND b.semester_ends_at > NOW()
-        )
-    );
-
-DROP POLICY IF EXISTS hostel_payment_proofs_remove ON storage.objects;
-CREATE POLICY hostel_payment_proofs_remove ON storage.objects
-    FOR DELETE TO authenticated
-    USING (
-        bucket_id = 'hostel-payment-proofs'
-        AND (storage.foldername(name))[1] = auth.uid()::TEXT
-        AND EXISTS (
-            SELECT 1 FROM public.hostel_bookings AS b
-            WHERE b.id::TEXT = (storage.foldername(name))[2]
-              AND b.student_id = auth.uid()
-              AND b.payment_status <> 'verified'
-        )
-    );
-
-CREATE OR REPLACE FUNCTION public.refresh_expired_hostel_bookings()
-RETURNS INTEGER
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-DECLARE v_count INTEGER;
-BEGIN
-    UPDATE public.hostel_bookings
-       SET status = 'expired', payment_status = 'unpaid', updated_at = NOW()
-     WHERE semester_ends_at <= NOW()
-       AND status IN ('pending', 'approved');
-    GET DIAGNOSTICS v_count = ROW_COUNT;
-    RETURN v_count;
-END;
-$$;
-REVOKE ALL ON FUNCTION public.refresh_expired_hostel_bookings() FROM PUBLIC, anon;
-GRANT EXECUTE ON FUNCTION public.refresh_expired_hostel_bookings() TO authenticated;
-
-CREATE OR REPLACE FUNCTION public.submit_hostel_payment_proof(
-    p_booking_id UUID,
-    p_method TEXT,
-    p_reference TEXT,
-    p_proof_path TEXT
-)
-RETURNS TEXT
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-DECLARE v_status TEXT;
-BEGIN
-    PERFORM public.refresh_expired_hostel_bookings();
-    IF COALESCE(p_method, '') NOT IN ('mpesa', 'bank') THEN
-        RAISE EXCEPTION 'Choose M-Pesa or bank transfer.' USING ERRCODE = '22023';
-    END IF;
-    IF char_length(BTRIM(COALESCE(p_reference, ''))) < 3 OR char_length(p_reference) > 100 THEN
-        RAISE EXCEPTION 'Enter the M-Pesa receipt code or bank reference.' USING ERRCODE = '22023';
-    END IF;
-    IF p_proof_path IS NULL
-       OR split_part(p_proof_path, '/', 1) <> auth.uid()::TEXT
-       OR split_part(p_proof_path, '/', 2) <> p_booking_id::TEXT THEN
-        RAISE EXCEPTION 'The payment file does not belong to this booking.' USING ERRCODE = '42501';
-    END IF;
-    IF NOT EXISTS (
-        SELECT 1 FROM storage.objects AS o
-        WHERE o.bucket_id = 'hostel-payment-proofs' AND o.name = p_proof_path
-    ) THEN
-        RAISE EXCEPTION 'Upload the M-Pesa or bank confirmation before sending it.' USING ERRCODE = 'P0001';
-    END IF;
-
-    UPDATE public.hostel_bookings
-       SET payment_status = 'submitted',
-           payment_method = p_method,
-           payment_reference = BTRIM(p_reference),
-           payment_proof_path = p_proof_path,
-           payment_submitted_at = NOW(),
-           payment_verified_at = NULL,
-           payment_verified_by = NULL,
-           decision_note = '',
-           updated_at = NOW()
-     WHERE id = p_booking_id
-       AND student_id = auth.uid()
-       AND status IN ('pending', 'approved')
-       AND semester_ends_at > NOW()
-    RETURNING payment_status INTO v_status;
-
-    IF v_status IS NULL THEN
-        RAISE EXCEPTION 'This booking is no longer waiting for payment.' USING ERRCODE = 'P0001';
-    END IF;
-    RETURN v_status;
-END;
-$$;
-
-CREATE OR REPLACE FUNCTION public.review_hostel_payment(
-    p_booking_id UUID,
-    p_approve BOOLEAN,
-    p_note TEXT DEFAULT ''
-)
-RETURNS TEXT
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-DECLARE
-    v_room UUID;
-    v_school TEXT;
-    v_status TEXT;
-    v_payment_status TEXT;
-    v_semester_end TIMESTAMPTZ;
-    v_taken INTEGER;
-    v_capacity INTEGER;
-BEGIN
-    PERFORM public.refresh_expired_hostel_bookings();
-    SELECT r.id, h.school_key, b.status, b.payment_status, b.semester_ends_at, r.capacity
-      INTO v_room, v_school, v_status, v_payment_status, v_semester_end, v_capacity
-      FROM public.hostel_bookings AS b
-      JOIN public.hostel_rooms AS r ON r.id = b.room_id
-      JOIN public.hostels AS h ON h.id = r.hostel_id
-     WHERE b.id = p_booking_id
-     FOR UPDATE OF b;
-    IF v_room IS NULL THEN RAISE EXCEPTION 'No such hostel request.' USING ERRCODE = 'P0002'; END IF;
-    IF NOT public.is_school_staff(v_school) THEN
-        RAISE EXCEPTION 'Only this school‚Äôs housing office can verify payment.' USING ERRCODE = '42501';
-    END IF;
-    IF v_status NOT IN ('pending', 'approved') OR v_semester_end <= NOW() THEN
-        RAISE EXCEPTION 'This hostel request has expired or is no longer pending.' USING ERRCODE = 'P0001';
-    END IF;
-    IF v_payment_status <> 'submitted' THEN
-        RAISE EXCEPTION 'The student has not submitted payment proof yet.' USING ERRCODE = 'P0001';
-    END IF;
-
-    IF p_approve THEN
-        IF NOT EXISTS (
-            SELECT 1 FROM public.hostel_bookings AS b
-            JOIN storage.objects AS o
-              ON o.bucket_id = 'hostel-payment-proofs' AND o.name = b.payment_proof_path
-            WHERE b.id = p_booking_id
-        ) THEN
-            RAISE EXCEPTION 'The submitted payment receipt is no longer available.' USING ERRCODE = 'P0001';
-        END IF;
-        IF v_status = 'pending' THEN
-            SELECT COUNT(*) INTO v_taken
-              FROM public.hostel_bookings
-             WHERE room_id = v_room AND status = 'approved'
-               AND semester_ends_at > NOW() AND id <> p_booking_id;
-            IF v_taken >= v_capacity THEN
-                RAISE EXCEPTION 'That room has no beds left.' USING ERRCODE = 'P0001';
-            END IF;
-        END IF;
-        UPDATE public.hostel_bookings
-           SET status = 'approved', payment_status = 'verified',
-               payment_verified_at = NOW(), payment_verified_by = auth.uid(),
-               decided_by = auth.uid(), decided_at = NOW(),
-               decision_note = LEFT(BTRIM(COALESCE(p_note, 'Payment checked by the housing office.')), 400),
-               updated_at = NOW()
-         WHERE id = p_booking_id;
-        RETURN 'approved';
-    END IF;
-
-    UPDATE public.hostel_bookings
-       SET payment_status = 'rejected',
-           decision_note = LEFT(BTRIM(COALESCE(p_note, 'Please send a clearer payment confirmation.')), 400),
-           decided_by = auth.uid(), decided_at = NOW(), updated_at = NOW()
-     WHERE id = p_booking_id;
-    RETURN 'rejected';
-END;
-$$;
-
--- Keep the older approval action safe: an office cannot assign an unpaid bed.
-CREATE OR REPLACE FUNCTION public.decide_hostel_booking(
-    p_booking_id UUID,
-    p_decision TEXT,
-    p_note TEXT DEFAULT ''
-)
-RETURNS TEXT
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path = ''
-AS $$
-DECLARE v_room UUID; v_school TEXT; v_payment TEXT; v_end TIMESTAMPTZ; v_taken INT; v_capacity INT;
-BEGIN
-    IF p_decision NOT IN ('approved', 'rejected', 'cancelled') THEN
-        RAISE EXCEPTION 'That decision is not one the housing office can make.' USING ERRCODE = '22023';
-    END IF;
-    SELECT r.id, h.school_key, b.payment_status, b.semester_ends_at, r.capacity
-      INTO v_room, v_school, v_payment, v_end, v_capacity
-      FROM public.hostel_bookings AS b
-      JOIN public.hostel_rooms AS r ON r.id = b.room_id
-      JOIN public.hostels AS h ON h.id = r.hostel_id
-     WHERE b.id = p_booking_id;
-    IF v_room IS NULL THEN RAISE EXCEPTION 'No such booking.' USING ERRCODE = 'P0002'; END IF;
-    IF NOT public.is_school_staff(v_school) THEN
-        RAISE EXCEPTION 'Only the housing office of that school can decide a bed.' USING ERRCODE = '42501';
-    END IF;
-    IF p_decision = 'approved' THEN
-        IF v_payment <> 'verified' OR v_end <= NOW() THEN
-            RAISE EXCEPTION 'Verify the student‚Äôs payment before assigning the room.' USING ERRCODE = 'P0001';
-        END IF;
-        SELECT COUNT(*) INTO v_taken FROM public.hostel_bookings
-         WHERE room_id = v_room AND status = 'approved' AND semester_ends_at > NOW() AND id <> p_booking_id;
-        IF v_taken >= v_capacity THEN RAISE EXCEPTION 'That room is full.' USING ERRCODE = 'P0001'; END IF;
-    END IF;
-    UPDATE public.hostel_bookings SET status = p_decision,
-        decision_note = LEFT(BTRIM(COALESCE(p_note, '')), 400), decided_by = auth.uid(),
-        decided_at = NOW(), updated_at = NOW()
-     WHERE id = p_booking_id;
-    RETURN p_decision;
-END;
-$$;
-
-DROP FUNCTION IF EXISTS public.my_bed_requests();
-CREATE FUNCTION public.my_bed_requests()
-RETURNS TABLE (
-    booking_id UUID, hostel_name TEXT, room_label TEXT, room_capacity INT, school TEXT,
-    semester TEXT, status TEXT, request_note TEXT, decision_note TEXT, decided_at TIMESTAMPTZ,
-    created_at TIMESTAMPTZ, registration_number TEXT, semester_started_at TIMESTAMPTZ,
-    semester_ends_at TIMESTAMPTZ, payment_status TEXT, payment_method TEXT,
-    payment_reference TEXT, payment_proof_path TEXT, payment_submitted_at TIMESTAMPTZ
-)
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
-AS $$
-BEGIN
-    PERFORM public.refresh_expired_hostel_bookings();
-    RETURN QUERY
-    SELECT b.id, h.name, r.label, r.capacity, h.school, b.semester, b.status,
-           b.request_note, b.decision_note, b.decided_at, b.created_at, sr.registration_number,
-           b.semester_started_at, b.semester_ends_at, b.payment_status, b.payment_method,
-           b.payment_reference, b.payment_proof_path, b.payment_submitted_at
-      FROM public.hostel_bookings AS b
-      JOIN public.hostel_rooms AS r ON r.id = b.room_id
-      JOIN public.hostels AS h ON h.id = r.hostel_id
-      LEFT JOIN public.student_registrations AS sr ON sr.user_id = b.student_id
-     WHERE b.student_id = auth.uid()
-     ORDER BY b.created_at DESC LIMIT 40;
-END;
-$$;
-
-DROP FUNCTION IF EXISTS public.school_bed_requests(TEXT);
-CREATE FUNCTION public.school_bed_requests(p_school_key TEXT)
-RETURNS TABLE (
-    booking_id UUID, student_id UUID, student_name TEXT, registration_number TEXT,
-    hostel_name TEXT, room_label TEXT, room_capacity INT, beds_approved INT,
-    semester TEXT, status TEXT, request_note TEXT, decided_at TIMESTAMPTZ, created_at TIMESTAMPTZ,
-    semester_started_at TIMESTAMPTZ, semester_ends_at TIMESTAMPTZ, payment_status TEXT,
-    payment_method TEXT, payment_reference TEXT, payment_proof_path TEXT,
-    payment_submitted_at TIMESTAMPTZ, payment_verified_at TIMESTAMPTZ
-)
-LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''
-AS $$
-BEGIN
-    PERFORM public.refresh_expired_hostel_bookings();
-    IF NOT public.is_school_staff(p_school_key) THEN
-        RAISE EXCEPTION 'Only the housing office of that school sees its requests.' USING ERRCODE = '42501';
-    END IF;
-    RETURN QUERY
-    SELECT b.id, b.student_id, p.full_name, sr.registration_number, h.name, r.label, r.capacity,
-           (SELECT COUNT(*)::INT FROM public.hostel_bookings AS x
-             WHERE x.room_id = b.room_id AND x.status = 'approved'
-               AND x.semester_ends_at > NOW() AND LOWER(BTRIM(x.semester)) = LOWER(BTRIM(b.semester))),
-           b.semester, b.status, b.request_note, b.decided_at, b.created_at,
-           b.semester_started_at, b.semester_ends_at, b.payment_status, b.payment_method,
-           b.payment_reference, b.payment_proof_path, b.payment_submitted_at, b.payment_verified_at
-      FROM public.hostel_bookings AS b
-      JOIN public.hostel_rooms AS r ON r.id = b.room_id
-      JOIN public.hostels AS h ON h.id = r.hostel_id
-      JOIN public.profiles AS p ON p.id = b.student_id
-      LEFT JOIN public.student_registrations AS sr ON sr.user_id = b.student_id
-     WHERE h.school_key = LOWER(BTRIM(COALESCE(p_school_key, '')))
-     ORDER BY b.created_at DESC LIMIT 200;
-END;
-$$;
-
-GRANT EXECUTE ON FUNCTION public.submit_hostel_payment_proof(UUID, TEXT, TEXT, TEXT) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.review_hostel_payment(UUID, BOOLEAN, TEXT) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.my_bed_requests() TO authenticated;
-GRANT EXECUTE ON FUNCTION public.school_bed_requests(TEXT) TO authenticated;
-
--- Kabarak inventory: exact hostel and room counts. Room capacities default
--- to one until the housing office sets each actual single/twin/triple room.
-INSERT INTO public.hostels (school, name, gender, verified, note)
-SELECT 'Kabarak University', h.name, h.gender, TRUE,
-       'Housing office: set each room capacity to the official room list.'
-FROM (VALUES
-    ('Turkana', 'men'), ('Baringo', 'men'), ('Bogoria', 'men'), ('Elementeita', 'men'),
-    ('Sote A', 'women'), ('Sote B', 'women'), ('Kabon', 'women'), ('Central', 'women'), ('Lena Moi', 'women')
-) AS h(name, gender)
-ON CONFLICT (school_key, name_key) DO NOTHING;
-
-INSERT INTO public.hostel_rooms (hostel_id, label, sharing, capacity, note)
-SELECT h.id, 'Room ' || LPAD(n.room_no::TEXT, 3, '0'), 'single', 1,
-       'Housing office: set actual capacity (single, twin or triple) before confirming requests.'
-  FROM public.hostels AS h
-  JOIN (VALUES
-      ('Turkana', 90), ('Baringo', 90), ('Bogoria', 90), ('Elementeita', 90),
-      ('Sote A', 135), ('Sote B', 135), ('Kabon', 135), ('Central', 135), ('Lena Moi', 135)
-  ) AS inventory(name, room_count) ON inventory.name = h.name
- CROSS JOIN LATERAL generate_series(1, inventory.room_count) AS n(room_no)
- WHERE h.school_key = 'kabarak university'
-ON CONFLICT (hostel_id, label) DO NOTHING;
-
-NOTIFY pgrst, 'reload schema';
-
+Y™Áäx-ÆÈ‹j◊ù¢Îi∫⁄+äßj[hëÈ‹¢ÈÌ◊]∫”¥Ëµ©h∫⁄n∂XßzÕKKHT»T»HíSH»T—H
+ùZ[åçãLLLM Nà]\»ÿ⁄[XKú‹[
+»]ô\ûBãKHZY‹ò][€ã\»Y\‹ÿYŸHôXX›[€ú»»›\ú»»ô\Y\ÀX›\ô\à‹ôY[ùX[ÀãKH›YH[Ÿ\À€ôHù[Xô\à\àXÿ€›[ùHù[][àõÿ\ôH€€\[ûH\ôX›‹ûKHúõÿYÿ\›ãKH€X⁄Y\»ôZ[ôH\[ô»[ôXÿ]‹ãö]ò]H‹õ›\⁄]ÀH]öXŸH\›ãKHôZ[ô\⁄[\ùÀHÿ[\\»Y[ù]Hù[\»
+€ôHÿ⁄€€\àY[Xô\ã€ôBãKH\ú€€à\à›YôàXÿ€›[ù
+KH\ãX⁄]\ò⁄]ôH»]]H»ÿ⁄»»Xô[õY‹ÀãKHH€ôHù[Xô\à]]»H€\‹€X]HX[[›KH‹›[ÿ]\ö[ô»[ôãKH⁄\Z[òﬁH\\ùY[ù»ŸàHÿ⁄€€H€\‹»ôY⁄\›\à]‹ö]\»]Ÿ[ããKHHXŸ[Y[ùH‹›[‹àHö[ù⁄‹õ›Y⁄ûH[ô[ôHúõ€ùŸàHôYYãKH]\»€€[ùÀãKHHÿ›[Y[ù€€YXõŸHX⁄ŸY\[ôHö]ò]H€‹ô]Ÿ[ô»»]»›€ô\ããKH[ôHö[ò[⁄X⁄ÀÇãKH]ô\XŸ\»ïSó””ê—Kú‹[ïSó’T◊“Só‘’TPêT—Kú‹[ïSó”QT‘–Q—W”PTí‘Àú‹[ãKHïSó—îíQSë”êSQTÀú‹[ïSó–”T‘—T◊”RSãú‹[[ôëTRTó–“UÀú‹[ÇãKHOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOBãKH–STT»””ìëP’8†%”ëKT“’UPêT—HTUBãKH\›H\»SïTëHö[H[ù»›\Xò\ŸH‘SY]‹à[ô€X⁄»ù[ãÇãKHÿYôH»ù[à][\H[Y\»
+]ô\û][ô»\»Y[\›[ù
+KÇãKHùZ[åçãLLLMúõ€Hÿ⁄[XKú‹[
+»[ZY‹ò][€úÀ[à‹ô\ãÇãKHOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOBÇãKHOOOOOOOOOOOOOOOOOOOHTïKÃçàÿ⁄[XKú‹[OOOOOOOOOOOOOOOOOOOOOOOOOOBãKHOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOBãKH–STT»””ìëP’ãKH€ÿ⁄X[ô]€‹ö⁄[ô»]Xò\ŸHõ‹à[ö]ô\ú⁄]H›Y[ù¬ãKH]õ‹õNà›\Xò\ŸH»‹›‹ôT‘SãKHOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOBÇê‘ëPUHVSî“S”àQàì’VT’»ÿ‹û\Œ¬ê‘ëPUHVSî“S”àQàì’VT’»◊›ô€N¬ÇãKH\»XõX»ùX⁄Ÿ]Ÿ\ùô\»⁄]‹õŸö[H]X⁄Y[ù»[ô€\àXõX»‹›TìÀÇãKH\H]Xò\ŸK€ZY‹ò][€úÀÃåçåLLW‹€ÿ⁄X[ÿXÿŸ\‹◊ÿ€€ùõ€Àú‹[»›‹ôHô]¬ãKHôYY‹›]\»YYXH[àHö]ò]HùX⁄Ÿ]ô\›öX›Y»]]X[€€õôX›[€úÀÇíSî—TïSï»›‹òYŸKòùX⁄Ÿ]»
+àYàò[YKàXõXÀàö[W‹⁄^ôW€[Z]à[›ŸY€Z[YW›\\¬äBïêSQT»
+à	ÿÿ[\\À[YYXIÀà	ÿÿ[\\À[YYXIÀàïQKàLçéàTîêVV¬à	⁄[XYŸK âÀà	›öY[À âÀà	ÿ]Y[À âÀà	ÿ\Xÿ][€ã‹âÀà	›^‹Z[âÀà	›^ÿ‹›âÀà	ÿ\Xÿ][€ã‹ùâÀà	ÿ\Xÿ][€ã€\›€‹ô	Àà	ÿ\Xÿ][€ã›õôõ‹[û[õ‹õX]À[ŸôöXŸYÿ›[Y[ùù€‹ôõÿŸ\‹⁄[ô€[ôÿ›[Y[ù	Àà	ÿ\Xÿ][€ã›õôõ\ÀY^Ÿ[	Àà	ÿ\Xÿ][€ã›õôõ‹[û[õ‹õX]À[ŸôöXŸYÿ›[Y[ùú‹ôXY⁄Y][ú⁄Y]	Àà	ÿ\Xÿ][€ã›õôõ\À\›Ÿ\ú⁄[ù	Àà	ÿ\Xÿ][€ã›õôõ‹[û[õ‹õX]À[ŸôöXŸYÿ›[Y[ùúô\Ÿ[ù][€õ[úô\Ÿ[ù][€â¬àBäBì”à””ëìP’
+Y
+H»TUBî—UàXõX»HV”QQúXõXÀàö[W‹⁄^ôW€[Z]HV”QQôö[W‹⁄^ôW€[Z]à[›ŸY€Z[YW›\\»HV”QQò[›ŸY€Z[YW›\\Œ¬Çëì‘”P÷HQàVT’»ê]][ùXÿ]Y\Ÿ\ú»\ÿY›€àÿ[\\»YYXHÇà”à›‹òYŸKõÿöôX›Œ¬Çê‘ëPUH”P÷Hê]][ùXÿ]Y\Ÿ\ú»\ÿY›€àÿ[\\»YYXHÇà”à›‹òYŸKõÿöôX›¬àì‘àSî—Tï»]][ùXÿ]Yà“U“P“»
+àùX⁄Ÿ]⁄YH	ÿÿ[\\À[YYXI¬àSë
+›‹òYŸKôõ€\õò[YJò[YJJVÃWHH]]ùZY
+
+NéïVà
+N¬ÇãKHOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOBãKHKà’QSïì—íST¬ãKHXX⁄õŸö[Hô[€ô‹»»[à]][ùXÿ]Y›\Xò\ŸH\Ÿ\ãÇãKHOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOBÇê‘ëPUHPìHQàì’VT’»XõXÀúõŸö[\»
+àYURQíSPTñH—VBàëQëTëSê—T»]]ù\Ÿ\ú Y
+H”àSUH–T––QKÇà\Ÿ\õò[YHVì’ïSSíTUQBà“P“»
+à\Ÿ\õò[YHH’—Tä\Ÿ\õò[YJBàSë\Ÿ\õò[YHà	◊ñÿK^åNW◊^ÃÀÃI	¬à
+KÇàù[€ò[YHVì’ïSQêUS	…¬à“P“»
+⁄\ó€[ô›
+ö[Jù[€ò[YJJHHL
+KÇàŸ[ô\àVì’ïSQêUS	…¬à“P“»
+Ÿ[ô\àSà
+	…À	€X[IÀ	Ÿô[X[IÀ	€›\â JKÇàö[»Vì’ïSQêUS	…¬à“P“»
+⁄\ó€[ô›
+ö[ HHL
+KÇà]ò]\ó›\õVÇà€›\úŸHVì’ïSQêUS	…¬à“P“»
+⁄\ó€[ô›
+€›\úŸJHHLå
+KÇà€€ùX›Ÿ[XZ[Vì’ïSQêUS	…¬à“P“»
+⁄\ó€[ô›
+€€ùX›Ÿ[XZ[
+HHçM
+KÇà€€ùX›‹€ôHVì’ïSQêUS	…¬à“P“»
+⁄\ó€[ô›
+€€ùX›‹€ôJHHÃäKÇà⁄\ôWŸ[XZ[ì””PSàì’ïSQêUSêS—KÇà⁄\ôW‹€ôHì””PSàì’ïSQêUSêS—KÇà\◊Ÿ\ÿ€›ô\òXõHì””PSàì’ïSQêUSïQKÇà[›◊Ÿõ€›Ÿ\ó‹›]\Ÿ\»ì””PSàì’ïSQêUSêS—KÇà‹ôX]Yÿ]SQT’STàì’ïSQêUSì’ 
+KÇà\]Yÿ]SQT’STàì’ïSQêUSì’ 
+BäN¬ÇêSTàPìHXõXÀúõŸö[\¬àQ””SSàQàì’VT’»€€ùX›Ÿ[XZ[Vì’ïSQêUS	…Œ¬êSTàPìHXõXÀúõŸö[\¬àQ””SSàQàì’VT’»€€ùX›‹€ôHVì’ïSQêUS	…Œ¬êSTàPìHXõXÀúõŸö[\¬àQ””SSàQàì’VT’»⁄\ôWŸ[XZ[ì””PSàì’ïSQêUSêS—N¬êSTàPìHXõXÀúõŸö[\¬àQ””SSàQàì’VT’»⁄\ôW‹€ôHì””PSàì’ïSQêUSêS—N¬êSTàPìHXõXÀúõŸö[\¬àQ””SSàQàì’VT’»\◊Ÿ\ÿ€›ô\òXõHì””PSàì’ïSQêUSïQN¬êSTàPìHXõXÀúõŸö[\¬àQ””SSàQàì’VT’»[›◊Ÿõ€›Ÿ\ó‹›]\Ÿ\»ì””PSàì’ïSQêUSêS—N¬êSTàPìHXõXÀúõŸö[\¬àQ””SSàQàì’VT’»Ÿ[ô\àVì’ïSQêUS	…Œ¬Çë»		êëQ“SÇàQàì’VT’»
+à—SP’Hîì”H◊ÿ€€ú›òZ[ùà“TëH€€úô[YH	‹XõXÀúõŸö[\…ŒéîëQ–”T‘¬àSë€€õò[YHH	‹õŸö[\◊ŸŸ[ô\óÿ⁄X⁄…¬à
+HSÇàSTàPìHXõXÀúõŸö[\¬àQ””î’êRSïõŸö[\◊ŸŸ[ô\óÿ⁄X⁄¬à“P“»
+Ÿ[ô\àSà
+	…À	€X[IÀ	Ÿô[X[IÀ	€›\â JN¬àSëQé¬ëSë¬â	¬Çë»		êëQ“SÇàQàì’VT’»
+à—SP’Hîì”H◊ÿ€€ú›òZ[ùà“TëH€€úô[YH	‹XõXÀúõŸö[\…ŒéîëQ–”T‘¬àSë€€õò[YHH	‹õŸö[\◊ÿ€€ùX›Ÿ[XZ[€[ô›ÿ⁄X⁄…¬à
+HSÇàSTàPìHXõXÀúõŸö[\¬àQ””î’êRSïõŸö[\◊ÿ€€ùX›Ÿ[XZ[€[ô›ÿ⁄X⁄¬à“P“»
+⁄\ó€[ô›
+€€ùX›Ÿ[XZ[
+HHçM
+N¬àSëQé¬àQàì’VT’»
+à—SP’Hîì”H◊ÿ€€ú›òZ[ùà“TëH€€úô[YH	‹XõXÀúõŸö[\…ŒéîëQ–”T‘¬àSë€€õò[YHH	‹õŸö[\◊ÿ€€ùX›‹€ôW€[ô›ÿ⁄X⁄…¬à
+HSÇàSTàPìHXõXÀúõŸö[\¬àQ””î’êRSïõŸö[\◊ÿ€€ùX›‹€ôW€[ô›ÿ⁄X⁄¬à“P“»
+⁄\ó€[ô›
+€€ùX›‹€ôJHHÃäN¬àSëQé¬ëSë¬â	¬Çê‘ëPUH‘àëTP—HïSê’S”àXõXÀô[ôõ‹òŸW‹õŸö[Wÿ€€ùX›‹⁄\ö[ô 
+BîëUTìî»íQ——TÇìSë’PQ—H‹‹[î—UŸX\ò⁄‹]H	…¬êT»		êëQ“SÇàQàì’ëUÀú⁄\ôWŸ[XZ[SÇàëUÀò€€ùX›Ÿ[XZ[èH	…Œ¬àSëQé¬àQàì’ëUÀú⁄\ôW‹€ôHSÇàëUÀò€€ùX›‹€ôHèH	…Œ¬àSëQé¬àëUTìàëUŒ¬ëSë¬â	¬ÇîëUì“—HS”àïSê’S”àXõXÀô[ôõ‹òŸW‹õŸö[Wÿ€€ùX›‹⁄\ö[ô 
+Hîì”HPìPÀ[õ€ã]][ùXÿ]Y¬Çëì‘íQ——TàQàVT’»õŸö[\◊Ÿ[ôõ‹òŸWÿ€€ùX›‹⁄\ö[ô»”àXõXÀúõŸö[\Œ¬ê‘ëPUHíQ——TàõŸö[\◊Ÿ[ôõ‹òŸWÿ€€ùX›‹⁄\ö[ô¬àëQì‘ëHSî—Tï‘àTUBà”àXõXÀúõŸö[\¬àì‘àPP“ì’¬àVP’UHïSê’S”àXõXÀô[ôõ‹òŸW‹õŸö[Wÿ€€ùX›‹⁄\ö[ô 
+N¬Çê‘ëPUH‘àëTP—HïSê’S”àXõXÀö[ôW€ô]◊ÿ]]›\Ÿ\ä
+BîëUTìî»íQ——TÇìSë’PQ—H‹‹[î—P’TíUHQíSëTÇî—UŸX\ò⁄‹]H	…¬êT»		ëP”TëBà\Ÿ\õò[YWÿò\ŸHV¬àÿ[ôY]W›\Ÿ\õò[YHV¬à][\SïQ—Té¬àY]Y]Hî””êé¬êëQ“SÇàY]Y]HèH”–ST–—JëUÀúò]◊›\Ÿ\ó€Y]WŸ]K	ﬁﬂIŒéíî””êäN¬à\Ÿ\õò[YWÿò\ŸHèH’—TäàëQ—V‘ëTP—Jà”–ST–—JàY]Y]KOèâ›\Ÿ\õò[YIÀà‘U‘Tï
+”–ST–—JëUÀô[XZ[ëUÀú€ôK	‹›Y[ù	 K	–	ÀJBà
+Kà	÷◊òK^êKVåNW◊IÀà	…Àà	Ÿ…¬à
+Bà
+N¬à\Ÿ\õò[YWÿò\ŸHèHQï
+\Ÿ\õò[YWÿò\ŸKå
+N¬àQà⁄\ó€[ô›
+\Ÿ\õò[YWÿò\ŸJH»SÇà\Ÿ\õò[YWÿò\ŸHèH	‹›Y[ù	Œ¬àSëQé¬Çàì‘à][\SàãçH”‘àÿ[ôY]W›\Ÿ\õò[YHèH–T—Bà“Sà][\HSà\Ÿ\õò[YWÿò\ŸBàS—HQï
+\Ÿ\õò[YWÿò\ŸKNJH	◊…»Qï
+ëUÀöYéïV
+Hà–T—H“Sà][\àHSà	◊…»
+][\HJNéïVS—H	…»SëàSë¬ÇàëQ“SÇàSî—TïSï»XõXÀúõŸö[\»
+àYà\Ÿ\õò[YKàù[€ò[YKà€›\úŸBà
+BàêSQT»
+àëUÀöYàÿ[ôY]W›\Ÿ\õò[YKàQï
+”–ST–—JY]Y]KOèâŸù[€ò[YIÀ	”Y[Xô\â KL
+KàQï
+”–ST–—JY]Y]KOèâÿ€›\úŸIÀ	… KLå
+Bà
+Bà”à””ëìP’
+Y
+H»ì’SëŒ¬àëUTìàëUŒ¬àV—TS”à“Sà[ö\]YW›ö[€][€àSÇàQà][\HHSÇàêRT—N¬àSëQé¬àSë¬àSë”‘¬ÇàëUTìàëUŒ¬ëSë¬â	¬ÇîëUì“—HS”àïSê’S”àXõXÀö[ôW€ô]◊ÿ]]›\Ÿ\ä
+Hîì”HPìPÀ[õ€ã]][ùXÿ]Y¬Çëì‘íQ——TàQàVT’»€óÿ]]›\Ÿ\óÿ‹ôX]Yÿ‹ôX]W‹õŸö[H”à]]ù\Ÿ\úŒ¬ê‘ëPUHíQ——Tà€óÿ]]›\Ÿ\óÿ‹ôX]Yÿ‹ôX]W‹õŸö[BàQïTàSî—Tï”à]]ù\Ÿ\ú¬àì‘àPP“ì’¬àVP’UHïSê’S”àXõXÀö[ôW€ô]◊ÿ]]›\Ÿ\ä
+N¬Çë»		ëP”TëBàôY⁄\›\ôY›\Ÿ\àëP”‘ë¬à\Ÿ\õò[YWÿò\ŸHV¬àÿ[ôY]W›\Ÿ\õò[YHV¬à][\SïQ—Té¬êëQ“SÇàì‘àôY⁄\›\ôY›\Ÿ\àSÇà—SP’]]›\Ÿ\ãöY]]›\Ÿ\ãô[XZ[]]›\Ÿ\ãú€ôK]]›\Ÿ\ãúò]◊›\Ÿ\ó€Y]WŸ]Bàîì”H]]ù\Ÿ\ú»T»]]›\Ÿ\Çà“TëHì’VT’»
+à—SP’Bàîì”HXõXÀúõŸö[\»T»õŸö[Bà“TëHõŸö[KöYH]]›\Ÿ\ãöYà
+Bà‘ëTàñH]]›\Ÿ\ãò‹ôX]Yÿ]]]›\Ÿ\ãöYà”‘à\Ÿ\õò[YWÿò\ŸHèH’—TäàëQ—V‘ëTP—Jà”–ST–—JàôY⁄\›\ôY›\Ÿ\ãúò]◊›\Ÿ\ó€Y]WŸ]KOèâ›\Ÿ\õò[YIÀà‘U‘Tï
+”–ST–—JôY⁄\›\ôY›\Ÿ\ãô[XZ[ôY⁄\›\ôY›\Ÿ\ãú€ôK	‹›Y[ù	 K	–	ÀJBà
+Kà	÷◊òK^êKVåNW◊IÀà	…Àà	Ÿ…¬à
+Bà
+N¬à\Ÿ\õò[YWÿò\ŸHèHQï
+\Ÿ\õò[YWÿò\ŸKå
+N¬àQà⁄\ó€[ô›
+\Ÿ\õò[YWÿò\ŸJH»SÇà\Ÿ\õò[YWÿò\ŸHèH	‹›Y[ù	Œ¬àSëQé¬Çàì‘à][\SàãçH”‘àÿ[ôY]W›\Ÿ\õò[YHèH–T—Bà“Sà][\HSà\Ÿ\õò[YWÿò\ŸBàS—HQï
+\Ÿ\õò[YWÿò\ŸKNJH	◊…»Qï
+ôY⁄\›\ôY›\Ÿ\ãöYéïV
+Hà–T—H“Sà][\àHSà	◊…»
+][\HJNéïVS—H	…»SëàSë¬ÇàëQ“SÇàSî—TïSï»XõXÀúõŸö[\»
+Y\Ÿ\õò[YKù[€ò[YK€›\úŸJBàêSQT»
+àôY⁄\›\ôY›\Ÿ\ãöYàÿ[ôY]W›\Ÿ\õò[YKàQï
+”–ST–—JôY⁄\›\ôY›\Ÿ\ãúò]◊›\Ÿ\ó€Y]WŸ]KOèâŸù[€ò[YIÀ	”Y[Xô\â KL
+KàQï
+”–ST–—JôY⁄\›\ôY›\Ÿ\ãúò]◊›\Ÿ\ó€Y]WŸ]KOèâÿ€›\úŸIÀ	… KLå
+Bà
+Bà”à””ëìP’
+Y
+H»ì’SëŒ¬àVU¬àV—TS”à“Sà[ö\]YW›ö[€][€àSÇàQà][\HHSÇàêRT—N¬àSëQé¬àSë¬àSë”‘¬àSë”‘¬ëSë¬â	¬ÇÇãKHOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOBãKHãà‘’¬ãKH›Y[ù»ÿ[àXõ\⁄^‹›»[ô‹[€ò[[XYŸHTìÀÇãKHOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOBÇê‘ëPUHPìHQàì’VT’»XõXÀú‹›»
+àYURQíSPTñH—VHQêUSŸ[ó‹ò[ô€W›]ZY
+
+KÇà\Ÿ\ó⁄YURQì’ïSàëQëTëSê—T»]]ù\Ÿ\ú Y
+H”àSUH–T––QKÇàÿ\[€àVì’ïSQêUS	…¬à“P“»
+⁄\ó€[ô›
+ÿ\[€äHHL
+KÇà[XYŸW›\õVÇàYYXW⁄][\»î””êàì’ïSQêUS	÷◊IŒéíî””êÇà””î’êRSï‹›◊€YYXW⁄][\◊ÿ\úò^Wÿ⁄X⁄¬à“P“»
+àú€€òó›\[ŸäYYXW⁄][\ HH	ÿ\úò^I¬àSëú€€òóÿ\úò^W€[ô›
+YYXW⁄][\ HHLà
+KÇà‹ôX]Yÿ]SQT’STàì’ïSQêUSì’ 
+KÇà\]Yÿ]SQT’STàì’ïSQêUSì’ 
+KÇà“P“»
+à⁄\ó€[ô›
+ö[Jÿ\[€äJHàà‘à[XYŸW›\õT»ì’ïSà
+BäN¬ÇêSTàPìHXõXÀú‹›¬àQ””SSàQàì’VT’»YYXW⁄][\»î””êàì’ïSQêUS	÷◊IŒéíî””êé¬Çë»		êëQ“SÇàQàì’VT’»
+à—SP’Hîì”H◊ÿ€€ú›òZ[ùà“TëH€€õò[YHH	‹‹›◊€YYXW⁄][\◊ÿ\úò^Wÿ⁄X⁄…¬àSë€€úô[YH	‹XõXÀú‹›…ŒéúôYÿ€\‹¬à
+HSÇàSTàPìHXõXÀú‹›¬àQ””î’êRSï‹›◊€YYXW⁄][\◊ÿ\úò^Wÿ⁄X⁄¬à“P“»
+àú€€òó›\[ŸäYYXW⁄][\ HH	ÿ\úò^I¬àSëú€€òóÿ\úò^W€[ô›
+YYXW⁄][\ HHLà
+N¬àSëQé¬ëSë¬â	¬ÇÇãKHOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOBãKHÀàì”’‘¬ãKHõ€›Ÿ\ó⁄Yõ€›‹»õ€›⁄[ô◊⁄YÇãKHOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOBÇê‘ëPUHPìHQàì’VT’»XõXÀôõ€›‹»
+àõ€›Ÿ\ó⁄YURQì’ïSàëQëTëSê—T»]]ù\Ÿ\ú Y
+H”àSUH–T––QKÇàõ€›⁄[ô◊⁄YURQì’ïSàëQëTëSê—T»]]ù\Ÿ\ú Y
+H”àSUH–T––QKÇà‹ôX]Yÿ]SQT’STàì’ïSQêUSì’ 
+KÇàíSPTñH—VH
+õ€›Ÿ\ó⁄Yõ€›⁄[ô◊⁄Y
+KÇà“P“»
+õ€›Ÿ\ó⁄Yàõ€›⁄[ô◊⁄Y
+BäN¬ÇÇãKHOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOBãKHà‘’R—T¬ãKHH\Ÿ\àÿ[àZŸHXX⁄‹›€õH€òŸKÇãKHOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOBÇê‘ëPUHPìHQàì’VT’»XõXÀú‹›€ZŸ\»
+à\Ÿ\ó⁄YURQì’ïSàëQëTëSê—T»]]ù\Ÿ\ú Y
+H”àSUH–T––QKÇà‹›⁄YURQì’ïSàëQëTëSê—T»XõXÀú‹› Y
+H”àSUH–T––QKÇà‹ôX]Yÿ]SQT’STàì’ïSQêUSì’ 
+KÇàíSPTñH—VH
+\Ÿ\ó⁄Y‹›⁄Y
+BäN¬ÇÇãKHOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOBãKHKà””SQSï¬ãKHOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOBÇê‘ëPUHPìHQàì’VT’»XõXÀò€€[Y[ù»
+àYURQíSPTñH—VHQêUSŸ[ó‹ò[ô€W›]ZY
+
+KÇà‹›⁄YURQì’ïSàëQëTëSê—T»XõXÀú‹› Y
+H”àSUH–T––QKÇà\Ÿ\ó⁄YURQì’ïSàëQëTëSê—T»]]ù\Ÿ\ú Y
+H”àSUH–T––QKÇà€€ù[ùVì’ïSà“P“»
+à⁄\ó€[ô›
+ö[J€€ù[ù
+JHëU—QSàHSëåà
+KÇà‹ôX]Yÿ]SQT’STàì’ïSQêUSì’ 
+KÇà\]Yÿ]SQT’STàì’ïSQêUSì’ 
+BäN¬ÇÇãKHOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOBãKHãà’‘íQT¬ãKH›‹öY\»^\ôHYù\àç›\ú»ûHYò][ÇãKHOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOBÇê‘ëPUHPìHQàì’VT’»XõXÀú›‹öY\»
+àYURQíSPTñH—VHQêUSŸ[ó‹ò[ô€W›]ZY
+
+KÇà\Ÿ\ó⁄YURQì’ïSàëQëTëSê—T»]]ù\Ÿ\ú Y
+H”àSUH–T––QKÇàYYXW›\õVÇà€€ù[ùVì’ïSQêUS	…¬à“P“»
+⁄\ó€[ô›
+€€ù[ù
+HHL
+KÇà‹ôX]Yÿ]SQT’STàì’ïSQêUSì’ 
+KÇà^\ô\◊ÿ]SQT’STàì’ïSàQêUS
+ì’ 
+H
+»SïTïêS	Ãç›\ú… KÇà””î’êRSï›‹öY\◊Ÿ^\ò][€ó›⁄[ô›◊ÿ⁄X⁄¬à“P“»
+à^\ô\◊ÿ]à‹ôX]Yÿ]àSë^\ô\◊ÿ]H‹ôX]Yÿ]
+»SïTïêS	Ãç›\ú…¬à
+Kà””î’êRSï›‹öY\◊ÿ€€ù[ù€‹ó€YYXWÿ⁄X⁄¬à“P“»
+⁄\ó€[ô›
+ö[J€€ù[ù
+JHà‘àYYXW›\õT»ì’ïS
+BäN¬ÇêSTàPìHXõXÀú›‹öY\¬àSTà””SSàYYXW›\õì‘ì’ïS¬ÇêSTàPìHXõXÀú›‹öY\¬àQ””SSàQàì’VT’»€€ù[ùVì’ïSQêUS	…Œ¬ÇïTUHXõXÀú›‹öY\¬î—U^\ô\◊ÿ]H‹ôX]Yÿ]
+»SïTïêS	Ãç›\ú…¬ï“TëH^\ô\◊ÿ]à‹ôX]Yÿ]
+»SïTïêS	Ãç›\ú…Œ¬Çë»		êëQ“SÇàQàì’VT’»
+à—SP’Bàîì”H◊ÿ€€ú›òZ[ùà“TëH€€õò[YHH	‹›‹öY\◊ÿ€€ù[ù€‹ó€YYXWÿ⁄X⁄…¬àSë€€úô[YH	‹XõXÀú›‹öY\…ŒéúôYÿ€\‹¬à
+HSÇàSTàPìHXõXÀú›‹öY\¬àQ””î’êRSï›‹öY\◊ÿ€€ù[ù€‹ó€YYXWÿ⁄X⁄¬à“P“»
+⁄\ó€[ô›
+ö[J€€ù[ù
+JHà‘àYYXW›\õT»ì’ïS
+N¬àSëQé¬ëSë¬â	¬Çë»		êëQ“SÇàQàì’VT’»
+à—SP’Bàîì”H◊ÿ€€ú›òZ[ùà“TëH€€õò[YHH	‹›‹öY\◊Ÿ^\ò][€ó›⁄[ô›◊ÿ⁄X⁄…¬àSë€€úô[YH	‹XõXÀú›‹öY\…ŒéúôYÿ€\‹¬à
+HSÇàSTàPìHXõXÀú›‹öY\¬àQ””î’êRSï›‹öY\◊Ÿ^\ò][€ó›⁄[ô›◊ÿ⁄X⁄¬à“P“»
+à^\ô\◊ÿ]à‹ôX]Yÿ]àSë^\ô\◊ÿ]H‹ôX]Yÿ]
+»SïTïêS	Ãç›\ú…¬à
+N¬àSëQé¬ëSë¬â	¬ÇÇãKHOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOBãKHÀàíUêUHQT‘–Q—T¬ãKH€õHHŸ[ô\à[ôôXŸZ]ô\àÿ[àôXYH€€ùô\úÿ][€ãÇãKHOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOBÇê‘ëPUHPìHQàì’VT’»XõXÀõY\‹ÿYŸ\»
+àYURQíSPTñH—VHQêUSŸ[ó‹ò[ô€W›]ZY
+
+KÇàŸ[ô\ó⁄YURQì’ïSàëQëTëSê—T»]]ù\Ÿ\ú Y
+H”àSUH–T––QKÇàôXŸZ]ô\ó⁄YURQì’ïSàëQëTëSê—T»]]ù\Ÿ\ú Y
+H”àSUH–T––QKÇà€€ù[ùVì’ïSà“P“»
+à⁄\ó€[ô›
+ö[J€€ù[ù
+JHëU—QSàHSëLà
+KÇàYYXW›\õVÇà‹ôX]Yÿ]SQT’STàì’ïSQêUSì’ 
+KÇà\◊‹ôXYì””PSàì’ïSQêUSêS—KÇàôXYÿ]SQT’STãÇà“P“»
+Ÿ[ô\ó⁄YàôXŸZ]ô\ó⁄Y
+KÇà“P“»
+à
+\◊‹ôXYHêS—HSëôXYÿ]T»ïS
+Bà‘Çà
+\◊‹ôXYHïQHSëôXYÿ]T»ì’ïS
+Bà
+BäN¬ÇãKHOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOBãKHà—Pîï»–S“Q”êSSë¬ãKHHXõHÿ\úöY\»⁄‹ù[]ôYŸôô\ãÿ[ú›Ÿ\ã“P—H⁄Y€ò[[ô»€õKÇãKHYYXH›^\»Y\ã]À\Y\à[ô\»õ››‹ôY[à›\Xò\ŸKÇãKHOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOBÇê‘ëPUHPìHQàì’VT’»XõXÀòÿ[‹⁄Y€ò[»
+àYURQíSPTñH—VHQêUSŸ[ó‹ò[ô€W›]ZY
+
+KÇàÿ[⁄YURQì’ïSÇàŸ[ô\ó⁄YURQì’ïSàëQëTëSê—T»]]ù\Ÿ\ú Y
+H”àSUH–T––QKÇàôX⁄\Y[ù⁄YURQì’ïSàëQëTëSê—T»]]ù\Ÿ\ú Y
+H”àSUH–T––QKÇà⁄[ôVì’ïSà“P“»
+⁄[ôSà
+	€Ÿôô\âÀ	ÿ[ú›Ÿ\âÀ	⁄XŸIÀ	Ÿ[ô	À	‹ôZôX›	À	ÿù\ﬁI JKÇà^[ÿYî””êàì’ïSQêUS	ﬁﬂIŒéíî””êÇà“P“»
+àú€€òó›\[Ÿä^[ÿY
+HH	€ÿöôX›	¬àSëÿ›]€[ô›
+^[ÿYéïV
+HHçMLÕÇà
+KÇà‹ôX]Yÿ]SQT’STàì’ïSQêUSì’ 
+KÇà“P“»
+Ÿ[ô\ó⁄YàôX⁄\Y[ù⁄Y
+BäN¬Çë‘êSï—SP’Sî—TïSUH”àXõXÀòÿ[‹⁄Y€ò[»»]][ùXÿ]Y¬ÇÇãKHOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOBãKHKàSëVT¬ãKH[\õ›ôH\ôõ‹õX[òŸH⁄[àÿY[ô»ôYYÀ€€[Y[ù»[ô⁄]ÀÇãKHOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOBÇê‘ëPUHSëVQàì’VT’»‹›◊›\Ÿ\óÿ‹ôX]Y⁄Yà”àXõXÀú‹›»
+\Ÿ\ó⁄Y‹ôX]Yÿ]T– N¬Çê‘ëPUHSëVQàì’VT’»‹›◊ÿ‹ôX]Y⁄Yà”àXõXÀú‹›»
+‹ôX]Yÿ]T– N¬Çê‘ëPUHSëVQàì’VT’»€€[Y[ù◊‹‹›ÿ‹ôX]Y⁄Yà”àXõXÀò€€[Y[ù»
+‹›⁄Y‹ôX]Yÿ]T– N¬Çê‘ëPUHSëVQàì’VT’»€€[Y[ù◊›\Ÿ\ó⁄Yà”àXõXÀò€€[Y[ù»
+\Ÿ\ó⁄Y
+N¬Çê‘ëPUHSëVQàì’VT’»õ€›‹◊Ÿõ€›⁄[ô◊⁄Yà”àXõXÀôõ€›‹»
+õ€›⁄[ô◊⁄Y‹ôX]Yÿ]T– N¬Çê‘ëPUHSëVQàì’VT’»‹›€ZŸ\◊‹‹›⁄Yà”àXõXÀú‹›€ZŸ\»
+‹›⁄Y
+N¬Çê‘ëPUHSëVQàì’VT’»›‹öY\◊›\Ÿ\óÿ‹ôX]Y⁄Yà”àXõXÀú›‹öY\»
+\Ÿ\ó⁄Y‹ôX]Yÿ]T– N¬Çê‘ëPUHSëVQàì’VT’»›‹öY\◊Ÿ^\ô\◊⁄Yà”àXõXÀú›‹öY\»
+^\ô\◊ÿ]
+N¬Çê‘ëPUHSëVQàì’VT’»Y\‹ÿYŸ\◊‹Ÿ[ô\óÿ‹ôX]Y⁄Yà”àXõXÀõY\‹ÿYŸ\»
+Ÿ[ô\ó⁄Y‹ôX]Yÿ]T– N¬Çê‘ëPUHSëVQàì’VT’»Y\‹ÿYŸ\◊‹ôXŸZ]ô\óÿ‹ôX]Y⁄Yà”àXõXÀõY\‹ÿYŸ\»
+ôXŸZ]ô\ó⁄Y‹ôX]Yÿ]T– N¬Çê‘ëPUHSëVQàì’VT’»Y\‹ÿYŸ\◊‹Ÿ[ô\óÿ€€ùô\úÿ][€óÿ›\ú€‹ó⁄Yà”àXõXÀõY\‹ÿYŸ\»
+Ÿ[ô\ó⁄YôXŸZ]ô\ó⁄Y‹ôX]Yÿ]T–ÀYT– N¬Çê‘ëPUHSëVQàì’VT’»Y\‹ÿYŸ\◊‹ôXŸZ]ô\óÿ€€ùô\úÿ][€óÿ›\ú€‹ó⁄Yà”àXõXÀõY\‹ÿYŸ\»
+ôXŸZ]ô\ó⁄YŸ[ô\ó⁄Y‹ôX]Yÿ]T–ÀYT– N¬Çê‘ëPUHSëVQàì’VT’»Y\‹ÿYŸ\◊›[úôXY‹ôXŸZ]ô\ó⁄Yà”àXõXÀõY\‹ÿYŸ\»
+ôXŸZ]ô\ó⁄Y‹ôX]Yÿ]T– Bà“TëH\◊‹ôXYHêS—N¬Çê‘ëPUHSëVQàì’VT’»õŸö[\◊›\Ÿ\õò[YW‹ŸX\ò⁄⁄Yà”àXõXÀúõŸö[\»T“Së»“Sà
+\Ÿ\õò[YH⁄[ó›ô€W€‹ N¬Çê‘ëPUHSëVQàì’VT’»õŸö[\◊Ÿù[€ò[YW‹ŸX\ò⁄⁄Yà”àXõXÀúõŸö[\»T“Së»“Sà
+ù[€ò[YH⁄[ó›ô€W€‹ N¬Çê‘ëPUHSëVQàì’VT’»õŸö[\◊ÿ€›\úŸW‹ŸX\ò⁄⁄Yà”àXõXÀúõŸö[\»T“Së»“Sà
+€›\úŸH⁄[ó›ô€W€‹ N¬Çê‘ëPUHSëVQàì’VT’»õŸö[\◊ÿ€€ùX›Ÿ[XZ[‹ŸX\ò⁄⁄Yà”àXõXÀúõŸö[\»T“Së»“Sà
+€€ùX›Ÿ[XZ[⁄[ó›ô€W€‹ Bà“TëH⁄\ôWŸ[XZ[HïQN¬Çê‘ëPUHSëVQàì’VT’»õŸö[\◊ÿ€€ùX›‹€ôW‹ŸX\ò⁄⁄Yà”àXõXÀúõŸö[\»T“Së»“Sà
+€€ùX›‹€ôH⁄[ó›ô€W€‹ Bà“TëH⁄\ôW‹€ôHHïQN¬Çê‘ëPUHSëVQàì’VT’»ÿ[‹⁄Y€ò[◊‹ôX⁄\Y[ùÿ‹ôX]Y⁄Yà”àXõXÀòÿ[‹⁄Y€ò[»
+ôX⁄\Y[ù⁄Y‹ôX]Yÿ]T– N¬Çê‘ëPUHSëVQàì’VT’»ÿ[‹⁄Y€ò[◊‹Ÿ[ô\óÿ‹ôX]Y⁄Yà”àXõXÀòÿ[‹⁄Y€ò[»
+Ÿ[ô\ó⁄Y‹ôX]Yÿ]T– N¬ÇÇãKHOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOBãKHLàUU”PUP»TUQ–USQT’ST¬ãKHOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOBÇê‘ëPUH‘àëTP—HïSê’S”àXõXÀúŸ]›\]Yÿ]
+
+BîëUTìî»íQ——TÇìSë’PQ—H‹‹[î—UŸX\ò⁄‹]H	…¬êT»		êëQ“SÇàëUÀù\]Yÿ]Hì’ 
+N¬àëUTìàëUŒ¬ëSë¬â	¬Çëì‘íQ——TàQàVT’»õŸö[\◊‹Ÿ]›\]Yÿ]à”àXõXÀúõŸö[\Œ¬Çê‘ëPUHíQ——TàõŸö[\◊‹Ÿ]›\]Yÿ]àëQì‘ëHTUH”àXõXÀúõŸö[\¬àì‘àPP“ì’¬àVP’UHïSê’S”àXõXÀúŸ]›\]Yÿ]
+
+N¬Çëì‘íQ——TàQàVT’»‹›◊‹Ÿ]›\]Yÿ]à”àXõXÀú‹›Œ¬Çê‘ëPUHíQ——Tà‹›◊‹Ÿ]›\]Yÿ]àëQì‘ëHTUH”àXõXÀú‹›¬àì‘àPP“ì’¬àVP’UHïSê’S”àXõXÀúŸ]›\]Yÿ]
+
+N¬Çëì‘íQ——TàQàVT’»€€[Y[ù◊‹Ÿ]›\]Yÿ]à”àXõXÀò€€[Y[ùŒ¬Çê‘ëPUHíQ——Tà€€[Y[ù◊‹Ÿ]›\]Yÿ]àëQì‘ëHTUH”àXõXÀò€€[Y[ù¬àì‘àPP“ì’¬àVP’UHïSê’S”àXõXÀúŸ]›\]Yÿ]
+
+N¬ÇÇãKHOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOBãKHLàSêPìHì’»UëS—P’TíUH
+ì BãKHOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOBÇêSTàPìHXõXÀúõŸö[\»SêPìHì’»UëS—P’TíUN¬êSTàPìHXõXÀú‹›»SêPìHì’»UëS—P’TíUN¬êSTàPìHXõXÀôõ€›‹»SêPìHì’»UëS—P’TíUN¬êSTàPìHXõXÀú‹›€ZŸ\»SêPìHì’»UëS—P’TíUN¬êSTàPìHXõXÀò€€[Y[ù»SêPìHì’»UëS—P’TíUN¬êSTàPìHXõXÀú›‹öY\»SêPìHì’»UëS—P’TíUN¬êSTàPìHXõXÀõY\‹ÿYŸ\»SêPìHì’»UëS—P’TíUN¬êSTàPìHXõXÀòÿ[‹⁄Y€ò[»SêPìHì’»UëS—P’TíUN¬ÇÇãKHOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOBãKHLKàì—íSH”P“QT¬ãKHõŸö[\»\ôHö\⁄XõH»Z\à›€ô\úÀ\ÿ€›ô\òXõHY[Xô\úÀ[ôö]ò]KX⁄]Y\úÀÇãKH\Ÿ\ú»ÿ[à‹ôX]H[ô\]H€õHZ\à›€àõŸö[\ÀÇãKHOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOBÇëì‘”P÷HQàVT’»îõŸö[\»\ôHöY]ÿXõHûH]][ùXÿ]Y\Ÿ\ú»Çà”àXõXÀúõŸö[\Œ¬Çê‘ëPUH”P÷HîõŸö[\»\ôHöY]ÿXõHûH]][ùXÿ]Y\Ÿ\ú»Çà”àXõXÀúõŸö[\¬àì‘à—SP’»]][ùXÿ]YàT“Së»
+à]]ùZY
+
+HHYà‘à\◊Ÿ\ÿ€›ô\òXõBà‘àVT’»
+à—SP’Bàîì”HXõXÀõY\‹ÿYŸ\»T»Y\‹ÿYŸBà“TëH
+Y\‹ÿYŸKúŸ[ô\ó⁄YH]]ùZY
+
+HSëY\‹ÿYŸKúôXŸZ]ô\ó⁄YHõŸö[\ÀöY
+Bà‘à
+Y\‹ÿYŸKúôXŸZ]ô\ó⁄YH]]ùZY
+
+HSëY\‹ÿYŸKúŸ[ô\ó⁄YHõŸö[\ÀöY
+Bà
+Bà
+N¬Çëì‘”P÷HQàVT’»ï\Ÿ\ú»‹ôX]HZ\à›€àõŸö[HÇà”àXõXÀúõŸö[\Œ¬Çê‘ëPUH”P÷Hï\Ÿ\ú»‹ôX]HZ\à›€àõŸö[HÇà”àXõXÀúõŸö[\¬àì‘àSî—Tï»]][ùXÿ]Yà“U“P“»
+]]ùZY
+
+HHY
+N¬Çëì‘”P÷HQàVT’»ï\Ÿ\ú»\]HZ\à›€àõŸö[HÇà”àXõXÀúõŸö[\Œ¬Çê‘ëPUH”P÷Hï\Ÿ\ú»\]HZ\à›€àõŸö[HÇà”àXõXÀúõŸö[\¬àì‘àTUH»]][ùXÿ]YàT“Së»
+]]ùZY
+
+HHY
+Bà“U“P“»
+]]ùZY
+
+HHY
+N¬Çëì‘”P÷HQàVT’»ï\Ÿ\ú»[]HZ\à›€àõŸö[HÇà”àXõXÀúõŸö[\Œ¬Çê‘ëPUH”P÷Hï\Ÿ\ú»[]HZ\à›€àõŸö[HÇà”àXõXÀúõŸö[\¬àì‘àSUH»]][ùXÿ]YàT“Së»
+]]ùZY
+
+HHY
+N¬ÇÇãKHOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOBãKHLãà‘’”P“QT¬ãKHOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOBÇëì‘”P÷HQàVT’»ê]][ùXÿ]Y\Ÿ\ú»öY]»‹›»Çà”àXõXÀú‹›Œ¬Çê‘ëPUH”P÷Hê]][ùXÿ]Y\Ÿ\ú»öY]»‹›»Çà”àXõXÀú‹›¬àì‘à—SP’»]][ùXÿ]YàT“Së»
+ïQJN¬Çëì‘”P÷HQàVT’»ï\Ÿ\ú»‹ôX]HZ\à›€à‹›»Çà”àXõXÀú‹›Œ¬Çê‘ëPUH”P÷Hï\Ÿ\ú»‹ôX]HZ\à›€à‹›»Çà”àXõXÀú‹›¬àì‘àSî—Tï»]][ùXÿ]Yà“U“P“»
+]]ùZY
+
+HH\Ÿ\ó⁄Y
+N¬Çëì‘”P÷HQàVT’»ï\Ÿ\ú»\]HZ\à›€à‹›»Çà”àXõXÀú‹›Œ¬Çê‘ëPUH”P÷Hï\Ÿ\ú»\]HZ\à›€à‹›»Çà”àXõXÀú‹›¬àì‘àTUH»]][ùXÿ]YàT“Së»
+]]ùZY
+
+HH\Ÿ\ó⁄Y
+Bà“U“P“»
+]]ùZY
+
+HH\Ÿ\ó⁄Y
+N¬Çëì‘”P÷HQàVT’»ï\Ÿ\ú»[]HZ\à›€à‹›»Çà”àXõXÀú‹›Œ¬Çê‘ëPUH”P÷Hï\Ÿ\ú»[]HZ\à›€à‹›»Çà”àXõXÀú‹›¬àì‘àSUH»]][ùXÿ]YàT“Së»
+]]ùZY
+
+HH\Ÿ\ó⁄Y
+N¬ÇÇãKHOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOBãKHLÀàì”’»”P“QT¬ãKHOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOBÇëì‘”P÷HQàVT’»ê]][ùXÿ]Y\Ÿ\ú»öY]»õ€›‹»Çà”àXõXÀôõ€›‹Œ¬Çê‘ëPUH”P÷Hê]][ùXÿ]Y\Ÿ\ú»öY]»õ€›‹»Çà”àXõXÀôõ€›‹¬àì‘à—SP’»]][ùXÿ]YàT“Së»
+ïQJN¬Çëì‘”P÷HQàVT’»ï\Ÿ\ú»õ€›»\»[\Ÿ[ô\»Çà”àXõXÀôõ€›‹Œ¬Çê‘ëPUH”P÷Hï\Ÿ\ú»õ€›»\»[\Ÿ[ô\»Çà”àXõXÀôõ€›‹¬àì‘àSî—Tï»]][ùXÿ]Yà“U“P“»
+à]]ùZY
+
+HHõ€›Ÿ\ó⁄YàSëõ€›Ÿ\ó⁄Yàõ€›⁄[ô◊⁄Yà
+N¬Çëì‘”P÷HQàVT’»ï\Ÿ\ú»[ôõ€›»\»[\Ÿ[ô\»Çà”àXõXÀôõ€›‹Œ¬Çê‘ëPUH”P÷Hï\Ÿ\ú»[ôõ€›»\»[\Ÿ[ô\»Çà”àXõXÀôõ€›‹¬àì‘àSUH»]][ùXÿ]YàT“Së»
+]]ùZY
+
+HHõ€›Ÿ\ó⁄Y
+N¬ÇÇãKHOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOBãKHMàR—H”P“QT¬ãKHOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOBÇëì‘”P÷HQàVT’»ê]][ùXÿ]Y\Ÿ\ú»öY]»ZŸ\»Çà”àXõXÀú‹›€ZŸ\Œ¬Çê‘ëPUH”P÷Hê]][ùXÿ]Y\Ÿ\ú»öY]»ZŸ\»Çà”àXõXÀú‹›€ZŸ\¬àì‘à—SP’»]][ùXÿ]YàT“Së»
+ïQJN¬Çëì‘”P÷HQàVT’»ï\Ÿ\ú»ZŸH\»[\Ÿ[ô\»Çà”àXõXÀú‹›€ZŸ\Œ¬Çê‘ëPUH”P÷Hï\Ÿ\ú»ZŸH\»[\Ÿ[ô\»Çà”àXõXÀú‹›€ZŸ\¬àì‘àSî—Tï»]][ùXÿ]Yà“U“P“»
+]]ùZY
+
+HH\Ÿ\ó⁄Y
+N¬Çëì‘”P÷HQàVT’»ï\Ÿ\ú»ô[[›ôHZ\à›€àZŸ\»Çà”àXõXÀú‹›€ZŸ\Œ¬Çê‘ëPUH”P÷Hï\Ÿ\ú»ô[[›ôHZ\à›€àZŸ\»Çà”àXõXÀú‹›€ZŸ\¬àì‘àSUH»]][ùXÿ]YàT“Së»
+]]ùZY
+
+HH\Ÿ\ó⁄Y
+N¬ÇãKHKKKH’UT»R—T»
+åKåç
+NàZŸHH›]\»Hÿ^HH‹›\»ZŸYKKKBÇê‘ëPUHPìHQàì’VT’»XõXÀú›‹ûW€ZŸ\»
+à\Ÿ\ó⁄YURQì’ïSëQëTëSê—T»]]ù\Ÿ\ú Y
+H”àSUH–T––QKà›‹ûW⁄YURQì’ïSëQëTëSê—T»XõXÀú›‹öY\ Y
+H”àSUH–T––QKà‹ôX]Yÿ]SQT’STàì’ïSQêUSì’ 
+KàíSPTñH—VH
+\Ÿ\ó⁄Y›‹ûW⁄Y
+BäN¬Çê‘ëPUHSëVQàì’VT’»›‹ûW€ZŸ\◊‹›‹ûW⁄Y”àXõXÀú›‹ûW€ZŸ\»
+›‹ûW⁄Y
+N¬ÇêSTàPìHXõXÀú›‹ûW€ZŸ\»SêPìHì’»UëS—P’TíUN¬ë‘êSï—SP’Sî—TïSUH”àXõXÀú›‹ûW€ZŸ\»»]][ùXÿ]Y¬Çëì‘”P÷HQàVT’»ê]][ùXÿ]Y\Ÿ\ú»öY]»›]\»ZŸ\»à”àXõXÀú›‹ûW€ZŸ\Œ¬ê‘ëPUH”P÷Hê]][ùXÿ]Y\Ÿ\ú»öY]»›]\»ZŸ\»à”àXõXÀú›‹ûW€ZŸ\¬àì‘à—SP’»]][ùXÿ]YT“Së»
+ïQJN¬Çëì‘”P÷HQàVT’»ï\Ÿ\ú»ZŸHH›]\»\»[\Ÿ[ô\»à”àXõXÀú›‹ûW€ZŸ\Œ¬ê‘ëPUH”P÷Hï\Ÿ\ú»ZŸHH›]\»\»[\Ÿ[ô\»à”àXõXÀú›‹ûW€ZŸ\¬àì‘àSî—Tï»]][ùXÿ]Y“U“P“»
+]]ùZY
+
+HH\Ÿ\ó⁄Y
+N¬Çëì‘”P÷HQàVT’»ï\Ÿ\ú»ô[[›ôHZ\à›€à›]\»ZŸ\»à”àXõXÀú›‹ûW€ZŸ\Œ¬ê‘ëPUH”P÷Hï\Ÿ\ú»ô[[›ôHZ\à›€à›]\»ZŸ\»à”àXõXÀú›‹ûW€ZŸ\¬àì‘àSUH»]][ùXÿ]YT“Së»
+]]ùZY
+
+HH\Ÿ\ó⁄Y
+N¬Çìì’QñH‹ú›	‹ô[ÿYÿ⁄[XIŒ¬ÇÇãKHOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOBãKHMKà””SQSï”P“QT¬ãKHOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOBÇëì‘”P÷HQàVT’»ê]][ùXÿ]Y\Ÿ\ú»öY]»€€[Y[ù»Çà”àXõXÀò€€[Y[ùŒ¬Çê‘ëPUH”P÷Hê]][ùXÿ]Y\Ÿ\ú»öY]»€€[Y[ù»Çà”àXõXÀò€€[Y[ù¬àì‘à—SP’»]][ùXÿ]YàT“Së»
+ïQJN¬Çëì‘”P÷HQàVT’»ï\Ÿ\ú»‹ôX]HZ\à›€à€€[Y[ù»Çà”àXõXÀò€€[Y[ùŒ¬Çê‘ëPUH”P÷Hï\Ÿ\ú»‹ôX]HZ\à›€à€€[Y[ù»Çà”àXõXÀò€€[Y[ù¬àì‘àSî—Tï»]][ùXÿ]Yà“U“P“»
+]]ùZY
+
+HH\Ÿ\ó⁄Y
+N¬Çëì‘”P÷HQàVT’»ï\Ÿ\ú»\]HZ\à›€à€€[Y[ù»Çà”àXõXÀò€€[Y[ùŒ¬Çê‘ëPUH”P÷Hï\Ÿ\ú»\]HZ\à›€à€€[Y[ù»Çà”àXõXÀò€€[Y[ù¬àì‘àTUH»]][ùXÿ]YàT“Së»
+]]ùZY
+
+HH\Ÿ\ó⁄Y
+Bà“U“P“»
+]]ùZY
+
+HH\Ÿ\ó⁄Y
+N¬Çëì‘”P÷HQàVT’»ï\Ÿ\ú»[]HZ\à›€à€€[Y[ù»Çà”àXõXÀò€€[Y[ùŒ¬Çê‘ëPUH”P÷Hï\Ÿ\ú»[]HZ\à›€à€€[Y[ù»Çà”àXõXÀò€€[Y[ù¬àì‘àSUH»]][ùXÿ]YàT“Së»
+]]ùZY
+
+HH\Ÿ\ó⁄Y
+N¬ÇÇãKHOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOBãKHMãà’‘ñH”P“QT¬ãKHOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOBÇëì‘”P÷HQàVT’»ê]][ùXÿ]Y\Ÿ\ú»öY]»›‹öY\»Çà”àXõXÀú›‹öY\Œ¬Çê‘ëPUH”P÷Hê]][ùXÿ]Y\Ÿ\ú»öY]»›‹öY\»Çà”àXõXÀú›‹öY\¬àì‘à—SP’»]][ùXÿ]YàT“Së»
+^\ô\◊ÿ]àì’ 
+JN¬Çëì‘”P÷HQàVT’»ï\Ÿ\ú»‹ôX]HZ\à›€à›‹öY\»Çà”àXõXÀú›‹öY\Œ¬Çê‘ëPUH”P÷Hï\Ÿ\ú»‹ôX]HZ\à›€à›‹öY\»Çà”àXõXÀú›‹öY\¬àì‘àSî—Tï»]][ùXÿ]Yà“U“P“»
+]]ùZY
+
+HH\Ÿ\ó⁄Y
+N¬Çëì‘”P÷HQàVT’»ï\Ÿ\ú»[]HZ\à›€à›‹öY\»Çà”àXõXÀú›‹öY\Œ¬Çê‘ëPUH”P÷Hï\Ÿ\ú»[]HZ\à›€à›‹öY\»Çà”àXõXÀú›‹öY\¬àì‘àSUH»]][ùXÿ]YàT“Së»
+]]ùZY
+
+HH\Ÿ\ó⁄Y
+N¬ÇãKHOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOBãKHMÀà–S“Q”êS”P“QT¬ãKH€õHH€»ÿ[\ùX⁄\[ù»ÿ[àôXY‹àô[[›ôH⁄Y€ò[[ô»õ›‹ÀÇãKH\Ÿ\ú»ÿ[à€õH‹ôX]H⁄Y€ò[»\»[\Ÿ[ô\ÀÇãKHOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOBÇëì‘”P÷HQàVT’»êÿ[\ùX⁄\[ù»öY]»ÿ[⁄Y€ò[»Çà”àXõXÀòÿ[‹⁄Y€ò[Œ¬Çê‘ëPUH”P÷Hêÿ[\ùX⁄\[ù»öY]»ÿ[⁄Y€ò[»Çà”àXõXÀòÿ[‹⁄Y€ò[¬àì‘à—SP’»]][ùXÿ]YàT“Së»
+à]]ùZY
+
+HHŸ[ô\ó⁄Yà‘à]]ùZY
+
+HHôX⁄\Y[ù⁄Yà
+N¬Çëì‘”P÷HQàVT’»ï\Ÿ\ú»Ÿ[ôÿ[⁄Y€ò[»\»[\Ÿ[ô\»Çà”àXõXÀòÿ[‹⁄Y€ò[Œ¬Çê‘ëPUH”P÷Hï\Ÿ\ú»Ÿ[ôÿ[⁄Y€ò[»\»[\Ÿ[ô\»Çà”àXõXÀòÿ[‹⁄Y€ò[¬àì‘àSî—Tï»]][ùXÿ]Yà“U“P“»
+à]]ùZY
+
+HHŸ[ô\ó⁄YàSëŸ[ô\ó⁄YàôX⁄\Y[ù⁄Yà
+N¬Çëì‘”P÷HQàVT’»êÿ[\ùX⁄\[ù»[]Hÿ[⁄Y€ò[»Çà”àXõXÀòÿ[‹⁄Y€ò[Œ¬Çê‘ëPUH”P÷Hêÿ[\ùX⁄\[ù»[]Hÿ[⁄Y€ò[»Çà”àXõXÀòÿ[‹⁄Y€ò[¬àì‘àSUH»]][ùXÿ]YàT“Së»
+à]]ùZY
+
+HHŸ[ô\ó⁄Yà‘à]]ùZY
+
+HHôX⁄\Y[ù⁄Yà
+N¬ÇÇãKHOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOBãKHNàíUêUHQT‘–Q—H”P“QT¬ãKH[\‹ù[ùà\Ÿ\ú»]\›õ›XÿŸ\‹»Y\‹ÿYŸ\»ô[€ô⁄[ô»»›\úÀÇãKHOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOBÇëì‘”P÷HQàVT’»î\ùX⁄\[ù»öY]»Z\àY\‹ÿYŸ\»Çà”àXõXÀõY\‹ÿYŸ\Œ¬Çê‘ëPUH”P÷Hî\ùX⁄\[ù»öY]»Z\àY\‹ÿYŸ\»Çà”àXõXÀõY\‹ÿYŸ\¬àì‘à—SP’»]][ùXÿ]YàT“Së»
+à]]ùZY
+
+HHŸ[ô\ó⁄Yà‘à]]ùZY
+
+HHôXŸZ]ô\ó⁄Yà
+N¬Çëì‘”P÷HQàVT’»ï\Ÿ\ú»Ÿ[ôY\‹ÿYŸ\»\»[\Ÿ[ô\»Çà”àXõXÀõY\‹ÿYŸ\Œ¬Çê‘ëPUH”P÷Hï\Ÿ\ú»Ÿ[ôY\‹ÿYŸ\»\»[\Ÿ[ô\»Çà”àXõXÀõY\‹ÿYŸ\¬àì‘àSî—Tï»]][ùXÿ]Yà“U“P“»
+à]]ùZY
+
+HHŸ[ô\ó⁄YàSëŸ[ô\ó⁄YàôXŸZ]ô\ó⁄Yà
+N¬Çëì‘”P÷HQàVT’»îôX⁄\Y[ù»X\ö»Y\‹ÿYŸ\»\»ôXYÇà”àXõXÀõY\‹ÿYŸ\Œ¬Çê‘ëPUH”P÷HîôX⁄\Y[ù»X\ö»Y\‹ÿYŸ\»\»ôXYÇà”àXõXÀõY\‹ÿYŸ\¬àì‘àTUH»]][ùXÿ]YàT“Së»
+à]]ùZY
+
+HHôXŸZ]ô\ó⁄Yà
+Bà“U“P“»
+à]]ùZY
+
+HHôXŸZ]ô\ó⁄Yà
+N¬Çëì‘”P÷HQàVT’»îŸ[ô\ú»[]HZ\à›€àY\‹ÿYŸ\»Çà”àXõXÀõY\‹ÿYŸ\Œ¬Çê‘ëPUH”P÷HîŸ[ô\ú»[]HZ\à›€àY\‹ÿYŸ\»Çà”àXõXÀõY\‹ÿYŸ\¬àì‘àSUH»]][ùXÿ]YàT“Së»
+à]]ùZY
+
+HHŸ[ô\ó⁄Yà
+N¬ÇÇãKHOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOBãKHNKàì’P’QT‘–Q—HSSUUPìHíQS¬ãKHôX⁄\Y[ù»X^HX\ö»Y\‹ÿYŸ\»\»ôXYù]ÿ[õõ›ô]‹ö]BãKHHŸ[ô\ãôXŸZ]ô\ã€€ù[ù‹à‹ôX][€à[Y\›[\ÇãKHOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOBÇê‘ëPUH‘àëTP—HïSê’S”àXõXÀúõ›X›€Y\‹ÿYŸWŸöY[ 
+BîëUTìî»íQ——TÇìSë’PQ—H‹‹[î—UŸX\ò⁄‹]H	…¬êT»		êëQ“SÇàQàëUÀöYT»T’Sê’îì”H”öYà‘àëUÀúŸ[ô\ó⁄YT»T’Sê’îì”H”úŸ[ô\ó⁄Yà‘àëUÀúôXŸZ]ô\ó⁄YT»T’Sê’îì”H”úôXŸZ]ô\ó⁄Yà‘àëUÀò€€ù[ùT»T’Sê’îì”H”ò€€ù[ùà‘àëUÀõYYXW›\õT»T’Sê’îì”H”õYYXW›\õà‘àëUÀò‹ôX]Yÿ]T»T’Sê’îì”H”ò‹ôX]Yÿ]àSÇàêRT—HV—TS”Çà	”Y\‹ÿYŸHŸ[ô\ãôXŸZ]ô\ã€€ù[ù[ô‹ôX][€à[YHÿ[õõ›ôH⁄[ôŸYâŒ¬àSëQé¬ÇàQàëUÀö\◊‹ôXYT»T’Sê’îì”H”ö\◊‹ôXYSÇàQà”ö\◊‹ôXYHïQHSëëUÀö\◊‹ôXYHêS—HSÇàêRT—HV—TS”à	–HôXYY\‹ÿYŸHÿ[õõ›ôHX\öŸY[úôXYâŒ¬àSëQé¬ÇàQàëUÀö\◊‹ôXYHïQHSëëUÀúôXYÿ]T»ïSSÇàëUÀúôXYÿ]Hì’ 
+N¬àSëQé¬àSëQé¬ÇàQàëUÀö\◊‹ôXYHêS—HSÇàëUÀúôXYÿ]HïS¬àSëQé¬ÇàëUTìàëUŒ¬ëSë¬â	¬Çëì‘íQ——TàQàVT’»õ›X›€Y\‹ÿYŸWŸöY[◊›öYŸŸ\Çà”àXõXÀõY\‹ÿYŸ\Œ¬Çê‘ëPUHíQ——Tàõ›X›€Y\‹ÿYŸWŸöY[◊›öYŸŸ\ÇàëQì‘ëHTUH”àXõXÀõY\‹ÿYŸ\¬àì‘àPP“ì’¬àVP’UHïSê’S”àXõXÀúõ›X›€Y\‹ÿYŸWŸöY[ 
+N¬ÇãKH‹›‹ô\»⁄[ôŸ\»]\›ôH[òXõYõ‹à]ôHÿ[⁄Y€ò[[ôÀÇë»		êëQ“SÇàQàì’VT’»
+à—SP’Bàîì”H◊‹XõXÿ][€ó›Xõ\¬à“TëHXõò[YHH	‹›\Xò\ŸW‹ôX[[YI¬àSëÿ⁄[X[ò[YHH	‹XõX…¬àSëXõ[ò[YHH	ÿÿ[‹⁄Y€ò[…¬à
+HSÇàSTàPìP–US”à›\Xò\ŸW‹ôX[[YBàQPìHXõXÀòÿ[‹⁄Y€ò[Œ¬àSëQé¬ëSë¬â	¬ÇãKHö]ò]H[ô€€[][ö]H⁄][úŸ\ù»ö]ôH]ôHY\‹ÿYŸH[]ô\ûKÇë»		êëQ“SÇàQàì’VT’»
+à—SP’Bàîì”H◊‹XõXÿ][€ó›Xõ\¬à“TëHXõò[YHH	‹›\Xò\ŸW‹ôX[[YI¬àSëÿ⁄[X[ò[YHH	‹XõX…¬àSëXõ[ò[YHH	€Y\‹ÿYŸ\…¬à
+HSÇàSTàPìP–US”à›\Xò\ŸW‹ôX[[YHQPìHXõXÀõY\‹ÿYŸ\Œ¬àSëQé¬ëSë¬â	¬ÇÇãKHOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOBãKHåàëPP’S”îÀ‘ì’TÀ“SìëSÀ“UQQPKì’QíP–US”î¬ãKHOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOBÇê‘ëPUHPìHQàì’VT’»XõXÀú‹›‹ôXX›[€ú»
+à‹›⁄YURQì’ïSëQëTëSê—T»XõXÀú‹› Y
+H”àSUH–T––QKà\Ÿ\ó⁄YURQì’ïSëQëTëSê—T»]]ù\Ÿ\ú Y
+H”àSUH–T––QKàôXX›[€àVì’ïSà“P“»
+ôXX›[€àSà
+	¸'‰cIÀ	¯ßi;Ó#…À	¸'Ê âÀ	¸'„¢IÀ	¸'È%	 JKà‹ôX]Yÿ]SQT’STàì’ïSQêUSì’ 
+KàíSPTñH—VH
+‹›⁄Y\Ÿ\ó⁄Y
+BäN¬Çê‘ëPUHPìHQàì’VT’»XõXÀú‹›‹ô\‹›»
+à‹›⁄YURQì’ïSëQëTëSê—T»XõXÀú‹› Y
+H”àSUH–T––QKà\Ÿ\ó⁄YURQì’ïSëQëTëSê—T»]]ù\Ÿ\ú Y
+H”àSUH–T––QKà‹ôX]Yÿ]SQT’STàì’ïSQêUSì’ 
+KàíSPTñH—VH
+‹›⁄Y\Ÿ\ó⁄Y
+BäN¬ÇíSî—TïSï»XõXÀú‹›‹ôXX›[€ú»
+‹›⁄Y\Ÿ\ó⁄YôXX›[€äBî—SP’‹›⁄Y\Ÿ\ó⁄Y	¯ßi;Ó#…¬ëîì”HXõXÀú‹›€ZŸ\¬ì”à””ëìP’
+‹›⁄Y\Ÿ\ó⁄Y
+H»ì’SëŒ¬Çê‘ëPUHPìHQàì’VT’»XõXÀò€€[][ö]Y\»
+àYURQíSPTñH—VHQêUSŸ[ó‹ò[ô€W›]ZY
+
+Kà›€ô\ó⁄YURQì’ïSëQëTëSê—T»]]ù\Ÿ\ú Y
+H”àSUH–T––QKàò[YHVì’ïS“P“»
+⁄\ó€[ô›
+ö[Jò[YJJHëU—QSà»Së
+Kà\ÿ‹ö\[€àVì’ïSQêUS	…»“P“»
+⁄\ó€[ô›
+\ÿ‹ö\[€äHHL
+Kà⁄[ôVì’ïS“P“»
+⁄[ôSà
+	Ÿ‹õ›\	À	ÿ⁄[õô[	 JKà\◊‹XõX»ì””PSàì’ïSQêUSïQKà‹ôX]Yÿ]SQT’STàì’ïSQêUSì’ 
+BäN¬Çê‘ëPUHPìHQàì’VT’»XõXÀò€€[][ö]W€Y[Xô\ú»
+à€€[][ö]W⁄YURQì’ïSëQëTëSê—T»XõXÀò€€[][ö]Y\ Y
+H”àSUH–T––QKà\Ÿ\ó⁄YURQì’ïSëQëTëSê—T»]]ù\Ÿ\ú Y
+H”àSUH–T––QKàõ€HVì’ïSQêUS	€Y[Xô\â»“P“»
+õ€HSà
+	€›€ô\âÀ	ÿYZ[âÀ	€Y[Xô\â JKàõ⁄[ôYÿ]SQT’STàì’ïSQêUSì’ 
+KàíSPTñH—VH
+€€[][ö]W⁄Y\Ÿ\ó⁄Y
+BäN¬Çëì‘”P÷HQàVT’»ê€€[][ö]HY[Xô\ú»öY]»Y\àõŸö[\»Çà”àXõXÀúõŸö[\Œ¬ê‘ëPUH”P÷Hê€€[][ö]HY[Xô\ú»öY]»Y\àõŸö[\»Çà”àXõXÀúõŸö[\»ì‘à—SP’»]][ùXÿ]YàT“Së»
+àVT’»
+à—SP’Bàîì”HXõXÀò€€[][ö]W€Y[Xô\ú»T»›€ó€Y[Xô\ú⁄\àì“SàXõXÀò€€[][ö]W€Y[Xô\ú»T»Y\ó€Y[Xô\ú⁄\à”àY\ó€Y[Xô\ú⁄\ò€€[][ö]W⁄YH›€ó€Y[Xô\ú⁄\ò€€[][ö]W⁄Yà“TëH›€ó€Y[Xô\ú⁄\ù\Ÿ\ó⁄YH
+—SP’]]ùZY
+
+JBàSëY\ó€Y[Xô\ú⁄\ù\Ÿ\ó⁄YHõŸö[\ÀöYà
+Bà
+N¬Çê‘ëPUHPìHQàì’VT’»XõXÀò€€[][ö]W€Y\‹ÿYŸ\»
+àYURQíSPTñH—VHQêUSŸ[ó‹ò[ô€W›]ZY
+
+Kà€€[][ö]W⁄YURQì’ïSëQëTëSê—T»XõXÀò€€[][ö]Y\ Y
+H”àSUH–T––QKàŸ[ô\ó⁄YURQì’ïSëQëTëSê—T»]]ù\Ÿ\ú Y
+H”àSUH–T––QKà€€ù[ùVì’ïSQêUS	…»“P“»
+⁄\ó€[ô›
+€€ù[ù
+HHL
+KàYYXW›\õVà‹ôX]Yÿ]SQT’STàì’ïSQêUSì’ 
+Kà“P“»
+⁄\ó€[ô›
+ö[J€€ù[ù
+JHà‘àYYXW›\õT»ì’ïS
+BäN¬Çë»		êëQ“SÇàQàì’VT’»
+à—SP’Bàîì”H◊‹XõXÿ][€ó›Xõ\¬à“TëHXõò[YHH	‹›\Xò\ŸW‹ôX[[YI¬àSëÿ⁄[X[ò[YHH	‹XõX…¬àSëXõ[ò[YHH	ÿ€€[][ö]W€Y\‹ÿYŸ\…¬à
+HSÇàSTàPìP–US”à›\Xò\ŸW‹ôX[[YBàQPìHXõXÀò€€[][ö]W€Y\‹ÿYŸ\Œ¬àSëQé¬ëSë¬â	¬Çê‘ëPUHPìHQàì’VT’»XõXÀõõ›YöXÿ][€ú»
+àYURQíSPTñH—VHQêUSŸ[ó‹ò[ô€W›]ZY
+
+KàôX⁄\Y[ù⁄YURQì’ïSëQëTëSê—T»]]ù\Ÿ\ú Y
+H”àSUH–T––QKàX›‹ó⁄YURQì’ïSëQëTëSê—T»]]ù\Ÿ\ú Y
+H”àSUH–T––QKà⁄[ôVì’ïS“P“»
+⁄[ôSà
+	‹ôXX›[€âÀ	ÿ€€[Y[ù	À	Ÿõ€›…À	€Y\‹ÿYŸI JKà‹›⁄YURQëQëTëSê—T»XõXÀú‹› Y
+H”àSUH–T––QKà‹ôX]Yÿ]SQT’STàì’ïSQêUSì’ 
+Kà\◊‹ôXYì””PSàì’ïSQêUSêS—Kà“P“»
+ôX⁄\Y[ù⁄YàX›‹ó⁄Y
+BäN¬ÇêSTàPìHXõXÀõY\‹ÿYŸ\¬àQ””SSàQàì’VT’»YYXW›\õV¬êSTàPìHXõXÀõY\‹ÿYŸ\¬àSTà””SSà€€ù[ù—UQêUS	…Œ¬êSTàPìHXõXÀõY\‹ÿYŸ\¬àSTà””SSà€€ù[ùì‘ì’ïS¬êSTàPìHXõXÀõY\‹ÿYŸ\¬àì‘””î’êRSïQàVT’»Y\‹ÿYŸ\◊ÿ€€ù[ùÿ⁄X⁄Œ¬êSTàPìHXõXÀõY\‹ÿYŸ\¬àì‘””î’êRSïQàVT’»Y\‹ÿYŸ\◊ÿ€€ù[ù€‹ó€YYXWÿ⁄X⁄Œ¬êSTàPìHXõXÀõY\‹ÿYŸ\¬àQ””î’êRSïY\‹ÿYŸ\◊ÿ€€ù[ù€‹ó€YYXWÿ⁄X⁄¬à“P“»
+à⁄\ó€[ô›
+”–ST–—J€€ù[ù	… JHHLàSë
+⁄\ó€[ô›
+ö[J”–ST–—J€€ù[ù	… JJHà‘àYYXW›\õT»ì’ïS
+Bà
+N¬Çê‘ëPUHSëVQàì’VT’»‹›‹ôXX›[€ú◊‹‹›⁄Yà”àXõXÀú‹›‹ôXX›[€ú»
+‹›⁄YôXX›[€äN¬ê‘ëPUHSëVQàì’VT’»‹›‹ô\‹›◊‹‹›⁄Yà”àXõXÀú‹›‹ô\‹›»
+‹›⁄Y‹ôX]Yÿ]T– N¬ê‘ëPUHSëVQàì’VT’»€€[][ö]Y\◊ÿ‹ôX]Y⁄Yà”àXõXÀò€€[][ö]Y\»
+‹ôX]Yÿ]T– N¬ê‘ëPUHSëVQàì’VT’»€€[][ö]W€Y[Xô\ú◊›\Ÿ\ó⁄Yà”àXõXÀò€€[][ö]W€Y[Xô\ú»
+\Ÿ\ó⁄Yõ⁄[ôYÿ]T– N¬ê‘ëPUHSëVQàì’VT’»€€[][ö]W€Y\‹ÿYŸ\◊ÿ‹ôX]Y⁄Yà”àXõXÀò€€[][ö]W€Y\‹ÿYŸ\»
+€€[][ö]W⁄Y‹ôX]Yÿ]T– N¬ê‘ëPUHSëVQàì’VT’»õ›YöXÿ][€ú◊‹ôX⁄\Y[ùÿ‹ôX]Y⁄Yà”àXõXÀõõ›YöXÿ][€ú»
+ôX⁄\Y[ù⁄Y‹ôX]Yÿ]T– N¬ê‘ëPUHSëVQàì’VT’»õ›YöXÿ][€ú◊›[úôXY⁄Yà”àXõXÀõõ›YöXÿ][€ú»
+ôX⁄\Y[ù⁄Y‹ôX]Yÿ]T– Bà“TëH\◊‹ôXYHêS—N¬ÇêSTàPìHXõXÀú‹›‹ôXX›[€ú»SêPìHì’»UëS—P’TíUN¬êSTàPìHXõXÀú‹›‹ô\‹›»SêPìHì’»UëS—P’TíUN¬êSTàPìHXõXÀò€€[][ö]Y\»SêPìHì’»UëS—P’TíUN¬êSTàPìHXõXÀò€€[][ö]W€Y[Xô\ú»SêPìHì’»UëS—P’TíUN¬êSTàPìHXõXÀò€€[][ö]W€Y\‹ÿYŸ\»SêPìHì’»UëS—P’TíUN¬êSTàPìHXõXÀõõ›YöXÿ][€ú»SêPìHì’»UëS—P’TíUN¬Çë‘êSï—SP’Sî—TïTUKSUH”àXõXÀú‹›‹ôXX›[€ú»»]][ùXÿ]Y¬ë‘êSï—SP’Sî—TïSUH”àXõXÀú‹›‹ô\‹›»»]][ùXÿ]Y¬ë‘êSï—SP’TUKSUH”àXõXÀò€€[][ö]Y\»»]][ùXÿ]Y¬ë‘êSï—SP’Sî—TïSUH”àXõXÀò€€[][ö]W€Y[Xô\ú»»]][ùXÿ]Y¬ë‘êSï—SP’Sî—TïSUH”àXõXÀò€€[][ö]W€Y\‹ÿYŸ\»»]][ùXÿ]Y¬ë‘êSï—SP’”àXõXÀõõ›YöXÿ][€ú»»]][ùXÿ]Y¬Çê‘ëPUH‘àëTP—HïSê’S”àXõXÀö\◊ÿ€€[][ö]W€Y[Xô\äÿ€€[][ö]W⁄YURQ
+BîëUTìî»ì””PSÇìSë’PQ—H‹[î’PìBî—P’TíUHQíSëTÇî—UŸX\ò⁄‹]H	…¬êT»		à—SP’VT’»
+à—SP’Bàîì”HXõXÀò€€[][ö]W€Y[Xô\ú»T»Y[Xô\Çà“TëHY[Xô\ãò€€[][ö]W⁄YHÿ€€[][ö]W⁄YàSëY[Xô\ãù\Ÿ\ó⁄YH
+—SP’]]ùZY
+
+JBà
+N¬â	¬Çê‘ëPUH‘àëTP—HïSê’S”àXõXÀòÿ[ó€X[òYŸWÿ€€[][ö]Jÿ€€[][ö]W⁄YURQ
+BîëUTìî»ì””PSÇìSë’PQ—H‹[î’PìBî—P’TíUHQíSëTÇî—UŸX\ò⁄‹]H	…¬êT»		à—SP’VT’»
+à—SP’Bàîì”HXõXÀò€€[][ö]W€Y[Xô\ú»T»Y[Xô\Çà“TëHY[Xô\ãò€€[][ö]W⁄YHÿ€€[][ö]W⁄YàSëY[Xô\ãù\Ÿ\ó⁄YH
+—SP’]]ùZY
+
+JBàSëY[Xô\ãúõ€HSà
+	€›€ô\âÀ	ÿYZ[â Bà
+N¬â	¬Çê‘ëPUH‘àëTP—HïSê’S”àXõXÀö\◊ÿ€€[][ö]W‹XõX ÿ€€[][ö]W⁄YURQ
+BîëUTìî»ì””PSÇìSë’PQ—H‹[î’PìBî—P’TíUHQíSëTÇî—UŸX\ò⁄‹]H	…¬êT»		à—SP’VT’»
+à—SP’Bàîì”HXõXÀò€€[][ö]Y\»T»€€[][ö]Bà“TëH€€[][ö]KöYHÿ€€[][ö]W⁄YàSë€€[][ö]Kö\◊‹XõX»HïQBà
+N¬â	¬Çê‘ëPUH‘àëTP—HïSê’S”àXõXÀò‹ôX]Wÿ€€[][ö]Jà€ò[YHVàŸ\ÿ‹ö\[€àVà⁄⁄[ôVäBîëUTìî»URQìSë’PQ—H‹‹[î—P’TíUHQíSëTÇî—UŸX\ò⁄‹]H	…¬êT»		ëP”TëBàô]◊ÿ€€[][ö]W⁄YURQ¬à›\úô[ù›\Ÿ\ó⁄YURQèH]]ùZY
+
+N¬êëQ“SÇàQà›\úô[ù›\Ÿ\ó⁄YT»ïSSÇàêRT—HV—TS”à	÷[›H]\›ôH⁄Y€ôY[à»‹ôX]HH€€[][ö]KâŒ¬àSëQé¬àQà⁄⁄[ôì’Sà
+	Ÿ‹õ›\	À	ÿ⁄[õô[	 HSÇàêRT—HV—TS”à	–⁄€‹ŸHZ]\àH‹õ›\‹àH⁄[õô[âŒ¬àSëQé¬àQà⁄\ó€[ô›
+ö[J”–ST–—J€ò[YK	… JJHì’ëU—QSà»Sëà‘à⁄\ó€[ô›
+”–ST–—JŸ\ÿ‹ö\[€ã	… JHàLSÇàêRT—HV—TS”à	–€€[][ö]Hò[YH‹à\ÿ‹ö\[€à\»€»€ô»‹à€»⁄‹ùâŒ¬àSëQé¬ÇàSî—TïSï»XõXÀò€€[][ö]Y\»
+›€ô\ó⁄Yò[YK\ÿ‹ö\[€ã⁄[ô
+BàêSQT»
+›\úô[ù›\Ÿ\ó⁄Yö[J€ò[YJKö[J”–ST–—JŸ\ÿ‹ö\[€ã	… JK⁄⁄[ô
+BàëUTìíSë»YSï»ô]◊ÿ€€[][ö]W⁄Y¬ÇàSî—TïSï»XõXÀò€€[][ö]W€Y[Xô\ú»
+€€[][ö]W⁄Y\Ÿ\ó⁄Yõ€JBàêSQT»
+ô]◊ÿ€€[][ö]W⁄Y›\úô[ù›\Ÿ\ó⁄Y	€›€ô\â N¬ÇàëUTìàô]◊ÿ€€[][ö]W⁄Y¬ëSë¬â	¬Çê‘ëPUH‘àëTP—HïSê’S”àXõXÀõX\ö◊€õ›YöXÿ][€ú◊‹ôXY
+
+BîëUTìî»ì“QìSë’PQ—H‹‹[î—P’TíUHQíSëTÇî—UŸX\ò⁄‹]H	…¬êT»		êëQ“SÇàQà]]ùZY
+
+HT»ïSSÇàêRT—HV—TS”à	÷[›H]\›ôH⁄Y€ôY[à»\]Hõ›YöXÿ][€úÀâŒ¬àSëQé¬ÇàTUHXõXÀõõ›YöXÿ][€ú¬à—U\◊‹ôXYHïQBà“TëHôX⁄\Y[ù⁄YH]]ùZY
+
+BàSë\◊‹ôXYHêS—N¬ëSë¬â	¬Çê‘ëPUH‘àëTP—HïSê’S”àXõXÀôŸ]‹‹›‹ôXX›[€ó‹›[[X\ûJ‹‹›⁄Y»URQ◊JBîëUTìî»PìH
+à‹›⁄YURQàôXX›[€àVàôXX›[€óÿ€›[ùíQ“Sïà^W‹ôXX›[€àVäBìSë’PQ—H‹[î’PìBî—P’TíUHSïì“—TÇî—UŸX\ò⁄‹]H	…¬êT»		à“Uô\]Y\›Y‹‹›»T»
+à—SP’T’Sê’ô\]Y\›Yú‹›⁄Yàîì”H[õô\›
+”–ST–—J‹‹›⁄YÀTîêVV◊NéïURQ◊JJHT»ô\]Y\›Y
+‹›⁄Y
+Bà“TëHô\]Y\›Yú‹›⁄YT»ì’ïSà
+Bà—SP’à‹›‹ôXX›[€ãú‹›⁄Yà‹›‹ôXX›[€ãúôXX›[€ãà”’Sï
+
+äNéêíQ“SïàPV
+‹›‹ôXX›[€ãúôXX›[€äHíSTà
+à“TëH‹›‹ôXX›[€ãù\Ÿ\ó⁄YH
+—SP’]]ùZY
+
+JBà
+Bàîì”HXõXÀú‹›‹ôXX›[€ú»T»‹›‹ôXX›[€Çàì“Sàô\]Y\›Y‹‹›¬à”àô\]Y\›Y‹‹›Àú‹›⁄YH‹›‹ôXX›[€ãú‹›⁄Yà‘ì’TñH‹›‹ôXX›[€ãú‹›⁄Y‹›‹ôXX›[€ãúôXX›[€é¬â	¬ÇîëUì“—HS”àïSê’S”àXõXÀö\◊ÿ€€[][ö]W€Y[Xô\äURQ
+Hîì”HPìPÀ[õ€é¬îëUì“—HS”àïSê’S”àXõXÀòÿ[ó€X[òYŸWÿ€€[][ö]JURQ
+Hîì”HPìPÀ[õ€é¬îëUì“—HS”àïSê’S”àXõXÀö\◊ÿ€€[][ö]W‹XõX URQ
+Hîì”HPìPÀ[õ€é¬îëUì“—HS”àïSê’S”àXõXÀò‹ôX]Wÿ€€[][ö]JVVV
+Hîì”HPìPÀ[õ€é¬îëUì“—HS”àïSê’S”àXõXÀõX\ö◊€õ›YöXÿ][€ú◊‹ôXY
+
+Hîì”HPìPÀ[õ€é¬îëUì“—HS”àïSê’S”àXõXÀôŸ]‹‹›‹ôXX›[€ó‹›[[X\ûJURQ◊JHîì”HPìPÀ[õ€é¬ë‘êSïVP’UH”àïSê’S”àXõXÀö\◊ÿ€€[][ö]W€Y[Xô\äURQ
+H»]][ùXÿ]Y¬ë‘êSïVP’UH”àïSê’S”àXõXÀòÿ[ó€X[òYŸWÿ€€[][ö]JURQ
+H»]][ùXÿ]Y¬ë‘êSïVP’UH”àïSê’S”àXõXÀö\◊ÿ€€[][ö]W‹XõX URQ
+H»]][ùXÿ]Y¬ë‘êSïVP’UH”àïSê’S”àXõXÀò‹ôX]Wÿ€€[][ö]JVVV
+H»]][ùXÿ]Y¬ë‘êSïVP’UH”àïSê’S”àXõXÀõX\ö◊€õ›YöXÿ][€ú◊‹ôXY
+
+H»]][ùXÿ]Y¬ë‘êSïVP’UH”àïSê’S”àXõXÀôŸ]‹‹›‹ôXX›[€ó‹›[[X\ûJURQ◊JH»]][ùXÿ]Y¬Çëì‘”P÷HQàVT’»ê]][ùXÿ]Y\Ÿ\ú»öY]»‹›ôXX›[€ú»Çà”àXõXÀú‹›‹ôXX›[€úŒ¬ê‘ëPUH”P÷Hê]][ùXÿ]Y\Ÿ\ú»öY]»‹›ôXX›[€ú»Çà”àXõXÀú‹›‹ôXX›[€ú»ì‘à—SP’»]][ùXÿ]YT“Së»
+ïQJN¬ëì‘”P÷HQàVT’»ï\Ÿ\ú»X[òYŸHZ\à›€à‹›ôXX›[€ú»Çà”àXõXÀú‹›‹ôXX›[€úŒ¬ê‘ëPUH”P÷Hï\Ÿ\ú»X[òYŸHZ\à›€à‹›ôXX›[€ú»Çà”àXõXÀú‹›‹ôXX›[€ú»ì‘àS»]][ùXÿ]YàT“Së»
+]]ùZY
+
+HH\Ÿ\ó⁄Y
+Bà“U“P“»
+]]ùZY
+
+HH\Ÿ\ó⁄Y
+N¬Çëì‘”P÷HQàVT’»ìY[Xô\ú»\ÿ€›ô\àXõX»€€[][ö]Y\»Çà”àXõXÀò€€[][ö]Y\Œ¬ê‘ëPUH”P÷HìY[Xô\ú»\ÿ€›ô\àXõX»€€[][ö]Y\»Çà”àXõXÀò€€[][ö]Y\»ì‘à—SP’»]][ùXÿ]YàT“Së»
+\◊‹XõX»‘àXõXÀö\◊ÿ€€[][ö]W€Y[Xô\äY
+JN¬ëì‘”P÷HQàVT’»ê€€[][ö]HX[òYŸ\ú»\]H€€[][ö]Y\»Çà”àXõXÀò€€[][ö]Y\Œ¬ê‘ëPUH”P÷Hê€€[][ö]HX[òYŸ\ú»\]H€€[][ö]Y\»Çà”àXõXÀò€€[][ö]Y\»ì‘àTUH»]][ùXÿ]YàT“Së»
+XõXÀòÿ[ó€X[òYŸWÿ€€[][ö]JY
+JBà“U“P“»
+XõXÀòÿ[ó€X[òYŸWÿ€€[][ö]JY
+JN¬ëì‘”P÷HQàVT’»ê€€[][ö]H›€ô\ú»[]H€€[][ö]Y\»Çà”àXõXÀò€€[][ö]Y\Œ¬ê‘ëPUH”P÷Hê€€[][ö]H›€ô\ú»[]H€€[][ö]Y\»Çà”àXõXÀò€€[][ö]Y\»ì‘àSUH»]][ùXÿ]YàT“Së»
+›€ô\ó⁄YH
+—SP’]]ùZY
+
+JJN¬Çëì‘”P÷HQàVT’»ìY[Xô\ú»öY]»€€[][ö]HY[Xô\ú⁄\Çà”àXõXÀò€€[][ö]W€Y[Xô\úŒ¬ê‘ëPUH”P÷HìY[Xô\ú»öY]»€€[][ö]HY[Xô\ú⁄\Çà”àXõXÀò€€[][ö]W€Y[Xô\ú»ì‘à—SP’»]][ùXÿ]YàT“Së»
+à\Ÿ\ó⁄YH
+—SP’]]ùZY
+
+JBà‘àXõXÀö\◊ÿ€€[][ö]W€Y[Xô\ä€€[][ö]W⁄Y
+Bà‘àXõXÀö\◊ÿ€€[][ö]W‹XõX €€[][ö]W⁄Y
+Bà
+N¬ëì‘”P÷HQàVT’»ìY[Xô\ú»õ⁄[àXõX»€€[][ö]Y\»Çà”àXõXÀò€€[][ö]W€Y[Xô\úŒ¬ê‘ëPUH”P÷HìY[Xô\ú»õ⁄[àXõX»€€[][ö]Y\»Çà”àXõXÀò€€[][ö]W€Y[Xô\ú»ì‘àSî—Tï»]][ùXÿ]Yà“U“P“»
+à\Ÿ\ó⁄YH
+—SP’]]ùZY
+
+JBàSëõ€HH	€Y[Xô\â¬àSëXõXÀö\◊ÿ€€[][ö]W‹XõX €€[][ö]W⁄Y
+Bà
+N¬ëì‘”P÷HQàVT’»ìY[Xô\ú»X]ôH‹àX[òYŸ\ú»ô[[›ôHY[Xô\ú»Çà”àXõXÀò€€[][ö]W€Y[Xô\úŒ¬ê‘ëPUH”P÷HìY[Xô\ú»X]ôH‹àX[òYŸ\ú»ô[[›ôHY[Xô\ú»Çà”àXõXÀò€€[][ö]W€Y[Xô\ú»ì‘àSUH»]][ùXÿ]YàT“Së»
+à
+\Ÿ\ó⁄YH
+—SP’]]ùZY
+
+JHSëõ€Hà	€›€ô\â Bà‘à
+õ€Hà	€›€ô\â»SëXõXÀòÿ[ó€X[òYŸWÿ€€[][ö]J€€[][ö]W⁄Y
+JBà
+N¬Çëì‘”P÷HQàVT’»ê€€[][ö]HY[Xô\ú»öY]»Y\‹ÿYŸ\»Çà”àXõXÀò€€[][ö]W€Y\‹ÿYŸ\Œ¬ê‘ëPUH”P÷Hê€€[][ö]HY[Xô\ú»öY]»Y\‹ÿYŸ\»Çà”àXõXÀò€€[][ö]W€Y\‹ÿYŸ\»ì‘à—SP’»]][ùXÿ]YàT“Së»
+XõXÀö\◊ÿ€€[][ö]W€Y[Xô\ä€€[][ö]W⁄Y
+JN¬ëì‘”P÷HQàVT’»ê€€[][ö]HY[Xô\ú»Ÿ[ô‹õ›\Y\‹ÿYŸ\»Çà”àXõXÀò€€[][ö]W€Y\‹ÿYŸ\Œ¬ê‘ëPUH”P÷Hê€€[][ö]HY[Xô\ú»Ÿ[ô‹õ›\Y\‹ÿYŸ\»Çà”àXõXÀò€€[][ö]W€Y\‹ÿYŸ\»ì‘àSî—Tï»]][ùXÿ]Yà“U“P“»
+àŸ[ô\ó⁄YH
+—SP’]]ùZY
+
+JBàSëXõXÀö\◊ÿ€€[][ö]W€Y[Xô\ä€€[][ö]W⁄Y
+BàSë
+àVT’»
+à—SP’Hîì”HXõXÀò€€[][ö]Y\»T»€€[][ö]Bà“TëH€€[][ö]KöYH€€[][ö]W€Y\‹ÿYŸ\Àò€€[][ö]W⁄YàSë€€[][ö]Kö⁄[ôH	Ÿ‹õ›\	¬à
+Bà‘àXõXÀòÿ[ó€X[òYŸWÿ€€[][ö]J€€[][ö]W⁄Y
+Bà
+Bà
+N¬ëì‘”P÷HQàVT’»ê€€[][ö]HŸ[ô\ú»[ôX[òYŸ\ú»[]HY\‹ÿYŸ\»Çà”àXõXÀò€€[][ö]W€Y\‹ÿYŸ\Œ¬ê‘ëPUH”P÷Hê€€[][ö]HŸ[ô\ú»[ôX[òYŸ\ú»[]HY\‹ÿYŸ\»Çà”àXõXÀò€€[][ö]W€Y\‹ÿYŸ\»ì‘àSUH»]][ùXÿ]YàT“Së»
+àŸ[ô\ó⁄YH
+—SP’]]ùZY
+
+JBà‘àXõXÀòÿ[ó€X[òYŸWÿ€€[][ö]J€€[][ö]W⁄Y
+Bà
+N¬Çëì‘”P÷HQàVT’»ï\Ÿ\ú»öY]»Z\à›€àõ›YöXÿ][€ú»Çà”àXõXÀõõ›YöXÿ][€úŒ¬ê‘ëPUH”P÷Hï\Ÿ\ú»öY]»Z\à›€àõ›YöXÿ][€ú»Çà”àXõXÀõõ›YöXÿ][€ú»ì‘à—SP’»]][ùXÿ]YàT“Së»
+ôX⁄\Y[ù⁄YH
+—SP’]]ùZY
+
+JJN¬Çê‘ëPUH‘àëTP—HïSê’S”àXõXÀõõ›YûW‹‹›ÿX›]ö]J
+BîëUTìî»íQ——TÇìSë’PQ—H‹‹[î—P’TíUHQíSëTÇî—UŸX\ò⁄‹]H	…¬êT»		ëP”TëBà‹›€›€ô\ó⁄YURQ¬àõ›YöXÿ][€ó⁄⁄[ôV¬êëQ“SÇà—SP’‹›ù\Ÿ\ó⁄YSï»‹›€›€ô\ó⁄Yàîì”HXõXÀú‹›»T»‹›à“TëH‹›öYHëUÀú‹›⁄Y¬ÇàQà‹›€›€ô\ó⁄YT»ì’ïSSë‹›€›€ô\ó⁄YàëUÀù\Ÿ\ó⁄YSÇàõ›YöXÿ][€ó⁄⁄[ôèH–T—H◊’PìW”êSQBà“Sà	ÿ€€[Y[ù…»Sà	ÿ€€[Y[ù	¬àS—H	‹ôXX›[€â¬àSë¬àSî—TïSï»XõXÀõõ›YöXÿ][€ú»
+ôX⁄\Y[ù⁄YX›‹ó⁄Y⁄[ô‹›⁄Y
+BàêSQT»
+‹›€›€ô\ó⁄YëUÀù\Ÿ\ó⁄Yõ›YöXÿ][€ó⁄⁄[ôëUÀú‹›⁄Y
+N¬àSëQé¬àëUTìàëUŒ¬ëSë¬â	¬Çê‘ëPUH‘àëTP—HïSê’S”àXõXÀõõ›YûW€ô]◊Ÿõ€› 
+BîëUTìî»íQ——TÇìSë’PQ—H‹‹[î—P’TíUHQíSëTÇî—UŸX\ò⁄‹]H	…¬êT»		êëQ“SÇàSî—TïSï»XõXÀõõ›YöXÿ][€ú»
+ôX⁄\Y[ù⁄YX›‹ó⁄Y⁄[ô
+BàêSQT»
+ëUÀôõ€›⁄[ô◊⁄YëUÀôõ€›Ÿ\ó⁄Y	Ÿõ€›… N¬àëUTìàëUŒ¬ëSë¬â	¬Çê‘ëPUH‘àëTP—HïSê’S”àXõXÀõõ›YûW€ô]◊€Y\‹ÿYŸJ
+BîëUTìî»íQ——TÇìSë’PQ—H‹‹[î—P’TíUHQíSëTÇî—UŸX\ò⁄‹]H	…¬êT»		êëQ“SÇàSî—TïSï»XõXÀõõ›YöXÿ][€ú»
+ôX⁄\Y[ù⁄YX›‹ó⁄Y⁄[ô
+BàêSQT»
+ëUÀúôXŸZ]ô\ó⁄YëUÀúŸ[ô\ó⁄Y	€Y\‹ÿYŸI N¬àëUTìàëUŒ¬ëSë¬â	¬ÇîëUì“—HS”àïSê’S”àXõXÀõõ›YûW‹‹›ÿX›]ö]J
+Hîì”HPìPÀ[õ€ã]][ùXÿ]Y¬îëUì“—HS”àïSê’S”àXõXÀõõ›YûW€ô]◊Ÿõ€› 
+Hîì”HPìPÀ[õ€ã]][ùXÿ]Y¬îëUì“—HS”àïSê’S”àXõXÀõõ›YûW€ô]◊€Y\‹ÿYŸJ
+Hîì”HPìPÀ[õ€ã]][ùXÿ]Y¬Çëì‘íQ——TàQàVT’»‹›€ZŸ\◊€õ›YûWÿX›]ö]H”àXõXÀú‹›€ZŸ\Œ¬ê‘ëPUHíQ——Tà‹›€ZŸ\◊€õ›YûWÿX›]ö]BàQïTàSî—Tï”àXõXÀú‹›€ZŸ\¬àì‘àPP“ì’»VP’UHïSê’S”àXõXÀõõ›YûW‹‹›ÿX›]ö]J
+N¬ëì‘íQ——TàQàVT’»‹›‹ôXX›[€ú◊€õ›YûWÿX›]ö]H”àXõXÀú‹›‹ôXX›[€úŒ¬ê‘ëPUHíQ——Tà‹›‹ôXX›[€ú◊€õ›YûWÿX›]ö]BàQïTàSî—Tï”àXõXÀú‹›‹ôXX›[€ú¬àì‘àPP“ì’»VP’UHïSê’S”àXõXÀõõ›YûW‹‹›ÿX›]ö]J
+N¬ëì‘íQ——TàQàVT’»€€[Y[ù◊€õ›YûWÿX›]ö]H”àXõXÀò€€[Y[ùŒ¬ê‘ëPUHíQ——Tà€€[Y[ù◊€õ›YûWÿX›]ö]BàQïTàSî—Tï”àXõXÀò€€[Y[ù¬àì‘àPP“ì’»VP’UHïSê’S”àXõXÀõõ›YûW‹‹›ÿX›]ö]J
+N¬ëì‘íQ——TàQàVT’»õ€›‹◊€õ›YûWÿX›]ö]H”àXõXÀôõ€›‹Œ¬ê‘ëPUHíQ——Tàõ€›‹◊€õ›YûWÿX›]ö]BàQïTàSî—Tï”àXõXÀôõ€›‹¬àì‘àPP“ì’»VP’UHïSê’S”àXõXÀõõ›YûW€ô]◊Ÿõ€› 
+N¬ëì‘íQ——TàQàVT’»Y\‹ÿYŸ\◊€õ›YûWÿX›]ö]H”àXõXÀõY\‹ÿYŸ\Œ¬ê‘ëPUHíQ——TàY\‹ÿYŸ\◊€õ›YûWÿX›]ö]BàQïTàSî—Tï”àXõXÀõY\‹ÿYŸ\¬àì‘àPP“ì’»VP’UHïSê’S”àXõXÀõõ›YûW€ô]◊€Y\‹ÿYŸJ
+N¬Çë»		êëQ“SÇàQàì’VT’»
+à—SP’Hîì”H◊‹XõXÿ][€ó›Xõ\¬à“TëHXõò[YHH	‹›\Xò\ŸW‹ôX[[YI¬àSëÿ⁄[X[ò[YHH	‹XõX…¬àSëXõ[ò[YHH	€õ›YöXÿ][€ú…¬à
+HSÇàSTàPìP–US”à›\Xò\ŸW‹ôX[[YHQPìHXõXÀõõ›YöXÿ][€úŒ¬àSëQé¬ëSë¬â	¬ÇãKHOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOBãKHSë—à–STT»””ìëP’–“SPBãKHOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOBÇìì’QñH‹ú›	‹ô[ÿYÿ⁄[XIŒ¬ÇãKHOOOOOOOOOOOOOOOHTïãÃçàZY‹ò][€úÀÃåçåLLW‹õŸö[WŸŸ[ô\ãú‹[OOOOOOOOOOOOOOOBêëQ“Sé¬ÇêSTàPìHXõXÀúõŸö[\¬àQ””SSàQàì’VT’»Ÿ[ô\àVì’ïSQêUS	…Œ¬Çë»		êëQ“SÇàQàì’VT’»
+à—SP’Hîì”H◊ÿ€€ú›òZ[ùà“TëH€€úô[YH	‹XõXÀúõŸö[\…ŒéîëQ–”T‘¬àSë€€õò[YHH	‹õŸö[\◊ŸŸ[ô\óÿ⁄X⁄…¬à
+HSÇàSTàPìHXõXÀúõŸö[\¬àQ””î’êRSïõŸö[\◊ŸŸ[ô\óÿ⁄X⁄¬à“P“»
+Ÿ[ô\àSà
+	…À	€X[IÀ	Ÿô[X[IÀ	€›\â JN¬àSëQé¬ëSë¬â	¬Çê””SRU¬ÇãKHOOOOOOOOOOOOOOOHTïÀÃçàZY‹ò][€úÀÃåçåLLW‹€ÿ⁄X[ÿXÿŸ\‹◊ÿ€€ùõ€Àú‹[OOOOOOOOOOOOOOOBêëQ“Sé¬Çê‘ëPUHPìHQàì’VT’»XõXÀù\Ÿ\óÿõÿ⁄‹»
+àõÿ⁄Ÿ\ó⁄YURQì’ïSëQëTëSê—T»]]ù\Ÿ\ú Y
+H”àSUH–T––QKàõÿ⁄ŸY⁄YURQì’ïSëQëTëSê—T»]]ù\Ÿ\ú Y
+H”àSUH–T––QKà‹ôX]Yÿ]SQT’STàì’ïSQêUSì’ 
+KàíSPTñH—VH
+õÿ⁄Ÿ\ó⁄Yõÿ⁄ŸY⁄Y
+Kà“P“»
+õÿ⁄Ÿ\ó⁄Yàõÿ⁄ŸY⁄Y
+BäN¬Çê‘ëPUHSëVQàì’VT’»\Ÿ\óÿõÿ⁄‹◊ÿõÿ⁄ŸY⁄Yà”àXõXÀù\Ÿ\óÿõÿ⁄‹»
+õÿ⁄ŸY⁄Yõÿ⁄Ÿ\ó⁄Y
+N¬ÇêSTàPìHXõXÀù\Ÿ\óÿõÿ⁄‹»SêPìHì’»UëS—P’TíUN¬ë‘êSï—SP’Sî—TïSUH”àXõXÀù\Ÿ\óÿõÿ⁄‹»»]][ùXÿ]Y¬Çê‘ëPUHPìHQàì’VT’»XõXÀù\Ÿ\ó‹ô\Ÿ[òŸH
+à\Ÿ\ó⁄YURQíSPTñH—VHëQëTëSê—T»]]ù\Ÿ\ú Y
+H”àSUH–T––QKà\›‹ŸY[óÿ]SQT’STàì’ïSQêUSì’ 
+BäN¬ÇêSTàPìHXõXÀù\Ÿ\ó‹ô\Ÿ[òŸHSêPìHì’»UëS—P’TíUN¬ë‘êSï—SP’Sî—TïTUH”àXõXÀù\Ÿ\ó‹ô\Ÿ[òŸH»]][ùXÿ]Y¬Çëì‘”P÷HQàVT’»ìY[Xô\ú»‹ö]HZ\à›€àô\Ÿ[òŸHà”àXõXÀù\Ÿ\ó‹ô\Ÿ[òŸN¬ê‘ëPUH”P÷HìY[Xô\ú»‹ö]HZ\à›€àô\Ÿ[òŸHÇà”àXõXÀù\Ÿ\ó‹ô\Ÿ[òŸHì‘àSî—Tï»]][ùXÿ]Yà“U“P“»
+\Ÿ\ó⁄YH
+—SP’]]ùZY
+
+JJN¬Çëì‘”P÷HQàVT’»ìY[Xô\ú»\]HZ\à›€àô\Ÿ[òŸHà”àXõXÀù\Ÿ\ó‹ô\Ÿ[òŸN¬ê‘ëPUH”P÷HìY[Xô\ú»\]HZ\à›€àô\Ÿ[òŸHÇà”àXõXÀù\Ÿ\ó‹ô\Ÿ[òŸHì‘àTUH»]][ùXÿ]YàT“Së»
+\Ÿ\ó⁄YH
+—SP’]]ùZY
+
+JJBà“U“P“»
+\Ÿ\ó⁄YH
+—SP’]]ùZY
+
+JJN¬Çëì‘”P÷HQàVT’»ï\Ÿ\ú»öY]»Z\à›€àõÿ⁄‹»à”àXõXÀù\Ÿ\óÿõÿ⁄‹Œ¬ê‘ëPUH”P÷Hï\Ÿ\ú»öY]»Z\à›€àõÿ⁄‹»Çà”àXõXÀù\Ÿ\óÿõÿ⁄‹»ì‘à—SP’»]][ùXÿ]YàT“Së»
+
+—SP’]]ùZY
+
+JHHõÿ⁄Ÿ\ó⁄Y
+N¬Çëì‘”P÷HQàVT’»ï\Ÿ\ú»õÿ⁄»›\ú»\»[\Ÿ[ô\»à”àXõXÀù\Ÿ\óÿõÿ⁄‹Œ¬ê‘ëPUH”P÷Hï\Ÿ\ú»õÿ⁄»›\ú»\»[\Ÿ[ô\»Çà”àXõXÀù\Ÿ\óÿõÿ⁄‹»ì‘àSî—Tï»]][ùXÿ]Yà“U“P“»
+à
+—SP’]]ùZY
+
+JHHõÿ⁄Ÿ\ó⁄YàSëõÿ⁄Ÿ\ó⁄Yàõÿ⁄ŸY⁄Yà
+N¬Çëì‘”P÷HQàVT’»ï\Ÿ\ú»[òõÿ⁄»›\ú»\»[\Ÿ[ô\»à”àXõXÀù\Ÿ\óÿõÿ⁄‹Œ¬ê‘ëPUH”P÷Hï\Ÿ\ú»[òõÿ⁄»›\ú»\»[\Ÿ[ô\»Çà”àXõXÀù\Ÿ\óÿõÿ⁄‹»ì‘àSUH»]][ùXÿ]YàT“Së»
+
+—SP’]]ùZY
+
+JHHõÿ⁄Ÿ\ó⁄Y
+N¬Çê‘ëPUH‘àëTP—HïSê’S”àXõXÀö\◊ÿõÿ⁄ŸYÿô]ŸY[äŸö\ú›URQ‹ŸX€€ôURQ
+BîëUTìî»ì””PSÇìSë’PQ—H‹[î’PìBî—P’TíUHQíSëTÇî—UŸX\ò⁄‹]H	…¬êT»		à—SP’Ÿö\ú›T»ì’ïSàSë‹ŸX€€ôT»ì’ïSàSë
+Ÿö\ú›H]]ùZY
+
+H‘à‹ŸX€€ôH]]ùZY
+
+JBàSëVT’»
+à—SP’Bàîì”HXõXÀù\Ÿ\óÿõÿ⁄‹»T»õÿ⁄¬à“TëH
+õÿ⁄Àòõÿ⁄Ÿ\ó⁄YHŸö\ú›Sëõÿ⁄Àòõÿ⁄ŸY⁄YH‹ŸX€€ô
+Bà‘à
+õÿ⁄Àòõÿ⁄Ÿ\ó⁄YH‹ŸX€€ôSëõÿ⁄Àòõÿ⁄ŸY⁄YHŸö\ú›
+Bà
+N¬â	¬Çê‘ëPUH‘àëTP—HïSê’S”àXõXÀò\ôW€]]X[ÿ€€õôX›[€ú Ÿö\ú›URQ‹ŸX€€ôURQ
+BîëUTìî»ì””PSÇìSë’PQ—H‹[î’PìBî—P’TíUHQíSëTÇî—UŸX\ò⁄‹]H	…¬êT»		à—SP’Ÿö\ú›T»ì’ïSàSë‹ŸX€€ôT»ì’ïSàSëŸö\ú›à‹ŸX€€ôàSë
+Ÿö\ú›H]]ùZY
+
+H‘à‹ŸX€€ôH]]ùZY
+
+JBàSëì’XõXÀö\◊ÿõÿ⁄ŸYÿô]ŸY[äŸö\ú›‹ŸX€€ô
+BàSëVT’»
+à—SP’Hîì”HXõXÀôõ€›‹¬à“TëHõ€›Ÿ\ó⁄YHŸö\ú›Sëõ€›⁄[ô◊⁄YH‹ŸX€€ôà
+BàSëVT’»
+à—SP’Hîì”HXõXÀôõ€›‹¬à“TëHõ€›Ÿ\ó⁄YH‹ŸX€€ôSëõ€›⁄[ô◊⁄YHŸö\ú›à
+N¬â	¬Çê‘ëPUH‘àëTP—HïSê’S”àXõXÀòÿ[ó›öY]◊‹›‹ûWŸúõ€WŸõ€›Ÿ\äÿ]]‹ó⁄YURQ›öY]Ÿ\ó⁄YURQ
+BîëUTìî»ì””PSÇìSë’PQ—H‹[î’PìBî—P’TíUHQíSëTÇî—UŸX\ò⁄‹]H	…¬êT»		à—SP’”–ST–—Jàÿ]]‹ó⁄YT»ì’ïSàSë›öY]Ÿ\ó⁄YH
+—SP’]]ùZY
+
+JBàSëÿ]]‹ó⁄Yà›öY]Ÿ\ó⁄YàSëì’XõXÀö\◊ÿõÿ⁄ŸYÿô]ŸY[äÿ]]‹ó⁄Y›öY]Ÿ\ó⁄Y
+BàSëVT’»
+à—SP’Bàîì”HXõXÀúõŸö[\»T»]]‹Çà“TëH]]‹ãöYHÿ]]‹ó⁄YàSë]]‹ãò[›◊Ÿõ€›Ÿ\ó‹›]\Ÿ\¬à
+BàSëVT’»
+à—SP’Bàîì”HXõXÀôõ€›‹»T»ô[][€ú⁄\à“TëHô[][€ú⁄\ôõ€›Ÿ\ó⁄YH›öY]Ÿ\ó⁄YàSëô[][€ú⁄\ôõ€›⁄[ô◊⁄YHÿ]]‹ó⁄Yà
+KàêS—Bà
+N¬â	¬Çê‘ëPUH‘àëTP—HïSê’S”àXõXÀòÿ[ó›öY]◊‹›‹ûWŸúõ€Wÿ⁄]
+ÿ]]‹ó⁄YURQ›öY]Ÿ\ó⁄YURQ
+BîëUTìî»ì””PSÇìSë’PQ—H‹[î’PìBî—P’TíUHQíSëTÇî—UŸX\ò⁄‹]H	…¬êT»		à—SP’”–ST–—Jàÿ]]‹ó⁄YT»ì’ïSàSë›öY]Ÿ\ó⁄YH
+—SP’]]ùZY
+
+JBàSëÿ]]‹ó⁄Yà›öY]Ÿ\ó⁄YàSëì’XõXÀö\◊ÿõÿ⁄ŸYÿô]ŸY[äÿ]]‹ó⁄Y›öY]Ÿ\ó⁄Y
+BàSëVT’»
+à—SP’Bàîì”HXõXÀõY\‹ÿYŸ\»T»Y\‹ÿYŸBà“TëHY\‹ÿYŸKúŸ[ô\ó⁄YHÿ]]‹ó⁄YàSëY\‹ÿYŸKúôXŸZ]ô\ó⁄YH›öY]Ÿ\ó⁄Yà
+BàSëVT’»
+à—SP’Bàîì”HXõXÀõY\‹ÿYŸ\»T»Y\‹ÿYŸBà“TëHY\‹ÿYŸKúŸ[ô\ó⁄YH›öY]Ÿ\ó⁄YàSëY\‹ÿYŸKúôXŸZ]ô\ó⁄YHÿ]]‹ó⁄Yà
+KàêS—Bà
+N¬â	¬Çê‘ëPUH‘àëTP—HïSê’S”àXõXÀôŸ]‹›‹ûWÿ]]‹ó‹õŸö[\ ›\Ÿ\ó⁄Y»URQ◊JBîëUTìî»PìH
+YURQ\Ÿ\õò[YHVù[€ò[YHV]ò]\ó›\õV
+BìSë’PQ—H‹[î’PìBî—P’TíUHQíSëTÇî—UŸX\ò⁄‹]H	…¬êT»		à—SP’õŸö[KöYõŸö[Kù\Ÿ\õò[YKõŸö[Kôù[€ò[YKõŸö[Kò]ò]\ó›\õàîì”HXõXÀúõŸö[\»T»õŸö[Bà“TëH
+—SP’]]ùZY
+
+JHT»ì’ïSàSëõŸö[KöYHSñJ”–ST–—J›\Ÿ\ó⁄YÀTîêVV◊NéïURQ◊JJBàSëVT’»
+à—SP’Bàîì”HXõXÀú›‹öY\»T»›‹ûBà“TëH›‹ûKù\Ÿ\ó⁄YHõŸö[KöYàSë›‹ûKô^\ô\◊ÿ]àì’ 
+BàSë
+à›‹ûKù\Ÿ\ó⁄YH
+—SP’]]ùZY
+
+JBà‘àXõXÀò\ôW€]]X[ÿ€€õôX›[€ú ›‹ûKù\Ÿ\ó⁄Y
+—SP’]]ùZY
+
+JJBà‘àXõXÀòÿ[ó›öY]◊‹›‹ûWŸúõ€WŸõ€›Ÿ\ä›‹ûKù\Ÿ\ó⁄Y
+—SP’]]ùZY
+
+JJBà‘àXõXÀòÿ[ó›öY]◊‹›‹ûWŸúõ€Wÿ⁄]
+›‹ûKù\Ÿ\ó⁄Y
+—SP’]]ùZY
+
+JJBà
+Bà
+N¬â	¬Çê‘ëPUH‘àëTP—HïSê’S”àXõXÀôŸ]ÿõÿ⁄ŸY‹õŸö[\ 
+BîëUTìî»PìH
+YURQ\Ÿ\õò[YHVù[€ò[YHV
+BìSë’PQ—H‹[î’PìBî—P’TíUHQíSëTÇî—UŸX\ò⁄‹]H	…¬êT»		à—SP’õŸö[KöYõŸö[Kù\Ÿ\õò[YKõŸö[Kôù[€ò[YBàîì”HXõXÀù\Ÿ\óÿõÿ⁄‹»T»õÿ⁄¬àì“SàXõXÀúõŸö[\»T»õŸö[H”àõŸö[KöYHõÿ⁄Àòõÿ⁄ŸY⁄Yà“TëHõÿ⁄Àòõÿ⁄Ÿ\ó⁄YH]]ùZY
+
+N¬â	¬Çê‘ëPUH‘àëTP—HïSê’S”àXõXÀù\]W€\›‹ŸY[ä
+BîëUTìî»SQT’STÇìSë’PQ—H‹‹[î—P’TíUHSïì“—TÇî—UŸX\ò⁄‹]H	…¬êT»		ëP”TëBà\]Y›ò[YHSQT’STé¬êëQ“SÇàQà]]ùZY
+
+HT»ïSSÇàêRT—HV—TS”à	÷[›H]\›ôH⁄Y€ôY[à»\]H[›\à\›\ŸY[à[YKâŒ¬àSëQé¬ÇàSî—TïSï»XõXÀù\Ÿ\ó‹ô\Ÿ[òŸH
+\Ÿ\ó⁄Y\›‹ŸY[óÿ]
+BàêSQT»
+]]ùZY
+
+Kì’ 
+JBà”à””ëìP’
+\Ÿ\ó⁄Y
+Bà»TUH—U\›‹ŸY[óÿ]HV”QQõ\›‹ŸY[óÿ]àëUTìíSë»\›‹ŸY[óÿ]Sï»\]Y›ò[YN¬ÇàëUTìà\]Y›ò[YN¬ëSë¬â	¬ÇîëUì“—HS”àïSê’S”àXõXÀö\◊ÿõÿ⁄ŸYÿô]ŸY[äURQURQ
+Hîì”HPìPÀ[õ€é¬îëUì“—HS”àïSê’S”àXõXÀò\ôW€]]X[ÿ€€õôX›[€ú URQURQ
+Hîì”HPìPÀ[õ€é¬îëUì“—HS”àïSê’S”àXõXÀòÿ[ó›öY]◊‹›‹ûWŸúõ€WŸõ€›Ÿ\äURQURQ
+Hîì”HPìPÀ[õ€é¬îëUì“—HS”àïSê’S”àXõXÀòÿ[ó›öY]◊‹›‹ûWŸúõ€Wÿ⁄]
+URQURQ
+Hîì”HPìPÀ[õ€é¬îëUì“—HS”àïSê’S”àXõXÀôŸ]‹›‹ûWÿ]]‹ó‹õŸö[\ URQ◊JHîì”HPìPÀ[õ€é¬îëUì“—HS”àïSê’S”àXõXÀôŸ]ÿõÿ⁄ŸY‹õŸö[\ 
+Hîì”HPìPÀ[õ€é¬îëUì“—HS”àïSê’S”àXõXÀù\]W€\›‹ŸY[ä
+Hîì”HPìPÀ[õ€é¬ë‘êSïVP’UH”àïSê’S”àXõXÀö\◊ÿõÿ⁄ŸYÿô]ŸY[äURQURQ
+H»]][ùXÿ]Y¬ë‘êSïVP’UH”àïSê’S”àXõXÀò\ôW€]]X[ÿ€€õôX›[€ú URQURQ
+H»]][ùXÿ]Y¬ë‘êSïVP’UH”àïSê’S”àXõXÀòÿ[ó›öY]◊‹›‹ûWŸúõ€WŸõ€›Ÿ\äURQURQ
+H»]][ùXÿ]Y¬ë‘êSïVP’UH”àïSê’S”àXõXÀòÿ[ó›öY]◊‹›‹ûWŸúõ€Wÿ⁄]
+URQURQ
+H»]][ùXÿ]Y¬ë‘êSïVP’UH”àïSê’S”àXõXÀôŸ]‹›‹ûWÿ]]‹ó‹õŸö[\ URQ◊JH»]][ùXÿ]Y¬ë‘êSïVP’UH”àïSê’S”àXõXÀôŸ]ÿõÿ⁄ŸY‹õŸö[\ 
+H»]][ùXÿ]Y¬ë‘êSïVP’UH”àïSê’S”àXõXÀù\]W€\›‹ŸY[ä
+H»]][ùXÿ]Y¬Çëì‘”P÷HQàVT’»ìY[Xô\ú»öY]»]]X[€€õôX›[€àô\Ÿ[òŸHà”àXõXÀù\Ÿ\ó‹ô\Ÿ[òŸN¬ê‘ëPUH”P÷HìY[Xô\ú»öY]»]]X[€€õôX›[€àô\Ÿ[òŸHÇà”àXõXÀù\Ÿ\ó‹ô\Ÿ[òŸHì‘à—SP’»]][ùXÿ]YàT“Së»
+à\Ÿ\ó⁄YH
+—SP’]]ùZY
+
+JBà‘àXõXÀò\ôW€]]X[ÿ€€õôX›[€ú \Ÿ\ó⁄Y
+—SP’]]ùZY
+
+JJBà
+N¬Çëì‘”P÷HQàVT’»îõŸö[\»\ôHöY]ÿXõHûH]][ùXÿ]Y\Ÿ\ú»à”àXõXÀúõŸö[\Œ¬ê‘ëPUH”P÷HîõŸö[\»\ôHöY]ÿXõHûH]][ùXÿ]Y\Ÿ\ú»Çà”àXõXÀúõŸö[\»ì‘à—SP’»]][ùXÿ]YàT“Së»
+à
+—SP’]]ùZY
+
+JHHYà‘à
+àì’XõXÀö\◊ÿõÿ⁄ŸYÿô]ŸY[ä
+—SP’]]ùZY
+
+JKY
+BàSë
+à\◊Ÿ\ÿ€›ô\òXõBà‘àXõXÀò\ôW€]]X[ÿ€€õôX›[€ú 
+—SP’]]ùZY
+
+JKY
+Bà‘àVT’»
+à—SP’Bàîì”HXõXÀõY\‹ÿYŸ\»T»Y\‹ÿYŸBà“TëH
+Y\‹ÿYŸKúŸ[ô\ó⁄YH
+—SP’]]ùZY
+
+JHSëY\‹ÿYŸKúôXŸZ]ô\ó⁄YHõŸö[\ÀöY
+Bà‘à
+Y\‹ÿYŸKúôXŸZ]ô\ó⁄YH
+—SP’]]ùZY
+
+JHSëY\‹ÿYŸKúŸ[ô\ó⁄YHõŸö[\ÀöY
+Bà
+Bà
+Bà
+Bà
+N¬Çëì‘”P÷HQàVT’»ê€€[][ö]HY[Xô\ú»öY]»Y\àõŸö[\»à”àXõXÀúõŸö[\Œ¬ê‘ëPUH”P÷Hê€€[][ö]HY[Xô\ú»öY]»Y\àõŸö[\»Çà”àXõXÀúõŸö[\»ì‘à—SP’»]][ùXÿ]YàT“Së»
+àì’XõXÀö\◊ÿõÿ⁄ŸYÿô]ŸY[ä
+—SP’]]ùZY
+
+JKõŸö[\ÀöY
+BàSëVT’»
+à—SP’Bàîì”HXõXÀò€€[][ö]W€Y[Xô\ú»T»›€ó€Y[Xô\ú⁄\àì“SàXõXÀò€€[][ö]W€Y[Xô\ú»T»Y\ó€Y[Xô\ú⁄\à”àY\ó€Y[Xô\ú⁄\ò€€[][ö]W⁄YH›€ó€Y[Xô\ú⁄\ò€€[][ö]W⁄Yà“TëH›€ó€Y[Xô\ú⁄\ù\Ÿ\ó⁄YH
+—SP’]]ùZY
+
+JBàSëY\ó€Y[Xô\ú⁄\ù\Ÿ\ó⁄YHõŸö[\ÀöYà
+Bà
+N¬Çëì‘”P÷HQàVT’»ê]][ùXÿ]Y\Ÿ\ú»öY]»‹›»à”àXõXÀú‹›Œ¬ê‘ëPUH”P÷Hê]][ùXÿ]Y\Ÿ\ú»öY]»‹›»Çà”àXõXÀú‹›»ì‘à—SP’»]][ùXÿ]YàT“Së»
+à\Ÿ\ó⁄YH
+—SP’]]ùZY
+
+JBà‘àXõXÀò\ôW€]]X[ÿ€€õôX›[€ú \Ÿ\ó⁄Y
+—SP’]]ùZY
+
+JJBà
+N¬Çëì‘”P÷HQàVT’»ê]][ùXÿ]Y\Ÿ\ú»öY]»›‹öY\»à”àXõXÀú›‹öY\Œ¬ê‘ëPUH”P÷Hê]][ùXÿ]Y\Ÿ\ú»öY]»›‹öY\»Çà”àXõXÀú›‹öY\»ì‘à—SP’»]][ùXÿ]YàT“Së»
+à^\ô\◊ÿ]àì’ 
+BàSë
+à\Ÿ\ó⁄YH
+—SP’]]ùZY
+
+JBà‘àXõXÀò\ôW€]]X[ÿ€€õôX›[€ú \Ÿ\ó⁄Y
+—SP’]]ùZY
+
+JJBà‘àXõXÀòÿ[ó›öY]◊‹›‹ûWŸúõ€WŸõ€›Ÿ\ä\Ÿ\ó⁄Y
+—SP’]]ùZY
+
+JJBà‘àXõXÀòÿ[ó›öY]◊‹›‹ûWŸúõ€Wÿ⁄]
+\Ÿ\ó⁄Y
+—SP’]]ùZY
+
+JJBà
+Bà
+N¬Çëì‘”P÷HQàVT’»ê]][ùXÿ]Y\Ÿ\ú»öY]»€€[Y[ù»à”àXõXÀò€€[Y[ùŒ¬ê‘ëPUH”P÷Hê]][ùXÿ]Y\Ÿ\ú»öY]»€€[Y[ù»Çà”àXõXÀò€€[Y[ù»ì‘à—SP’»]][ùXÿ]YàT“Së»
+àVT’»
+à—SP’Hîì”HXõXÀú‹›¬à“TëH‹›ÀöYH€€[Y[ùÀú‹›⁄Yà
+Bà
+N¬Çëì‘”P÷HQàVT’»ï\Ÿ\ú»‹ôX]HZ\à›€à€€[Y[ù»à”àXõXÀò€€[Y[ùŒ¬ê‘ëPUH”P÷Hï\Ÿ\ú»‹ôX]HZ\à›€à€€[Y[ù»Çà”àXõXÀò€€[Y[ù»ì‘àSî—Tï»]][ùXÿ]Yà“U“P“»
+à\Ÿ\ó⁄YH
+—SP’]]ùZY
+
+JBàSëVT’»
+à—SP’Hîì”HXõXÀú‹›¬à“TëH‹›ÀöYH€€[Y[ùÀú‹›⁄Yà
+Bà
+N¬Çëì‘”P÷HQàVT’»ê]][ùXÿ]Y\Ÿ\ú»öY]»‹›ôXX›[€ú»à”àXõXÀú‹›‹ôXX›[€úŒ¬ê‘ëPUH”P÷Hê]][ùXÿ]Y\Ÿ\ú»öY]»‹›ôXX›[€ú»Çà”àXõXÀú‹›‹ôXX›[€ú»ì‘à—SP’»]][ùXÿ]YàT“Së»
+àVT’»
+à—SP’Hîì”HXõXÀú‹›¬à“TëH‹›ÀöYH‹›‹ôXX›[€úÀú‹›⁄Yà
+Bà
+N¬Çëì‘”P÷HQàVT’»ìY[Xô\ú»öY]»ô\‹›»Ÿàö\⁄XõH‹›»à”àXõXÀú‹›‹ô\‹›Œ¬ê‘ëPUH”P÷HìY[Xô\ú»öY]»ô\‹›»Ÿàö\⁄XõH‹›»Çà”àXõXÀú‹›‹ô\‹›»ì‘à—SP’»]][ùXÿ]YàT“Së»
+àVT’»
+à—SP’Hîì”HXõXÀú‹›¬à“TëH‹›ÀöYH‹›‹ô\‹›Àú‹›⁄Yà
+Bà
+N¬Çëì‘”P÷HQàVT’»ìY[Xô\ú»ô\‹›ö\⁄XõH‹›»\»[\Ÿ[ô\»à”àXõXÀú‹›‹ô\‹›Œ¬ê‘ëPUH”P÷HìY[Xô\ú»ô\‹›ö\⁄XõH‹›»\»[\Ÿ[ô\»Çà”àXõXÀú‹›‹ô\‹›»ì‘àSî—Tï»]][ùXÿ]Yà“U“P“»
+à\Ÿ\ó⁄YH
+—SP’]]ùZY
+
+JBàSëVT’»
+à—SP’Hîì”HXõXÀú‹›¬à“TëH‹›ÀöYH‹›‹ô\‹›Àú‹›⁄Yà
+Bà
+N¬Çëì‘”P÷HQàVT’»ìY[Xô\ú»ô[[›ôHZ\à›€àô\‹›»à”àXõXÀú‹›‹ô\‹›Œ¬ê‘ëPUH”P÷HìY[Xô\ú»ô[[›ôHZ\à›€àô\‹›»Çà”àXõXÀú‹›‹ô\‹›»ì‘àSUH»]][ùXÿ]YàT“Së»
+\Ÿ\ó⁄YH
+—SP’]]ùZY
+
+JJN¬Çëì‘”P÷HQàVT’»ï\Ÿ\ú»õ€›»\»[\Ÿ[ô\»à”àXõXÀôõ€›‹Œ¬ê‘ëPUH”P÷Hï\Ÿ\ú»õ€›»\»[\Ÿ[ô\»Çà”àXõXÀôõ€›‹»ì‘àSî—Tï»]][ùXÿ]Yà“U“P“»
+àõ€›Ÿ\ó⁄YH
+—SP’]]ùZY
+
+JBàSëõ€›Ÿ\ó⁄Yàõ€›⁄[ô◊⁄YàSëì’XõXÀö\◊ÿõÿ⁄ŸYÿô]ŸY[äõ€›Ÿ\ó⁄Yõ€›⁄[ô◊⁄Y
+Bà
+N¬Çëì‘”P÷HQàVT’»î\ùX⁄\[ù»öY]»Z\àY\‹ÿYŸ\»à”àXõXÀõY\‹ÿYŸ\Œ¬ê‘ëPUH”P÷Hî\ùX⁄\[ù»öY]»Z\àY\‹ÿYŸ\»Çà”àXõXÀõY\‹ÿYŸ\»ì‘à—SP’»]][ùXÿ]YàT“Së»
+à
+à
+—SP’]]ùZY
+
+JHHŸ[ô\ó⁄Yà‘à
+—SP’]]ùZY
+
+JHHôXŸZ]ô\ó⁄Yà
+BàSëì’XõXÀö\◊ÿõÿ⁄ŸYÿô]ŸY[äŸ[ô\ó⁄YôXŸZ]ô\ó⁄Y
+Bà
+N¬Çëì‘”P÷HQàVT’»ï\Ÿ\ú»Ÿ[ôY\‹ÿYŸ\»\»[\Ÿ[ô\»à”àXõXÀõY\‹ÿYŸ\Œ¬ê‘ëPUH”P÷Hï\Ÿ\ú»Ÿ[ôY\‹ÿYŸ\»\»[\Ÿ[ô\»Çà”àXõXÀõY\‹ÿYŸ\»ì‘àSî—Tï»]][ùXÿ]Yà“U“P“»
+àŸ[ô\ó⁄YH
+—SP’]]ùZY
+
+JBàSëŸ[ô\ó⁄YàôXŸZ]ô\ó⁄YàSëì’XõXÀö\◊ÿõÿ⁄ŸYÿô]ŸY[äŸ[ô\ó⁄YôXŸZ]ô\ó⁄Y
+BàSëXõXÀò\ôW€]]X[ÿ€€õôX›[€ú Ÿ[ô\ó⁄YôXŸZ]ô\ó⁄Y
+Bà
+N¬Çëì‘”P÷HQàVT’»îôX⁄\Y[ù»X\ö»Y\‹ÿYŸ\»\»ôXYà”àXõXÀõY\‹ÿYŸ\Œ¬ê‘ëPUH”P÷HîôX⁄\Y[ù»X\ö»Y\‹ÿYŸ\»\»ôXYÇà”àXõXÀõY\‹ÿYŸ\»ì‘àTUH»]][ùXÿ]YàT“Së»
+àôXŸZ]ô\ó⁄YH
+—SP’]]ùZY
+
+JBàSëì’XõXÀö\◊ÿõÿ⁄ŸYÿô]ŸY[äŸ[ô\ó⁄YôXŸZ]ô\ó⁄Y
+Bà
+Bà“U“P“»
+àôXŸZ]ô\ó⁄YH
+—SP’]]ùZY
+
+JBàSëì’XõXÀö\◊ÿõÿ⁄ŸYÿô]ŸY[äŸ[ô\ó⁄YôXŸZ]ô\ó⁄Y
+Bà
+N¬Çëì‘”P÷HQàVT’»êÿ[\ùX⁄\[ù»öY]»⁄Y€ò[[ô»à”àXõXÀòÿ[‹⁄Y€ò[Œ¬ëì‘”P÷HQàVT’»êÿ[\ùX⁄\[ù»öY]»ÿ[⁄Y€ò[»à”àXõXÀòÿ[‹⁄Y€ò[Œ¬ê‘ëPUH”P÷Hêÿ[\ùX⁄\[ù»öY]»ÿ[⁄Y€ò[»Çà”àXõXÀòÿ[‹⁄Y€ò[»ì‘à—SP’»]][ùXÿ]YàT“Së»
+à
+Ÿ[ô\ó⁄YH
+—SP’]]ùZY
+
+JH‘àôX⁄\Y[ù⁄YH
+—SP’]]ùZY
+
+JJBàSëì’XõXÀö\◊ÿõÿ⁄ŸYÿô]ŸY[äŸ[ô\ó⁄YôX⁄\Y[ù⁄Y
+Bà
+N¬Çëì‘”P÷HQàVT’»êÿ[Ÿ[ô\ú»‹ôX]H⁄Y€ò[[ô»à”àXõXÀòÿ[‹⁄Y€ò[Œ¬ëì‘”P÷HQàVT’»ï\Ÿ\ú»Ÿ[ôÿ[⁄Y€ò[»\»[\Ÿ[ô\»à”àXõXÀòÿ[‹⁄Y€ò[Œ¬ê‘ëPUH”P÷Hï\Ÿ\ú»Ÿ[ôÿ[⁄Y€ò[»\»[\Ÿ[ô\»Çà”àXõXÀòÿ[‹⁄Y€ò[»ì‘àSî—Tï»]][ùXÿ]Yà“U“P“»
+àŸ[ô\ó⁄YH
+—SP’]]ùZY
+
+JBàSëŸ[ô\ó⁄YàôX⁄\Y[ù⁄YàSëì’XõXÀö\◊ÿõÿ⁄ŸYÿô]ŸY[äŸ[ô\ó⁄YôX⁄\Y[ù⁄Y
+Bà
+N¬Çëì‘”P÷HQàVT’»êÿ[\ùX⁄\[ù»[]H⁄Y€ò[[ô»à”àXõXÀòÿ[‹⁄Y€ò[Œ¬ëì‘”P÷HQàVT’»êÿ[\ùX⁄\[ù»[]Hÿ[⁄Y€ò[»à”àXõXÀòÿ[‹⁄Y€ò[Œ¬ê‘ëPUH”P÷Hêÿ[\ùX⁄\[ù»[]Hÿ[⁄Y€ò[»Çà”àXõXÀòÿ[‹⁄Y€ò[»ì‘àSUH»]][ùXÿ]YàT“Së»
+à
+Ÿ[ô\ó⁄YH
+—SP’]]ùZY
+
+JH‘àôX⁄\Y[ù⁄YH
+—SP’]]ùZY
+
+JJBàSëì’XõXÀö\◊ÿõÿ⁄ŸYÿô]ŸY[äŸ[ô\ó⁄YôX⁄\Y[ù⁄Y
+Bà
+N¬ÇíSî—TïSï»›‹òYŸKòùX⁄Ÿ]»
+àYò[YKXõXÀö[W‹⁄^ôW€[Z][›ŸY€Z[YW›\\¬äBïêSQT»
+à	ÿÿ[\\À\ö]ò]K[YYXIÀà	ÿÿ[\\À\ö]ò]K[YYXIÀàêS—KàLçéàTîêVV…⁄[XYŸK âÀ	›öY[À â◊BäBì”à””ëìP’
+Y
+H»TUBî—UXõX»HêS—Kàö[W‹⁄^ôW€[Z]HV”QQôö[W‹⁄^ôW€[Z]à[›ŸY€Z[YW›\\»HV”QQò[›ŸY€Z[YW›\\Œ¬Çëì‘”P÷HQàVT’»ê]][ùXÿ]Y\Ÿ\ú»\ÿY›€àö]ò]H€ÿ⁄X[YYXHà”à›‹òYŸKõÿöôX›Œ¬ê‘ëPUH”P÷Hê]][ùXÿ]Y\Ÿ\ú»\ÿY›€àö]ò]H€ÿ⁄X[YYXHÇà”à›‹òYŸKõÿöôX›»ì‘àSî—Tï»]][ùXÿ]Yà“U“P“»
+àùX⁄Ÿ]⁄YH	ÿÿ[\\À\ö]ò]K[YYXI¬àSë
+›‹òYŸKôõ€\õò[YJò[YJJVÃWHH
+—SP’]]ùZY
+
+JNéïVà
+N¬Çëì‘”P÷HQàVT’»ê€€õôX›[€ú»öY]»ö]ò]H€ÿ⁄X[YYXHà”à›‹òYŸKõÿöôX›Œ¬ê‘ëPUH”P÷Hê€€õôX›[€ú»öY]»ö]ò]H€ÿ⁄X[YYXHÇà”à›‹òYŸKõÿöôX›»ì‘à—SP’»]][ùXÿ]YàT“Së»
+àùX⁄Ÿ]⁄YH	ÿÿ[\\À\ö]ò]K[YYXI¬àSë
+à
+›‹òYŸKôõ€\õò[YJò[YJJVÃWHH
+—SP’]]ùZY
+
+JNéïVà‘à–T—Bà“Sà
+›‹òYŸKôõ€\õò[YJò[YJJVÃWHäà	◊ñÃNXKYó^ŒKVÃNXKYó^ÕKVÃNXKYó^ÕKVÃNXKYó^ÕKVÃNXKYó^ÃLüI	¬àSàXõXÀò\ôW€]]X[ÿ€€õôX›[€ú à
+›‹òYŸKôõ€\õò[YJò[YJJVÃWNéïURQà
+—SP’]]ùZY
+
+JBà
+BàS—HêS—BàSëà‘àVT’»
+à—SP’Bàîì”HXõXÀú›‹öY\»T»›‹ûBà“TëH›‹ûKõYYXW›\õH	‹ö]ò]K[YYXNâ»›‹òYŸKõÿöôX›Àõò[YBàSë›‹ûKô^\ô\◊ÿ]àì’ 
+BàSë
+àXõXÀòÿ[ó›öY]◊‹›‹ûWŸúõ€WŸõ€›Ÿ\ä›‹ûKù\Ÿ\ó⁄Y
+—SP’]]ùZY
+
+JJBà‘àXõXÀòÿ[ó›öY]◊‹›‹ûWŸúõ€Wÿ⁄]
+›‹ûKù\Ÿ\ó⁄Y
+—SP’]]ùZY
+
+JJBà
+Bà
+Bà
+Bà
+N¬Çëì‘”P÷HQàVT’»ï\Ÿ\ú»[]H›€àö]ò]H€ÿ⁄X[YYXHà”à›‹òYŸKõÿöôX›Œ¬ê‘ëPUH”P÷Hï\Ÿ\ú»[]H›€àö]ò]H€ÿ⁄X[YYXHÇà”à›‹òYŸKõÿöôX›»ì‘àSUH»]][ùXÿ]YàT“Së»
+àùX⁄Ÿ]⁄YH	ÿÿ[\\À\ö]ò]K[YYXI¬àSë
+›‹òYŸKôõ€\õò[YJò[YJJVÃWHH
+—SP’]]ùZY
+
+JNéïVà
+N¬ÇãKH€‹õX]YY[òŸH‹›»\ŸHHŸ\\ò]HXõX»ùX⁄Ÿ]à⁄]›]]H€Y[ùãKH\⁄‹»›‹òYŸH»\ÿY»HùX⁄Ÿ]]Ÿ\»õ›^\›[ôôXŸZ]ô\»ÇíSî—TïSï»›‹òYŸKòùX⁄Ÿ]»
+àYò[YKXõXÀö[W‹⁄^ôW€[Z][›ŸY€Z[YW›\\¬äBïêSQT»
+à	ÿÿ[\\À]€‹õ[YYXIÀà	ÿÿ[\\À]€‹õ[YYXIÀàïQKàLçéàTîêVV…⁄[XYŸK âÀ	›öY[À â◊BäBì”à””ëìP’
+Y
+H»TUBî—UXõX»HïQKàö[W‹⁄^ôW€[Z]HV”QQôö[W‹⁄^ôW€[Z]à[›ŸY€Z[YW›\\»HV”QQò[›ŸY€Z[YW›\\Œ¬Çëì‘”P÷HQàVT’»ìY[Xô\ú»\ÿY›€à€‹õ‹›YYXHà”à›‹òYŸKõÿöôX›Œ¬ê‘ëPUH”P÷HìY[Xô\ú»\ÿY›€à€‹õ‹›YYXHÇà”à›‹òYŸKõÿöôX›»ì‘àSî—Tï»]][ùXÿ]Yà“U“P“»
+àùX⁄Ÿ]⁄YH	ÿÿ[\\À]€‹õ[YYXI¬àSë
+›‹òYŸKôõ€\õò[YJò[YJJVÃWHH
+—SP’]]ùZY
+
+JNéïVà
+N¬Çê””SRU¬ÇãKHOOOOOOOOOOOOOOOHTïÃçàZY‹ò][€úÀÃåçåLLW‹›Y[ù⁄[ù\òX›[€ú◊ÿ[ôÿÿ[Àú‹[OOOOOOOOOOOOOOOBêëQ“Sé¬ÇêSTàPìHXõXÀúõŸö[\¬àQ””SSàQàì’VT’»\◊Ÿ\ÿ€›ô\òXõHì””PSàì’ïSQêUSêS—N¬Çê‘ëPUHPìHQàì’VT’»XõXÀòÿ[‹⁄Y€ò[»
+àYURQíSPTñH—VHQêUSŸ[ó‹ò[ô€W›]ZY
+
+Kàÿ[⁄YURQì’ïSàŸ[ô\ó⁄YURQì’ïSëQëTëSê—T»]]ù\Ÿ\ú Y
+H”àSUH–T––QKàôX⁄\Y[ù⁄YURQì’ïSëQëTëSê—T»]]ù\Ÿ\ú Y
+H”àSUH–T––QKà⁄[ôVì’ïS“P“»
+⁄[ôSà
+	€Ÿôô\âÀ	ÿ[ú›Ÿ\âÀ	⁄XŸIÀ	Ÿ[ô	À	‹ôZôX›	À	ÿù\ﬁI JKà^[ÿYî””êàì’ïSQêUS	ﬁﬂIŒéíî””êÇà“P“»
+àú€€òó›\[Ÿä^[ÿY
+HH	€ÿöôX›	¬àSëÿ›]€[ô›
+^[ÿYéïV
+HHçMLÕÇà
+Kà‹ôX]Yÿ]SQT’STàì’ïSQêUSì’ 
+Kà“P“»
+Ÿ[ô\ó⁄YàôX⁄\Y[ù⁄Y
+BäN¬Çê‘ëPUHSëVQàì’VT’»ÿ[‹⁄Y€ò[◊‹ôX⁄\Y[ùÿ‹ôX]Y⁄Yà”àXõXÀòÿ[‹⁄Y€ò[»
+ôX⁄\Y[ù⁄Y‹ôX]Yÿ]T– N¬ê‘ëPUHSëVQàì’VT’»ÿ[‹⁄Y€ò[◊‹Ÿ[ô\óÿ‹ôX]Y⁄Yà”àXõXÀòÿ[‹⁄Y€ò[»
+Ÿ[ô\ó⁄Y‹ôX]Yÿ]T– N¬ÇêSTàPìHXõXÀòÿ[‹⁄Y€ò[»SêPìHì’»UëS—P’TíUN¬ë‘êSï—SP’Sî—TïSUH”àXõXÀòÿ[‹⁄Y€ò[»»]][ùXÿ]Y¬Çëì‘”P÷HQàVT’»êÿ[\ùX⁄\[ù»öY]»⁄Y€ò[[ô»Çà”àXõXÀòÿ[‹⁄Y€ò[Œ¬ê‘ëPUH”P÷Hêÿ[\ùX⁄\[ù»öY]»⁄Y€ò[[ô»Çà”àXõXÀòÿ[‹⁄Y€ò[¬àì‘à—SP’»]][ùXÿ]YàT“Së»
+à
+—SP’]]ùZY
+
+JHHŸ[ô\ó⁄Yà‘à
+—SP’]]ùZY
+
+JHHôX⁄\Y[ù⁄Yà
+N¬Çëì‘”P÷HQàVT’»êÿ[Ÿ[ô\ú»‹ôX]H⁄Y€ò[[ô»Çà”àXõXÀòÿ[‹⁄Y€ò[Œ¬ê‘ëPUH”P÷Hêÿ[Ÿ[ô\ú»‹ôX]H⁄Y€ò[[ô»Çà”àXõXÀòÿ[‹⁄Y€ò[¬àì‘àSî—Tï»]][ùXÿ]Yà“U“P“»
+à
+—SP’]]ùZY
+
+JHHŸ[ô\ó⁄YàSëŸ[ô\ó⁄YàôX⁄\Y[ù⁄Yà
+N¬Çëì‘”P÷HQàVT’»êÿ[\ùX⁄\[ù»[]H⁄Y€ò[[ô»Çà”àXõXÀòÿ[‹⁄Y€ò[Œ¬ê‘ëPUH”P÷Hêÿ[\ùX⁄\[ù»[]H⁄Y€ò[[ô»Çà”àXõXÀòÿ[‹⁄Y€ò[¬àì‘àSUH»]][ùXÿ]YàT“Së»
+à
+—SP’]]ùZY
+
+JHHŸ[ô\ó⁄Yà‘à
+—SP’]]ùZY
+
+JHHôX⁄\Y[ù⁄Yà
+N¬Çë»	ôX[[YIêëQ“SÇàQàì’VT’»
+à—SP’Bàîì”H◊‹XõXÿ][€ó›Xõ\¬à“TëHXõò[YHH	‹›\Xò\ŸW‹ôX[[YI¬àSëÿ⁄[X[ò[YHH	‹XõX…¬àSëXõ[ò[YHH	ÿÿ[‹⁄Y€ò[…¬à
+HSÇàSTàPìP–US”à›\Xò\ŸW‹ôX[[YBàQPìHXõXÀòÿ[‹⁄Y€ò[Œ¬àSëQé¬ëSë¬âôX[[YI¬Çëì‘”P÷HQàVT’»îõŸö[\»\ôHöY]ÿXõHûH]][ùXÿ]Y\Ÿ\ú»Çà”àXõXÀúõŸö[\Œ¬Çë»	ZY‹ò][€âëP”TëBàö\⁄Xö[]W‹ù[HVèH	€XﬁIà]]ùZY
+
+HHYà‘à\◊Ÿ\ÿ€›ô\òXõBà‘àVT’»
+à—SP’Bàîì”HXõXÀõY\‹ÿYŸ\»T»Y\‹ÿYŸBà“TëH
+Y\‹ÿYŸKúŸ[ô\ó⁄YH]]ùZY
+
+HSëY\‹ÿYŸKúôXŸZ]ô\ó⁄YHõŸö[\ÀöY
+Bà‘à
+Y\‹ÿYŸKúôXŸZ]ô\ó⁄YH]]ùZY
+
+HSëY\‹ÿYŸKúŸ[ô\ó⁄YHõŸö[\ÀöY
+Bà
+Bà	€XﬁI¬êëQ“SÇàQà◊‹ôYÿ€\‹ 	‹XõXÀò€€[][ö]W€Y[Xô\ú… HT»ì’ïSSÇàö\⁄Xö[]W‹ù[HèHö\⁄Xö[]W‹ù[H	€XﬁIà‘àVT’»
+à—SP’Bàîì”HXõXÀò€€[][ö]W€Y[Xô\ú»T»›€ó€Y[Xô\ú⁄\àì“SàXõXÀò€€[][ö]W€Y[Xô\ú»T»Y\ó€Y[Xô\ú⁄\à”àY\ó€Y[Xô\ú⁄\ò€€[][ö]W⁄YH›€ó€Y[Xô\ú⁄\ò€€[][ö]W⁄Yà“TëH›€ó€Y[Xô\ú⁄\ù\Ÿ\ó⁄YH]]ùZY
+
+BàSëY\ó€Y[Xô\ú⁄\ù\Ÿ\ó⁄YHõŸö[\ÀöYà
+Bà	€XﬁI¬àSëQé¬ÇàVP’UHõ‹õX]
+à	–‘ëPUH”P÷HîõŸö[\»\ôHöY]ÿXõHûH]][ùXÿ]Y\Ÿ\ú»à	¬à	””àXõXÀúõŸö[\»ì‘à—SP’»]][ùXÿ]YT“Së»
+	\ IÀàö\⁄Xö[]W‹ù[Bà
+N¬ëSë¬âZY‹ò][€â¬Çê””SRU¬ÇãKHOOOOOOOOOOOOOOOHTïKÃçàZY‹ò][€úÀÃåçåLLóŸúöY[ô⁄\◊ÿ]X⁄Y[ù◊€õ›YöXÿ][€ó‹ôYô\ô[òŸ\Àú‹[OOOOOOOOOOOOOOOBêëQ“Sé¬ÇãKH^X⁄]úöY[ôô\]Y\›»\ôHŸ\\ò]Húõ€HH^\›[ô»€ôK]ÿ^Hõ€›»‹ò\Çê‘ëPUHPìHQàì’VT’»XõXÀôúöY[ô‹ô\]Y\›»
+àYURQíSPTñH—VHQêUSŸ[ó‹ò[ô€W›]ZY
+
+Kàô\]Y\›\ó⁄YURQì’ïSëQëTëSê—T»]]ù\Ÿ\ú Y
+H”àSUH–T––QKàôX⁄\Y[ù⁄YURQì’ïSëQëTëSê—T»]]ù\Ÿ\ú Y
+H”àSUH–T––QKà›]\»Vì’ïSQêUS	‹[ô[ô…¬à“P“»
+›]\»Sà
+	‹[ô[ô…À	ÿXÿŸ\Y	À	ŸX€[ôY	 JKà‹ôX]Yÿ]SQT’STàì’ïSQêUSì’ 
+Kà\]Yÿ]SQT’STàì’ïSQêUSì’ 
+Kà“P“»
+ô\]Y\›\ó⁄YàôX⁄\Y[ù⁄Y
+KàSíTUQH
+ô\]Y\›\ó⁄YôX⁄\Y[ù⁄Y
+BäN¬Çê‘ëPUHSëVQàì’VT’»úöY[ô‹ô\]Y\›◊‹ôX⁄\Y[ù‹›]\◊⁄Yà”àXõXÀôúöY[ô‹ô\]Y\›»
+ôX⁄\Y[ù⁄Y›]\À‹ôX]Yÿ]T– N¬ê‘ëPUHSëVQàì’VT’»úöY[ô‹ô\]Y\›◊‹ô\]Y\›\ó‹›]\◊⁄Yà”àXõXÀôúöY[ô‹ô\]Y\›»
+ô\]Y\›\ó⁄Y›]\À‹ôX]Yÿ]T– N¬Çê‘ëPUHPìHQàì’VT’»XõXÀõY\‹ÿYŸWÿ]X⁄Y[ù»
+àYURQíSPTñH—VHQêUSŸ[ó‹ò[ô€W›]ZY
+
+KàY\‹ÿYŸW⁄YURQëQëTëSê—T»XõXÀõY\‹ÿYŸ\ Y
+H”àSUH–T––QKà€€[][ö]W€Y\‹ÿYŸW⁄YURQëQëTëSê—T»XõXÀò€€[][ö]W€Y\‹ÿYŸ\ Y
+H”àSUH–T––QKà\ÿY\ó⁄YURQì’ïSëQëTëSê—T»]]ù\Ÿ\ú Y
+H”àSUH–T––QKà›‹òYŸW‹]Vì’ïSàö[W€ò[YHVì’ïS“P“»
+⁄\ó€[ô›
+ö[W€ò[YJHëU—QSàHSëçMJKàZ[YW›\HVì’ïS“P“»
+⁄\ó€[ô›
+Z[YW›\JHëU—QSàHSëMå
+Kàö[W‹⁄^ôHíQ“Sïì’ïS“P“»
+ö[W‹⁄^ôHàSëö[W‹⁄^ôHHLçé
+Kà‹ôX]Yÿ]SQT’STàì’ïSQêUSì’ 
+Kà“P“»
+ù[W€õ€õù[ Y\‹ÿYŸW⁄Y€€[][ö]W€Y\‹ÿYŸW⁄Y
+HHJKàSíTUQH
+›‹òYŸW‹]
+BäN¬Çê‘ëPUHSëVQàì’VT’»Y\‹ÿYŸWÿ]X⁄Y[ù◊€Y\‹ÿYŸW⁄Yà”àXõXÀõY\‹ÿYŸWÿ]X⁄Y[ù»
+Y\‹ÿYŸW⁄Y‹ôX]Yÿ]
+N¬ê‘ëPUHSëVQàì’VT’»Y\‹ÿYŸWÿ]X⁄Y[ù◊ÿ€€[][ö]W€Y\‹ÿYŸW⁄Yà”àXõXÀõY\‹ÿYŸWÿ]X⁄Y[ù»
+€€[][ö]W€Y\‹ÿYŸW⁄Y‹ôX]Yÿ]
+N¬ê‘ëPUHSëVQàì’VT’»Y\‹ÿYŸWÿ]X⁄Y[ù◊›\ÿY\ó⁄Yà”àXõXÀõY\‹ÿYŸWÿ]X⁄Y[ù»
+\ÿY\ó⁄Y‹ôX]Yÿ]T– N¬Çê‘ëPUHPìHQàì’VT’»XõXÀõõ›YöXÿ][€ó‹ôYô\ô[òŸ\»
+à\Ÿ\ó⁄YURQíSPTñH—VHëQëTëSê—T»]]ù\Ÿ\ú Y
+H”àSUH–T––QKàY\‹ÿYŸ\»ì””PSàì’ïSQêUSïQKàúöY[ô‹ô\]Y\›»ì””PSàì’ïSQêUSïQKàõ€›‹»ì””PSàì’ïSQêUSïQKà‹›ÿX›]ö]Hì””PSàì’ïSQêUSïQKà\]Yÿ]SQT’STàì’ïSQêUSì’ 
+BäN¬ÇêSTàPìHXõXÀôúöY[ô‹ô\]Y\›»SêPìHì’»UëS—P’TíUN¬êSTàPìHXõXÀõY\‹ÿYŸWÿ]X⁄Y[ù»SêPìHì’»UëS—P’TíUN¬êSTàPìHXõXÀõõ›YöXÿ][€ó‹ôYô\ô[òŸ\»SêPìHì’»UëS—P’TíUN¬Çë‘êSï—SP’Sî—TïTUKSUH”àXõXÀôúöY[ô‹ô\]Y\›»»]][ùXÿ]Y¬îëUì“—HTUH”àXõXÀôúöY[ô‹ô\]Y\›»îì”H]][ùXÿ]Y¬ë‘êSïTUH
+›]\ H”àXõXÀôúöY[ô‹ô\]Y\›»»]][ùXÿ]Y¬ë‘êSï—SP’Sî—TïSUH”àXõXÀõY\‹ÿYŸWÿ]X⁄Y[ù»»]][ùXÿ]Y¬ë‘êSï—SP’Sî—TïTUH”àXõXÀõõ›YöXÿ][€ó‹ôYô\ô[òŸ\»»]][ùXÿ]Y¬Çëì‘”P÷HQàVT’»ï\Ÿ\ú»öY]»Z\à›€àúöY[ôô\]Y\›»à”àXõXÀôúöY[ô‹ô\]Y\›Œ¬ê‘ëPUH”P÷Hï\Ÿ\ú»öY]»Z\à›€àúöY[ôô\]Y\›»Çà”àXõXÀôúöY[ô‹ô\]Y\›»ì‘à—SP’»]][ùXÿ]YàT“Së»
+ô\]Y\›\ó⁄YH
+—SP’]]ùZY
+
+JH‘àôX⁄\Y[ù⁄YH
+—SP’]]ùZY
+
+JJN¬Çëì‘”P÷HQàVT’»ï\Ÿ\ú»Ÿ[ôúöY[ôô\]Y\›»\»[\Ÿ[ô\»à”àXõXÀôúöY[ô‹ô\]Y\›Œ¬ê‘ëPUH”P÷Hï\Ÿ\ú»Ÿ[ôúöY[ôô\]Y\›»\»[\Ÿ[ô\»Çà”àXõXÀôúöY[ô‹ô\]Y\›»ì‘àSî—Tï»]][ùXÿ]Yà“U“P“»
+àô\]Y\›\ó⁄YH
+—SP’]]ùZY
+
+JBàSëô\]Y\›\ó⁄YàôX⁄\Y[ù⁄YàSë›]\»H	‹[ô[ô…¬àSëì’XõXÀö\◊ÿõÿ⁄ŸYÿô]ŸY[äô\]Y\›\ó⁄YôX⁄\Y[ù⁄Y
+Bà
+N¬Çëì‘”P÷HQàVT’»îôX⁄\Y[ù»ô\‹€ô»úöY[ôô\]Y\›»à”àXõXÀôúöY[ô‹ô\]Y\›Œ¬ê‘ëPUH”P÷HîôX⁄\Y[ù»ô\‹€ô»úöY[ôô\]Y\›»Çà”àXõXÀôúöY[ô‹ô\]Y\›»ì‘àTUH»]][ùXÿ]YàT“Së»
+ôX⁄\Y[ù⁄YH
+—SP’]]ùZY
+
+JHSë›]\»H	‹[ô[ô… Bà“U“P“»
+àôX⁄\Y[ù⁄YH
+—SP’]]ùZY
+
+JBàSë›]\»Sà
+	ÿXÿŸ\Y	À	ŸX€[ôY	 Bà
+N¬Çëì‘”P÷HQàVT’»îô\]Y\›\ú»ÿ[òŸ[[ô[ô»úöY[ôô\]Y\›»à”àXõXÀôúöY[ô‹ô\]Y\›Œ¬ê‘ëPUH”P÷Hîô\]Y\›\ú»ÿ[òŸ[[ô[ô»úöY[ôô\]Y\›»Çà”àXõXÀôúöY[ô‹ô\]Y\›»ì‘àSUH»]][ùXÿ]YàT“Së»
+ô\]Y\›\ó⁄YH
+—SP’]]ùZY
+
+JHSë›]\»H	‹[ô[ô… N¬Çëì‘”P÷HQàVT’»ê⁄]\ùX⁄\[ù»öY]»]X⁄Y[ù»à”àXõXÀõY\‹ÿYŸWÿ]X⁄Y[ùŒ¬ê‘ëPUH”P÷Hê⁄]\ùX⁄\[ù»öY]»]X⁄Y[ù»Çà”àXõXÀõY\‹ÿYŸWÿ]X⁄Y[ù»ì‘à—SP’»]][ùXÿ]YàT“Së»
+à\ÿY\ó⁄YH
+—SP’]]ùZY
+
+JBà‘àVT’»
+à—SP’Hîì”HXõXÀõY\‹ÿYŸ\»T»Y\‹ÿYŸBà“TëHY\‹ÿYŸKöYHY\‹ÿYŸWÿ]X⁄Y[ùÀõY\‹ÿYŸW⁄YàSë
+Y\‹ÿYŸKúŸ[ô\ó⁄YH
+—SP’]]ùZY
+
+JH‘àY\‹ÿYŸKúôXŸZ]ô\ó⁄YH
+—SP’]]ùZY
+
+JJBà
+Bà‘àVT’»
+à—SP’Hîì”HXõXÀò€€[][ö]W€Y\‹ÿYŸ\»T»Y\‹ÿYŸBà“TëHY\‹ÿYŸKöYHY\‹ÿYŸWÿ]X⁄Y[ùÀò€€[][ö]W€Y\‹ÿYŸW⁄YàSëXõXÀö\◊ÿ€€[][ö]W€Y[Xô\äY\‹ÿYŸKò€€[][ö]W⁄Y
+Bà
+Bà
+N¬Çëì‘”P÷HQàVT’»ï\Ÿ\ú»]X⁄ö[\»»Z\à›€àY\‹ÿYŸ\»à”àXõXÀõY\‹ÿYŸWÿ]X⁄Y[ùŒ¬ê‘ëPUH”P÷Hï\Ÿ\ú»]X⁄ö[\»»Z\à›€àY\‹ÿYŸ\»Çà”àXõXÀõY\‹ÿYŸWÿ]X⁄Y[ù»ì‘àSî—Tï»]][ùXÿ]Yà“U“P“»
+à\ÿY\ó⁄YH
+—SP’]]ùZY
+
+JBàSë
+àVT’»
+à—SP’Hîì”HXõXÀõY\‹ÿYŸ\»T»Y\‹ÿYŸBà“TëHY\‹ÿYŸKöYHY\‹ÿYŸWÿ]X⁄Y[ùÀõY\‹ÿYŸW⁄YàSëY\‹ÿYŸKúŸ[ô\ó⁄YH
+—SP’]]ùZY
+
+JBà
+Bà‘àVT’»
+à—SP’Hîì”HXõXÀò€€[][ö]W€Y\‹ÿYŸ\»T»Y\‹ÿYŸBà“TëHY\‹ÿYŸKöYHY\‹ÿYŸWÿ]X⁄Y[ùÀò€€[][ö]W€Y\‹ÿYŸW⁄YàSëY\‹ÿYŸKúŸ[ô\ó⁄YH
+—SP’]]ùZY
+
+JBàSëXõXÀö\◊ÿ€€[][ö]W€Y[Xô\äY\‹ÿYŸKò€€[][ö]W⁄Y
+Bà
+Bà
+Bà
+N¬Çëì‘”P÷HQàVT’»ï\Ÿ\ú»ô[[›ôHZ\à\ÿYY]X⁄Y[ù»à”àXõXÀõY\‹ÿYŸWÿ]X⁄Y[ùŒ¬ê‘ëPUH”P÷Hï\Ÿ\ú»ô[[›ôHZ\à\ÿYY]X⁄Y[ù»Çà”àXõXÀõY\‹ÿYŸWÿ]X⁄Y[ù»ì‘àSUH»]][ùXÿ]YàT“Së»
+\ÿY\ó⁄YH
+—SP’]]ùZY
+
+JJN¬Çëì‘”P÷HQàVT’»ï\Ÿ\ú»öY]»Z\àõ›YöXÿ][€àôYô\ô[òŸ\»à”àXõXÀõõ›YöXÿ][€ó‹ôYô\ô[òŸ\Œ¬ê‘ëPUH”P÷Hï\Ÿ\ú»öY]»Z\àõ›YöXÿ][€àôYô\ô[òŸ\»Çà”àXõXÀõõ›YöXÿ][€ó‹ôYô\ô[òŸ\»ì‘à—SP’»]][ùXÿ]YàT“Së»
+\Ÿ\ó⁄YH
+—SP’]]ùZY
+
+JJN¬Çëì‘”P÷HQàVT’»ï\Ÿ\ú»‹ôX]HZ\àõ›YöXÿ][€àôYô\ô[òŸ\»à”àXõXÀõõ›YöXÿ][€ó‹ôYô\ô[òŸ\Œ¬ê‘ëPUH”P÷Hï\Ÿ\ú»‹ôX]HZ\àõ›YöXÿ][€àôYô\ô[òŸ\»Çà”àXõXÀõõ›YöXÿ][€ó‹ôYô\ô[òŸ\»ì‘àSî—Tï»]][ùXÿ]Yà“U“P“»
+\Ÿ\ó⁄YH
+—SP’]]ùZY
+
+JJN¬Çëì‘”P÷HQàVT’»ï\Ÿ\ú»\]HZ\àõ›YöXÿ][€àôYô\ô[òŸ\»à”àXõXÀõõ›YöXÿ][€ó‹ôYô\ô[òŸ\Œ¬ê‘ëPUH”P÷Hï\Ÿ\ú»\]HZ\àõ›YöXÿ][€àôYô\ô[òŸ\»Çà”àXõXÀõõ›YöXÿ][€ó‹ôYô\ô[òŸ\»ì‘àTUH»]][ùXÿ]YàT“Së»
+\Ÿ\ó⁄YH
+—SP’]]ùZY
+
+JJBà“U“P“»
+\Ÿ\ó⁄YH
+—SP’]]ùZY
+
+JJN¬Çê‘ëPUH‘àëTP—HïSê’S”àXõXÀõõ›YûWŸúöY[ô‹ô\]Y\›
+
+BîëUTìî»íQ——TÇìSë’PQ—H‹‹[î—P’TíUHQíSëTÇî—UŸX\ò⁄‹]H	…¬êT»		êëQ“SÇàSî—TïSï»XõXÀõõ›YöXÿ][€ú»
+ôX⁄\Y[ù⁄YX›‹ó⁄Y⁄[ô
+BàêSQT»
+ëUÀúôX⁄\Y[ù⁄YëUÀúô\]Y\›\ó⁄Y	ŸúöY[ô‹ô\]Y\›	 N¬àëUTìàëUŒ¬ëSë¬â	¬Çë»		êëQ“SÇàQàì’VT’»
+à—SP’Hîì”H◊ÿ€€ú›òZ[ùà“TëH€€úô[YH	‹XõXÀõõ›YöXÿ][€ú…ŒéîëQ–”T‘¬àSë€€õò[YHH	€õ›YöXÿ][€ú◊⁄⁄[ôÿ⁄X⁄…¬à
+HSÇàSTàPìHXõXÀõõ›YöXÿ][€ú¬àQ””î’êRSïõ›YöXÿ][€ú◊⁄⁄[ôÿ⁄X⁄¬à“P“»
+⁄[ôSà
+	‹ôXX›[€âÀ	ÿ€€[Y[ù	À	Ÿõ€›…À	€Y\‹ÿYŸIÀ	ŸúöY[ô‹ô\]Y\›	 JN¬àS—BàSTàPìHXõXÀõõ›YöXÿ][€ú»ì‘””î’êRSïõ›YöXÿ][€ú◊⁄⁄[ôÿ⁄X⁄Œ¬àSTàPìHXõXÀõõ›YöXÿ][€ú¬àQ””î’êRSïõ›YöXÿ][€ú◊⁄⁄[ôÿ⁄X⁄¬à“P“»
+⁄[ôSà
+	‹ôXX›[€âÀ	ÿ€€[Y[ù	À	Ÿõ€›…À	€Y\‹ÿYŸIÀ	ŸúöY[ô‹ô\]Y\›	 JN¬àSëQé¬ëSë¬â	¬Çëì‘íQ——TàQàVT’»úöY[ô‹ô\]Y\›◊€õ›YûW‹ôX⁄\Y[ù”àXõXÀôúöY[ô‹ô\]Y\›Œ¬ê‘ëPUHíQ——TàúöY[ô‹ô\]Y\›◊€õ›YûW‹ôX⁄\Y[ùàQïTàSî—Tï”àXõXÀôúöY[ô‹ô\]Y\›¬àì‘àPP“ì’»VP’UHïSê’S”àXõXÀõõ›YûWŸúöY[ô‹ô\]Y\›
+
+N¬îëUì“—HS”àïSê’S”àXõXÀõõ›YûWŸúöY[ô‹ô\]Y\›
+
+Hîì”HPìPÀ[õ€ã]][ùXÿ]Y¬Çê””SRU¬ÇãKHOOOOOOOOOOOOOOOHTïãÃçàZY‹ò][€úÀÃåçåLLó‹ô\‹€ô›◊ÿ⁄]⁄[ùö]][€úÀú‹[OOOOOOOOOOOOOOOBêëQ“Sé¬ÇãKH]HôX⁄\Y[ùXÿŸ\‹àX€[ôHH€ôK]ÿ^Hõ€›»[ùö]][€ãàXÿŸ\[ô¬ãKH‹ôX]\»HôX⁄\õÿÿ[õ€›»\ŸYûHH\	‹»]]X[X€€õôX›[€à⁄X⁄‹ÀÇê‘ëPUH‘àëTP—HïSê’S”àXõXÀúô\‹€ô›◊ÿ⁄]⁄[ùö]][€äà⁄[ùö]\ó⁄YURQàÿXÿŸ\ì””PSÇäBîëUTìî»ì“QìSë’PQ—H‹‹[î—P’TíUHQíSëTÇî—UŸX\ò⁄‹]H	…¬êT»		ëP”TëBà›\úô[ù›\Ÿ\ó⁄YURQèH]]ùZY
+
+N¬à[ùö]][€óŸ^\›»ì””PSé¬àõÿ⁄ŸYì””PSàèHêS—N¬êëQ“SÇàQà›\úô[ù›\Ÿ\ó⁄YT»ïSSÇàêRT—HV—TS”à	÷[›H]\›ôH⁄Y€ôY[à»ô\‹€ô»[ùö]][€úÀâŒ¬àSëQé¬àQà⁄[ùö]\ó⁄YT»ïS‘à⁄[ùö]\ó⁄YH›\úô[ù›\Ÿ\ó⁄Y‘àÿXÿŸ\T»ïSSÇàêRT—HV—TS”à	’\»[ùö]][€à\»[ùò[YâŒ¬àSëQé¬Çà—SP’VT’»
+à—SP’Bàîì”HXõXÀôõ€›‹¬à“TëHõ€›Ÿ\ó⁄YH⁄[ùö]\ó⁄YàSëõ€›⁄[ô◊⁄YH›\úô[ù›\Ÿ\ó⁄Yà
+HSï»[ùö]][€óŸ^\›Œ¬ÇàQàì’[ùö]][€óŸ^\›»SÇàêRT—HV—TS”à	’\»[ùö]][€à\»õ»€ôŸ\à[ô[ôÀâŒ¬àSëQé¬ÇàKHHõÿ⁄⁄[ô»ZY‹ò][€à\»‹[€ò[€à€\à\ﬁ[Y[ùÀà⁄X⁄»]⁄[ÇàKH]»XõH^\›»⁄]›]XZ⁄[ô»\»ù[ò›[€à\[ô€à]ZY‹ò][€ãÇàQà◊‹ôYÿ€\‹ 	‹XõXÀù\Ÿ\óÿõÿ⁄‹… HT»ì’ïSSÇàVP’UBà	‘—SP’VT’»
+à—SP’Hîì”HXõXÀù\Ÿ\óÿõÿ⁄‹¬à“TëH
+õÿ⁄Ÿ\ó⁄YH	HSëõÿ⁄ŸY⁄YH	äBà‘à
+õÿ⁄Ÿ\ó⁄YH	àSëõÿ⁄ŸY⁄YH	JBà
+I¬àSï»õÿ⁄ŸYàT“Së»›\úô[ù›\Ÿ\ó⁄Y⁄[ùö]\ó⁄Y¬àSëQé¬ÇàQàÿXÿŸ\SÇàQàõÿ⁄ŸYSÇàêRT—HV—TS”à	’[òõÿ⁄»\»Y[Xô\àôYõ‹ôHXÿŸ\[ô»H[ùö]][€ãâŒ¬àSëQé¬ÇàSî—TïSï»XõXÀôõ€›‹»
+õ€›Ÿ\ó⁄Yõ€›⁄[ô◊⁄Y
+BàêSQT»
+›\úô[ù›\Ÿ\ó⁄Y⁄[ùö]\ó⁄Y
+Bà”à””ëìP’
+õ€›Ÿ\ó⁄Yõ€›⁄[ô◊⁄Y
+H»ì’SëŒ¬àS—BàSUHîì”HXõXÀôõ€›‹¬à“TëHõ€›Ÿ\ó⁄YH⁄[ùö]\ó⁄YàSëõ€›⁄[ô◊⁄YH›\úô[ù›\Ÿ\ó⁄Y¬àSëQé¬ëSë¬â	¬ÇîëUì“—HS”àïSê’S”àXõXÀúô\‹€ô›◊ÿ⁄]⁄[ùö]][€äURQì””PSäBàîì”HPìPÀ[õ€é¬ë‘êSïVP’UH”àïSê’S”àXõXÀúô\‹€ô›◊ÿ⁄]⁄[ùö]][€äURQì””PSäBà»]][ùXÿ]Y¬ÇãKHHY[Xô\àÿ[àöY]»HõŸö[H[ô]ò]\àŸàXÿ€›[ù»]õ€›»[KãKH[ò€Y[ô»Xÿ€›[ù»Y[àúõ€H€ÿò[ŸX\ò⁄àõÿ⁄‹»›[›ô\úöYHXÿŸ\‹ÀÇëì‘”P÷HQàVT’»ìY[Xô\ú»öY]»õŸö[\»ŸàZ\àõ€›Ÿ\ú»à”àXõXÀúõŸö[\Œ¬ë»	ZY‹ò][€âëP”TëBàõ€›Ÿ\ó›ö\⁄Xö[]HVèH	€XﬁIà
+—SP’]]ùZY
+
+JHT»ì’ïSàSëVT’»
+à—SP’Bàîì”HXõXÀôõ€›‹»T»ô[][€ú⁄\à“TëHô[][€ú⁄\ôõ€›Ÿ\ó⁄YHXõXÀúõŸö[\ÀöYàSëô[][€ú⁄\ôõ€›⁄[ô◊⁄YH
+—SP’]]ùZY
+
+JBà
+Bà	€XﬁI¬êëQ“SÇàQà◊‹ôYÿ€\‹ 	‹XõXÀù\Ÿ\óÿõÿ⁄‹… HT»ì’ïSSÇàõ€›Ÿ\ó›ö\⁄Xö[]HèHõ€›Ÿ\ó›ö\⁄Xö[]H	€XﬁIàSëì’VT’»
+à—SP’Bàîì”HXõXÀù\Ÿ\óÿõÿ⁄‹»T»õÿ⁄¬à“TëH
+õÿ⁄Àòõÿ⁄Ÿ\ó⁄YH
+—SP’]]ùZY
+
+JHSëõÿ⁄Àòõÿ⁄ŸY⁄YHXõXÀúõŸö[\ÀöY
+Bà‘à
+õÿ⁄Àòõÿ⁄Ÿ\ó⁄YHXõXÀúõŸö[\ÀöYSëõÿ⁄Àòõÿ⁄ŸY⁄YH
+—SP’]]ùZY
+
+JJBà
+Bà	€XﬁI¬àSëQé¬ÇàVP’UHõ‹õX]
+à	–‘ëPUH”P÷HìY[Xô\ú»öY]»õŸö[\»ŸàZ\àõ€›Ÿ\ú»à	¬à	””àXõXÀúõŸö[\»ì‘à—SP’»]][ùXÿ]YT“Së»
+	\ IÀàõ€›Ÿ\ó›ö\⁄Xö[]Bà
+N¬ëSë¬âZY‹ò][€â¬Çê””SRU¬ÇãKHOOOOOOOOOOOOOOOHTïÀÃçàZY‹ò][€úÀÃåçåLL◊Ÿö[ô‹[‹Kú‹[OOOOOOOOOOOOOOOBãKHOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOBãKH’TH»íSëSë»S‘BãKHXZŸ\»Y[Xô\ú»\ÿ€›ô\òXõHûHYò][]»H\Ÿ\à€Z[HH[ö\]YBãKH\Ÿ\õò[YK[ô]»[à[ùö]H[ö»ô\€€ôHH\Ÿ\õò[YH»HY[Xô\ãÇãKBãKHÿYôH»ù[à[‹ôH[à€òŸNà]ô\ûH›][Y[ù\»Qàì’VT’ÀãKH‘ëPUH‘àëTP—K‹à[àY[\›[ùSTã—‘êSïÇãKHù[à\»ö[HQïTà]Xò\ŸK‹ÿ⁄[XKú‹[[ôQïTà]ô\ûHö[H[ÇãKH]Xò\ŸK€ZY‹ò][€úÀÀÇãKHOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOBÇÇãKHKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKBãKHKàëHT–”’ëTêPìHñHQêUSãKHõŸö[\Àö\◊Ÿ\ÿ€›ô\òXõHÿ\»YY⁄]QêUSêS—K€»õÿõŸBãKH€›[\X\à[àŸX\ò⁄àô]»Xÿ€›[ù»õ›»›\ù\ÿ€›ô\òXõKÇãKHKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKBÇêSTàPìHXõXÀúõŸö[\¬àSTà””SSà\◊Ÿ\ÿ€›ô\òXõH—UQêUSïQN¬ÇÇãKHKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKBãKHãàVT’Së»QSPëTî¬ãKH⁄]›]\À]ô\ûHXÿ€›[ù][ôXYH^\›»›^\»[ùö\⁄XõH[ôãKHòÿ[â›ö[ôXX⁄›\àà€€ù[ùY\»õ‹à[›\à›\úô[ù\Ÿ\úÀÇãKH[]H\»⁄[ô€H›][Y[ùYà[›H€›[ò]\à[‹H‹[ãÇãKHKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKBÇïTUHXõXÀúõŸö[\¬à—U\◊Ÿ\ÿ€›ô\òXõHHïQBà“TëH\◊Ÿ\ÿ€›ô\òXõHT»T’Sê’îì”HïQN¬ÇÇãKHKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKBãKHÀàT—TìêSQH”“’T’T‘ïãKHõ»[ô^€‹ö»ôYYYà\Ÿ\õò[YH[ôXYH\»HSíTUQH€€ú›òZ[ùBãKH“P“»]›‹ô\»]›Ÿ\òÿ\ŸK[ôHöY‹ò[H[ô^ãKH
+õŸö[\◊›\Ÿ\õò[YW‹ŸX\ò⁄⁄Y
+Húõ€Hÿ⁄[XKú‹[à[ùö]H[ö‹»»[ÇãKH^X›X]⁄⁄X⁄HSíTUQH€€ú›òZ[ù[ôXYHŸ\ùô\ÀÇãKHKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKBÇÇãKHKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKBãKHà“P“»HT—TìêSQHT»îëQHSë—Sì‘ìQQãKH—P’TíUHQíSëTéàHZ[à—SP’ÿ[õõ›ŸYHõ›‹»Hÿ[\àX^Hõ›ãKHôXY€»[ö\]Y[ô\‹»€›[õ›ôHô\öYöYY›\ù⁄\ŸKàHù[ò›[€ÇãKH€õHô]ôX[»ùZŸ[à»úôYHãô]ô\à⁄»›€ú»]ÇãKHKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKBÇê‘ëPUH‘àëTP—HïSê’S”àXõXÀù\Ÿ\õò[YWÿ]òZ[XõJ›\Ÿ\õò[YHV
+BîëUTìî»ì””PSÇìSë’PQ—H‹‹[î’PìBî—P’TíUHQíSëTÇî—UŸX\ò⁄‹]H	…¬êT»		ëP”TëBàÿ[ôY]HVèH’—TäíSJ”–ST–—J›\Ÿ\õò[YK	… JJN¬êëQ“SÇàQà]]ùZY
+
+HT»ïSSÇàëUTìàêS—N¬àSëQé¬ÇàQàÿ[ôY]H_à	◊ñÿK^åNW◊^ÃÀÃI	»SÇàëUTìàêS—N¬àSëQé¬ÇàëUTìàì’VT’»
+à—SP’Bàîì”HXõXÀúõŸö[\¬à“TëH’—Tä\Ÿ\õò[YJHHÿ[ôY]BàSëYà]]ùZY
+
+Bà
+N¬ëSë¬â	¬ÇîëUì“—HS”àïSê’S”àXõXÀù\Ÿ\õò[YWÿ]òZ[XõJV
+Hîì”HPìPÀ[õ€é¬ë‘êSïVP’UH”àïSê’S”àXõXÀù\Ÿ\õò[YWÿ]òZ[XõJV
+H»]][ùXÿ]Y¬ÇÇãKHKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKBãKHKà“Së—HVHT—TìêSQBãKHò[Y]\»⁄\Hö\ú›€»HòYò[YHÿ[õõ›ôXX⁄HXõH“P“ÀãKH[à\]\»€õHHÿ[\â‹»›€àõ›ÀÇãKHKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKBÇê‘ëPUH‘àëTP—HïSê’S”àXõXÀúŸ]€^W›\Ÿ\õò[YJ›\Ÿ\õò[YHV
+BîëUTìî»VìSë’PQ—H‹‹[î—P’TíUHQíSëTÇî—UŸX\ò⁄‹]H	…¬êT»		ëP”TëBàÿ[ôY]HVèH’—TäíSJ”–ST–—J›\Ÿ\õò[YK	… JJN¬à\]Y›\Ÿ\õò[YHV¬êëQ“SÇàQà]]ùZY
+
+HT»ïSSÇàêRT—HV—TS”à	‘⁄Y€à[à»⁄€‹ŸHH\Ÿ\õò[YKâ¬àT“Së»Tîê”—HH	Ãé	Œ¬àSëQé¬ÇàQàÿ[ôY]H_à	◊ñÿK^åNW◊^ÃÀÃI	»SÇàêRT—HV—TS”à	’\Ÿ\õò[Y\»\ôHÀLÃ⁄\òX›\úŒàK^ãNK[ô\úÿ€‹ôKâ¬àT“Së»Tîê”—HH	Ãååå…Œ¬àSëQé¬ÇàQàVT’»
+à—SP’Hîì”HXõXÀúõŸö[\¬à“TëH’—Tä\Ÿ\õò[YJHHÿ[ôY]HSëYà]]ùZY
+
+Bà
+HSÇàêRT—HV—TS”à	’]\Ÿ\õò[YH\»[ôXYHZŸ[ãâ¬àT“Së»Tîê”—HH	ÃåÕLIŒ¬àSëQé¬ÇàTUHXõXÀúõŸö[\¬à—U\Ÿ\õò[YHHÿ[ôY]Bà“TëHYH]]ùZY
+
+BàëUTìíSë»XõXÀúõŸö[\Àù\Ÿ\õò[YHSï»\]Y›\Ÿ\õò[YN¬ÇàëUTìà\]Y›\Ÿ\õò[YN¬ëSë¬â	¬ÇîëUì“—HS”àïSê’S”àXõXÀúŸ]€^W›\Ÿ\õò[YJV
+Hîì”HPìPÀ[õ€é¬ë‘êSïVP’UH”àïSê’S”àXõXÀúŸ]€^W›\Ÿ\õò[YJV
+H»]][ùXÿ]Y¬ÇÇãKHKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKBãKHãàëT””ëHSàSïíUHSí¬ãKHõ»ù[ò›[€àôYYYàH€Y[ùŸ[X›»HõŸö[Hõ›»ûH\Ÿ\õò[YKãKH[ôH^\›[ô»îõŸö[\»\ôHöY]ÿXõHûH]][ùXÿ]Y\Ÿ\ú»ÇãKH€XﬁH[ôXYHX⁄Y\»H›]€€YNàHY[Xô\à⁄»\õôYöYHYBãKHúõ€HŸX\ò⁄àŸôàô]\õú»õ»õ›À[ô€»Ÿ\»HY[Xô\à⁄»õÿ⁄ŸYãKHHö\⁄]‹ãà⁄[ô»][àH€XﬁHYX[ú»€ôH€ŸH][ôõ»^òBãKH—P’TíUHQíSëTà›\ôòXŸKÇãKHKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKBÇÇãKHKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKBãKHÀàëS–QHTH–“SPH–P“BãKHKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKBÇìì’QñH‹ú›	‹ô[ÿYÿ⁄[XIŒ¬ÇÇãKHKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKBãKHàëTíQñBãKH^X›Yà»õ›‹À[ô\›[H	€⁄…ÀÇãKHKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKBÇî—SP’	Ÿ\ÿ€›ô\òXõWŸYò][	»T»⁄X⁄◊€ò[YKà–T—H“Sà
+à—SP’€€[[óŸYò][àîì”H[ôõ‹õX][€ó‹ÿ⁄[XKò€€[[ú¬à“TëHXõW‹ÿ⁄[XHH	‹XõX…¬àSëXõW€ò[YHH	‹õŸö[\…¬àSë€€[[ó€ò[YHH	⁄\◊Ÿ\ÿ€›ô\òXõI¬à
+HR—H	…]ùYII»Sà	€⁄…»S—H	—êRSQ	»SëT»ô\›[ïSíS”àSî—SP’	Ÿù[ò›[€ú◊ÿ‹ôX]Y	Àà–T—H“Sà”’Sï
+
+äHHàSà	€⁄…»S—H	—êRSQ
+	»”’Sï
+
+äH	ÀÃäI»Sëëîì”H◊‹õÿ»T»íì“Sà◊€ò[Y\‹XŸHT»à”àãõ⁄YHúõ€ò[Y\‹XŸBï“TëHãõú‹ò[YHH	‹XõX…¬àSëúõ€ò[YHSà
+	›\Ÿ\õò[YWÿ]òZ[XõIÀ	‹Ÿ]€^W›\Ÿ\õò[YI BïSíS”àSî—SP’	Ÿ]ô\û[€ôWŸ\ÿ€›ô\òXõIÀà–T—H“Sà”’Sï
+
+äHHSà	€⁄…»S—H	—êRSQ
+	»”’Sï
+
+äH	»Y[äI»Sëëîì”HXõXÀúõŸö[\¬ï“TëH\◊Ÿ\ÿ€›ô\òXõHT»T’Sê’îì”HïQN¬ÇãKHOOOOOOOOOOOOOOOHTïÃçàZY‹ò][€úÀÃåçåLM‹õ€\◊ÿ[ôÿYZ[ãú‹[OOOOOOOOOOOOOOOBãKHOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOBãKH–STT»””ìëP’8†%ì”TÀTì’êSSëQRSÇãKHÿXò\òZ»[ö]ô\ú⁄]Nà›Y[ù»X›\ô\à»ŸX›\ö]H»YZ[ãÇãKBãKHY[\›[ùàÿYôH»ù[à[‹ôH[à€òŸKà\Ÿ\»ì‘ããàQàVT’ÀãKH‘ëPUH‘àëTP—KQ””SSàQàì’VT’À[ôÿ][Ÿ»⁄X⁄‹¬ãKH\õ›[ô[ô^‹ôX][€ãÇãKBãKHïSà‘ëTÇãKHKà]Xò\ŸK‹ÿ⁄[XKú‹[ãKHãà]ô\ûHö[H[à]Xò\ŸK€ZY‹ò][€úÀ»][ôXYH^\›¬ãKHÀà]Xò\ŸK€ZY‹ò][€úÀÃåçåLL◊Ÿö[ô‹[‹Kú‹[ãKHàT»íSBãKHOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOBÇÇãKHKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKBãKHKàì”H””SSî»”àì—íST¬ãKH^\›[ô»Y[Xô\ú»ôX€€YH›Y[ù»[ô›^H\õ›ôY€»õ›[ô»]ãKH€‹ö‹»Ÿ^HúôXZ‹»Yù\à\»ù[úÀÇãKHKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKBÇêSTàPìHXõXÀúõŸö[\¬àQ””SSàQàì’VT’»õ€HVì’ïSQêUS	‹›Y[ù	Œ¬ÇêSTàPìHXõXÀúõŸö[\¬àQ””SSàQàì’VT’»ô\öYöXÿ][€ó‹›]\»Vì’ïSQêUS	ÿ\õ›ôY	Œ¬ÇêSTàPìHXõXÀúõŸö[\¬àQ””SSàQàì’VT’»ô\]Y\›Y‹õ€HVì’ïSQêUS	…Œ¬ÇêSTàPìHXõXÀúõŸö[\¬àQ””SSàQàì’VT’»[ö]ô\ú⁄]HVì’ïSQêUS	…Œ¬Çë»		êëQ“SÇàQàì’VT’»
+à—SP’Hîì”H◊ÿ€€ú›òZ[ùà“TëH€€õò[YHH	‹õŸö[\◊‹õ€Wÿ⁄X⁄…»Së€€úô[YH	‹XõXÀúõŸö[\…ŒéúôYÿ€\‹¬à
+HSÇàSTàPìHXõXÀúõŸö[\¬àQ””î’êRSïõŸö[\◊‹õ€Wÿ⁄X⁄¬à“P“»
+õ€HSà
+	‹›Y[ù	À	€X›\ô\âÀ	‹ŸX›\ö]IÀ	ÿYZ[â JN¬àSëQé¬ÇàQàì’VT’»
+à—SP’Hîì”H◊ÿ€€ú›òZ[ùà“TëH€€õò[YHH	‹õŸö[\◊›ô\öYöXÿ][€ó‹›]\◊ÿ⁄X⁄…¬àSë€€úô[YH	‹XõXÀúõŸö[\…ŒéúôYÿ€\‹¬à
+HSÇàSTàPìHXõXÀúõŸö[\¬àQ””î’êRSïõŸö[\◊›ô\öYöXÿ][€ó‹›]\◊ÿ⁄X⁄¬à“P“»
+ô\öYöXÿ][€ó‹›]\»Sà
+	‹[ô[ô…À	ÿ\õ›ôY	À	‹ôZôX›Y	 JN¬àSëQé¬ÇàQàì’VT’»
+à—SP’Hîì”H◊ÿ€€ú›òZ[ùà“TëH€€õò[YHH	‹õŸö[\◊‹ô\]Y\›Y‹õ€Wÿ⁄X⁄…¬àSë€€úô[YH	‹XõXÀúõŸö[\…ŒéúôYÿ€\‹¬à
+HSÇàSTàPìHXõXÀúõŸö[\¬àQ””î’êRSïõŸö[\◊‹ô\]Y\›Y‹õ€Wÿ⁄X⁄¬à“P“»
+ô\]Y\›Y‹õ€HSà
+	…À	‹›Y[ù	À	€X›\ô\âÀ	‹ŸX›\ö]I JN¬àSëQé¬ëSë¬â	¬ÇãKHõ›‹»]^\›YôYõ‹ôH\»ZY‹ò][€à[ôXYHÿ\úûHHô]»€€[[ÇãKHYò][»
+›Y[ù\õ›ôY
+Kà[àTUH\ôH\ŸY»õ‹òŸH]ô\ûHõ€BãKHòX⁄»»›Y[ù⁄X⁄⁄[[ùH[[›YYZ[ú»[ôX›\ô\ú»⁄[ô]ô\ÇãKHHŸ]\ÿ\»ù[àHŸX€€ô[YK€»]\»[Xô\ò][Hõ›€ôKÇÇÇãKHKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKBãKHãàëQ“T’êUS”àïSPëTî»UëHSàRTà’”àPìBãKHHõŸö[Hÿ‹ôY[àôXY»õŸö[\»⁄]Ÿ[X›
+	 äKàŸY\[ô»BãKHù[Xô\à\ôH€›[[ô]»[û[€ôH[›ŸY»ôXYHõ›ÀÇãKH[à]»›€àXõKõ›»]ô[ŸX›\ö]Hÿ[à[Z]]»H›€ô\à[ôãKH»YZ[úÀ⁄X⁄\»⁄]›‹»[û[€ôHúõ›‹⁄[ô»›Y[ùù[Xô\úÀÇãKHKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKBÇê‘ëPUHPìHQàì’VT’»XõXÀú›Y[ù‹ôY⁄\›ò][€ú»
+à\Ÿ\ó⁄YURQíSPTñH—VHëQëTëSê—T»XõXÀúõŸö[\ Y
+H”àSUH–T––QKàôY⁄\›ò][€ó€ù[Xô\àVì’ïSà‹ôX]Yÿ]SQT’STàì’ïSQêUSì’ 
+Kà\]Yÿ]SQT’STàì’ïSQêUSì’ 
+Kà””î’êRSï›Y[ù‹ôY⁄\›ò][€ú◊€ù[Xô\óŸõ‹õX]ÿ⁄X⁄¬à“P“»
+ôY⁄\›ò][€ó€ù[Xô\àà	◊ñ–KVòK^åNWVÀKã»KVòK^åNW^ÃãÃ_I	 BäN¬Çê‘ëPUHSíTUQHSëVQàì’VT’»›Y[ù‹ôY⁄\›ò][€ú◊€ù[Xô\ó⁄Ÿ^Bà”àXõXÀú›Y[ù‹ôY⁄\›ò][€ú»
+ôY⁄\›ò][€ó€ù[Xô\äN¬ÇêSTàPìHXõXÀú›Y[ù‹ôY⁄\›ò][€ú»SêPìHì’»UëS—P’TíUN¬ÇÇãKHKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKBãKHÀà“»SHH8†%YZ[à⁄X⁄»]Ÿ\»õ›ôX›\úŸHõ›Y⁄ì¬ãKH—P’TíUHQíSëTà€»ôXY[ô»õŸö[\Àúõ€H\»[›ŸY[ú⁄YHBãKH€X⁄Y\»][\Ÿ[ô\»€€ú›[õŸö[\Àúõ€KÇãKHKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKBÇê‘ëPUH‘àëTP—HïSê’S”àXõXÀö\◊ÿYZ[ä
+BîëUTìî»ì””PSÇìSë’PQ—H‹[î’PìBî—P’TíUHQíSëTÇî—UŸX\ò⁄‹]H	…¬êT»		à—SP’”–ST–—Jà
+—SP’úõ€HH	ÿYZ[â»îì”HXõXÀúõŸö[\»T»“TëHöYH]]ùZY
+
+JKàêS—Bà
+N¬â	¬Çê‘ëPUH‘àëTP—HïSê’S”àXõXÀõ^W‹õ€J
+BîëUTìî»VìSë’PQ—H‹[î’PìBî—P’TíUHQíSëTÇî—UŸX\ò⁄‹]H	…¬êT»		à—SP’”–ST–—Jà
+—SP’úõ€Hîì”HXõXÀúõŸö[\»T»“TëHöYH]]ùZY
+
+JKà	‹›Y[ù	¬à
+N¬â	¬ÇîëUì“—HS”àïSê’S”àXõXÀö\◊ÿYZ[ä
+Hîì”HPìPÀ[õ€é¬îëUì“—HS”àïSê’S”àXõXÀõ^W‹õ€J
+Hîì”HPìPÀ[õ€é¬ë‘êSïVP’UH”àïSê’S”àXõXÀö\◊ÿYZ[ä
+H»]][ùXÿ]Y¬ë‘êSïVP’UH”àïSê’S”àXõXÀõ^W‹õ€J
+H»]][ùXÿ]Y¬ÇÇãKHKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKBãKHàHQSPëTà–Sìì’ì”S’HST—SÇãKH\»\»H⁄€H⁄[ùŸàHôX]\ôNà⁄]›]][û[€ôH€›[Ÿ]ãKHõ€OI‹ŸX›\ö]I»[ôôXY]ô\ûHõ›[ôQàì»€X⁄Y\»[€ôHÿ[õõ›ãKH€€\\ôH€[ôô]»€€[[àò[Y\À€»HöYŸŸ\àŸ\»]ÇãKBãKH€àSî—TïHõ€H\»õ‹òŸY»›Y[ùàH\ú€€à⁄»ÿ[ù»X›\ô\ÇãKH‹àŸX›\ö]HXÿŸ\‹»€õH]ô\à›‹ô\»HëTUQT’⁄X⁄[àYZ[àX›»€ãÇãKHKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKBÇê‘ëPUH‘àëTP—HïSê’S”àXõXÀô[ôõ‹òŸW‹õŸö[W‹õ€W⁄[ùY‹ö]J
+BîëUTìî»íQ——TÇìSë’PQ—H‹‹[î—P’TíUHQíSëTÇî—UŸX\ò⁄‹]H	…¬ãKH[ûHô\]Y\›€€Z[ô»õ›Y⁄HTHÿ\úöY\»H⁄Y€ôYZ[à\Ÿ\ã€¬ãKH]]ùZY
+
+H\»Ÿ]à]\»ïS€õHõ‹àH‘SY]‹ãHŸ\ùöXŸBãKHŸ^K[ôZY‹ò][€ú»ZŸHHYZ[àŸYY[àŸX›[€àH8†%H\›€ô\ÇãKH€‹ö⁄[ô»\ôX›H[àH]Xò\ŸKà[õ€û[[›\»THòYôöX»ô]ô\àôXX⁄\¬ãKH\»öYŸŸ\ãôXÿ]\ŸH]ô\ûH€XﬁH€àõŸö[\»\»»]][ùXÿ]YÇêT»		êëQ“SÇàQà]]ùZY
+
+HT»ïSSÇàëUTìàëUŒ¬àSëQé¬ÇàQà◊”‘H	“Sî—Tï	»SÇàQàXõXÀö\◊ÿYZ[ä
+HSëëUÀúõ€HT»ì’ïSSÇàëUTìàëUŒ¬àSëQé¬àKH⁄Y€ã]\ÿ[àÿ\úûHHô\]Y\›ô]ô\àHõ€KÇàëUÀúõ€HèH	‹›Y[ù	Œ¬àQàëUÀúô\]Y\›Y‹õ€HSà
+	€X›\ô\âÀ	‹ŸX›\ö]I HSÇàëUÀùô\öYöXÿ][€ó‹›]\»èH	‹[ô[ô…Œ¬àS—BàëUÀùô\öYöXÿ][€ó‹›]\»èH	ÿ\õ›ôY	Œ¬àëUÀúô\]Y\›Y‹õ€HèH	…Œ¬àSëQé¬àëUTìàëUŒ¬àSëQé¬ÇàKHHY[Xô\àX^H\⁄»õ‹àHõ€N»€õH[àYZ[àX^H‹ò[ù€ôKÇàQàëUÀúô\]Y\›Y‹õ€HT»T’Sê’îì”H”úô\]Y\›Y‹õ€HSÇàKH⁄]ò]⁄[ô»Hô\]Y\›]»HZ[à›Y[ùòX⁄»[à€€ŸàKH›[ô[ôÀà\»‹ò[ù»õ›[ôŒà›Y[ù\»Hò\Ÿ[[ôHõ€KÇàQàëUÀúô\]Y\›Y‹õ€HH	…¬àSë”úõ€HH	‹›Y[ù	¬àSëì’XõXÀö\◊ÿYZ[ä
+HSÇàëUÀùô\öYöXÿ][€ó‹›]\»èH	ÿ\õ›ôY	Œ¬àëUTìàëUŒ¬àSëQé¬ÇàQàëUÀúô\]Y\›Y‹õ€Hà	…»Sëì’XõXÀö\◊ÿYZ[ä
+HSÇàQà”ùô\öYöXÿ][€ó‹›]\»H	‹ôZôX›Y	»Së”úô\]Y\›Y‹õ€HHëUÀúô\]Y\›Y‹õ€HSÇàêRT—HV—TS”à	–[àYZ[à[ôXYHôZôX›Y]õ€Hô\]Y\›â¬àT“Së»Tîê”—HH	ÕçLIŒ¬àSëQé¬àKHHô\]Y\›€õHX\ö‹»HXÿ€›[ù[ô[ôÀàëUÀúõ€HŸY\¬àKH]»€ò[YK€»\⁄⁄[ô»õ‹à[õ›\àõ€Hÿ[àô]ô\àõ€[›BàKHHŸ[ô\à[ôÿ[àô]ô\à[[›H€ôH[àYZ[à[ôXYH‹ò[ùYÇàëUÀùô\öYöXÿ][€ó‹›]\»èH	‹[ô[ô…Œ¬àëUTìàëUŒ¬àSëQé¬àSëQé¬ÇàQàëUÀúõ€HT»T’Sê’îì”H”úõ€Bà‘àëUÀùô\öYöXÿ][€ó‹›]\»T»T’Sê’îì”H”ùô\öYöXÿ][€ó‹›]\»SÇàQàì’XõXÀö\◊ÿYZ[ä
+HSÇàêRT—HV—TS”à	”€õH[àYZ[àÿ[à⁄[ôŸHHõ€H‹à\õ›ò[›]\Àâ¬àT“Së»Tîê”—HH	ÕçLIŒ¬àSëQé¬àSëQé¬ÇàëUTìàëUŒ¬ëSë¬â	¬ÇîëUì“—HS”àïSê’S”àXõXÀô[ôõ‹òŸW‹õŸö[W‹õ€W⁄[ùY‹ö]J
+Hîì”HPìPÀ[õ€ã]][ùXÿ]Y¬Çëì‘íQ——TàQàVT’»õŸö[\◊Ÿ[ôõ‹òŸW‹õ€W⁄[ùY‹ö]H”àXõXÀúõŸö[\Œ¬ê‘ëPUHíQ——TàõŸö[\◊Ÿ[ôõ‹òŸW‹õ€W⁄[ùY‹ö]BàëQì‘ëHSî—Tï‘àTUBà”àXõXÀúõŸö[\¬àì‘àPP“ì’¬àVP’UHïSê’S”àXõXÀô[ôõ‹òŸW‹õŸö[W‹õ€W⁄[ùY‹ö]J
+N¬ÇÇãKHKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKBãKHKàQRSàP’S”à—¬ãKHKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKBÇê‘ëPUHPìHQàì’VT’»XõXÀòYZ[óÿX›[€ó€Ÿ»
+àYíQ“Sï—SëTêUQS–VT»T»QSïUHíSPTñH—VKàX›‹ó⁄YURQì’ïSëQëTëSê—T»XõXÀúõŸö[\ Y
+H”àSUH–T––QKà\ôŸ]›\Ÿ\ó⁄YURQì’ïSëQëTëSê—T»XõXÀúõŸö[\ Y
+H”àSUH–T––QKàX›[€àVì’ïSà]Z[Vì’ïSQêUS	…Àà‹ôX]Yÿ]SQT’STàì’ïSQêUSì’ 
+Kà””î’êRSïYZ[óÿX›[€ó€Ÿ◊ÿX›[€óÿ⁄X⁄¬à“P“»
+X›[€àSà
+	ÿ\õ›ôIÀ	‹ôZôX›	À	‹Ÿ]‹õ€IÀ	‹ô\Ÿ]‹õ€W‹ô\]Y\›	 JBäN¬Çê‘ëPUHSëVQàì’VT’»YZ[óÿX›[€ó€Ÿ◊›\ôŸ]⁄Yà”àXõXÀòYZ[óÿX›[€ó€Ÿ»
+\ôŸ]›\Ÿ\ó⁄Y‹ôX]Yÿ]T– N¬ÇêSTàPìHXõXÀòYZ[óÿX›[€ó€Ÿ»SêPìHì’»UëS—P’TíUN¬ÇÇãKHKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKBãKHãà”P“QT¬ãKHKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKBÇãKH›€àôY⁄\›ò][€àõ›Œ»YZ[ú»ŸYH[€»^Hÿ[àô\öYûHH€Z[X[ùÇëì‘”P÷HQàVT’»ìY[Xô\ú»X[òYŸHZ\à›€àôY⁄\›ò][€àù[Xô\àÇà”àXõXÀú›Y[ù‹ôY⁄\›ò][€úŒ¬ê‘ëPUH”P÷HìY[Xô\ú»X[òYŸHZ\à›€àôY⁄\›ò][€àù[Xô\àÇà”àXõXÀú›Y[ù‹ôY⁄\›ò][€ú¬àì‘àS»]][ùXÿ]YàT“Së»
+]]ùZY
+
+HH\Ÿ\ó⁄Y
+Bà“U“P“»
+]]ùZY
+
+HH\Ÿ\ó⁄Y
+N¬Çëì‘”P÷HQàVT’»êYZ[ú»öY]»[ôY⁄\›ò][€àù[Xô\ú»Çà”àXõXÀú›Y[ù‹ôY⁄\›ò][€úŒ¬ê‘ëPUH”P÷HêYZ[ú»öY]»[ôY⁄\›ò][€àù[Xô\ú»Çà”àXõXÀú›Y[ù‹ôY⁄\›ò][€ú¬àì‘à—SP’»]][ùXÿ]YàT“Së»
+XõXÀö\◊ÿYZ[ä
+JN¬ÇãKHHôY⁄\›ò][€àù[Xô\à\»[[]]XõH€òŸHŸ]€»HY[Xô\àÿ[õõ›ãKHòYH]\õ›[ô»€õH[àYZ[àX^H[›ôH]Çê‘ëPUH‘àëTP—HïSê’S”àXõXÀô[ôõ‹òŸW‹ôY⁄\›ò][€ó⁄[[]]XõJ
+BîëUTìî»íQ——TÇìSë’PQ—H‹‹[î—P’TíUHQíSëTÇî—UŸX\ò⁄‹]H	…¬êT»		êëQ“SÇàQà]]ùZY
+
+HT»ïSSÇàëUTìàëUŒ¬àSëQé¬ÇàQàëUÀúôY⁄\›ò][€ó€ù[Xô\àT»T’Sê’îì”H”úôY⁄\›ò][€ó€ù[Xô\ÇàSëì’XõXÀö\◊ÿYZ[ä
+HSÇàêRT—HV—TS”à	”€õH[àYZ[àÿ[à⁄[ôŸHHôY⁄\›ò][€àù[Xô\ãâ¬àT“Së»Tîê”—HH	ÕçLIŒ¬àSëQé¬àëUTìàëUŒ¬ëSë¬â	¬ÇîëUì“—HS”àïSê’S”àXõXÀô[ôõ‹òŸW‹ôY⁄\›ò][€ó⁄[[]]XõJ
+Hîì”HPìPÀ[õ€ã]][ùXÿ]Y¬Çëì‘íQ——TàQàVT’»›Y[ù‹ôY⁄\›ò][€ú◊Ÿ[ôõ‹òŸW⁄[[]]XõH”àXõXÀú›Y[ù‹ôY⁄\›ò][€úŒ¬ê‘ëPUHíQ——Tà›Y[ù‹ôY⁄\›ò][€ú◊Ÿ[ôõ‹òŸW⁄[[]]XõBàëQì‘ëHTUBà”àXõXÀú›Y[ù‹ôY⁄\›ò][€ú¬àì‘àPP“ì’¬àVP’UHïSê’S”àXõXÀô[ôõ‹òŸW‹ôY⁄\›ò][€ó⁄[[]]XõJ
+N¬ÇãKHYZ[ú»X^HôXY]ô\ûHõŸö[K[ò€Y[ô»Y[Xô\ú»Y[àúõ€HŸX\ò⁄ãKH€»^Hÿ[àô]öY]»H[ô[ô»ô\]Y\›Çëì‘”P÷HQàVT’»êYZ[ú»öY]»[õŸö[\»Çà”àXõXÀúõŸö[\Œ¬ê‘ëPUH”P÷HêYZ[ú»öY]»[õŸö[\»Çà”àXõXÀúõŸö[\¬àì‘à—SP’»]][ùXÿ]YàT“Së»
+XõXÀö\◊ÿYZ[ä
+JN¬Çëì‘”P÷HQàVT’»êYZ[ú»öY]»]Y]Ÿ»Çà”àXõXÀòYZ[óÿX›[€ó€ŸŒ¬ê‘ëPUH”P÷HêYZ[ú»öY]»]Y]Ÿ»Çà”àXõXÀòYZ[óÿX›[€ó€Ÿ¬àì‘à—SP’»]][ùXÿ]YàT“Së»
+XõXÀö\◊ÿYZ[ä
+JN¬ÇÇãKHKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKBãKHÀàQRSãS”ìH“Së—T»ïSàT»QíSëTÇãKH[Xô\ò][Hò\úõ›Œà[àYZ[àŸ]»\ŸHôYH‹\ò][€úÀõ›BãKHõ[öŸ]öY⁄»Y][û[€ôI‹»õŸö[KÇãKHKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKBÇê‘ëPUH‘àëTP—HïSê’S”àXõXÀò\õ›ôW€Y[Xô\ú⁄\
+›\Ÿ\ó⁄YURQ
+BîëUTìî»ì“QìSë’PQ—H‹‹[î—P’TíUHQíSëTÇî—UŸX\ò⁄‹]H	…¬êT»		êëQ“SÇàQàì’XõXÀö\◊ÿYZ[ä
+HSÇàêRT—HV—TS”à	”€õH[àYZ[àÿ[à\õ›ôHHõ€Hô\]Y\›â¬àT“Së»Tîê”—HH	ÕçLIŒ¬àSëQé¬ÇàTUHXõXÀúõŸö[\¬à—Uô\öYöXÿ][€ó‹›]\»H	ÿ\õ›ôY	Ààõ€HH–T—H“Sàô\]Y\›Y‹õ€HSà
+	€X›\ô\âÀ	‹ŸX›\ö]I BàSàô\]Y\›Y‹õ€HS—Hõ€HSëà“TëHYH›\Ÿ\ó⁄Y¬ÇàQàì’ì’SëSÇàêRT—HV—TS”à	”õ»›X⁄Y[Xô\ãâ»T“Së»Tîê”—HH	‘âŒ¬àSëQé¬ÇàSî—TïSï»XõXÀòYZ[óÿX›[€ó€Ÿ»
+X›‹ó⁄Y\ôŸ]›\Ÿ\ó⁄YX›[€äBàêSQT»
+]]ùZY
+
+K›\Ÿ\ó⁄Y	ÿ\õ›ôI N¬ëSë¬â	¬Çê‘ëPUH‘àëTP—HïSê’S”àXõXÀúôZôX›€Y[Xô\ú⁄\
+›\Ÿ\ó⁄YURQ
+BîëUTìî»ì“QìSë’PQ—H‹‹[î—P’TíUHQíSëTÇî—UŸX\ò⁄‹]H	…¬êT»		êëQ“SÇàQàì’XõXÀö\◊ÿYZ[ä
+HSÇàêRT—HV—TS”à	”€õH[àYZ[àÿ[àôZôX›Hõ€Hô\]Y\›â¬àT“Së»Tîê”—HH	ÕçLIŒ¬àSëQé¬ÇàTUHXõXÀúõŸö[\¬à—Uô\öYöXÿ][€ó‹›]\»H	‹ôZôX›Y	¬à“TëHYH›\Ÿ\ó⁄Y¬ÇàQàì’ì’SëSÇàêRT—HV—TS”à	”õ»›X⁄Y[Xô\ãâ»T“Së»Tîê”—HH	‘âŒ¬àSëQé¬ÇàSî—TïSï»XõXÀòYZ[óÿX›[€ó€Ÿ»
+X›‹ó⁄Y\ôŸ]›\Ÿ\ó⁄YX›[€äBàêSQT»
+]]ùZY
+
+K›\Ÿ\ó⁄Y	‹ôZôX›	 N¬ëSë¬â	¬Çê‘ëPUH‘àëTP—HïSê’S”àXõXÀúŸ]›\Ÿ\ó‹õ€J›\Ÿ\ó⁄YURQ‹õ€HV
+BîëUTìî»ì“QìSë’PQ—H‹‹[î—P’TíUHQíSëTÇî—UŸX\ò⁄‹]H	…¬êT»		êëQ“SÇàQàì’XõXÀö\◊ÿYZ[ä
+HSÇàêRT—HV—TS”à	”€õH[àYZ[àÿ[à⁄[ôŸHHõ€Kâ¬àT“Së»Tîê”—HH	ÕçLIŒ¬àSëQé¬ÇàQà‹õ€Hì’Sà
+	‹›Y[ù	À	€X›\ô\âÀ	‹ŸX›\ö]IÀ	ÿYZ[â HSÇàêRT—HV—TS”à	’[ö€õ›€àõ€Kâ»T“Së»Tîê”—HH	Ãååå…Œ¬àSëQé¬ÇàKHôYù\ŸH»ÿ⁄»]ô\ûXõŸH›]ŸàHYZ[àÿ‹ôY[ãÇàQà‹õ€Hà	ÿYZ[â¬àSë
+—SP’õ€Hîì”HXõXÀúõŸö[\»“TëHYH›\Ÿ\ó⁄Y
+HH	ÿYZ[â¬àSë
+—SP’”’Sï
+
+äHîì”HXõXÀúõŸö[\»“TëHõ€HH	ÿYZ[â HHHSÇàêRT—HV—TS”à	’]\»H\›YZ[ãà\⁄[ù[õ›\àYZ[àö\ú›â¬àT“Së»Tîê”—HH	‘IŒ¬àSëQé¬ÇàTUHXõXÀúõŸö[\¬à—Uõ€HH‹õ€Kàô\öYöXÿ][€ó‹›]\»H	ÿ\õ›ôY	Ààô\]Y\›Y‹õ€HH	…¬à“TëHYH›\Ÿ\ó⁄Y¬ÇàQàì’ì’SëSÇàêRT—HV—TS”à	”õ»›X⁄Y[Xô\ãâ»T“Së»Tîê”—HH	‘âŒ¬àSëQé¬ÇàSî—TïSï»XõXÀòYZ[óÿX›[€ó€Ÿ»
+X›‹ó⁄Y\ôŸ]›\Ÿ\ó⁄YX›[€ã]Z[
+BàêSQT»
+]]ùZY
+
+K›\Ÿ\ó⁄Y	‹Ÿ]‹õ€IÀ‹õ€JN¬ëSë¬â	¬ÇîëUì“—HS”àïSê’S”àXõXÀò\õ›ôW€Y[Xô\ú⁄\
+URQ
+Hîì”HPìPÀ[õ€é¬îëUì“—HS”àïSê’S”àXõXÀúôZôX›€Y[Xô\ú⁄\
+URQ
+Hîì”HPìPÀ[õ€é¬îëUì“—HS”àïSê’S”àXõXÀúŸ]›\Ÿ\ó‹õ€JURQV
+Hîì”HPìPÀ[õ€é¬ë‘êSïVP’UH”àïSê’S”àXõXÀò\õ›ôW€Y[Xô\ú⁄\
+URQ
+H»]][ùXÿ]Y¬ë‘êSïVP’UH”àïSê’S”àXõXÀúôZôX›€Y[Xô\ú⁄\
+URQ
+H»]][ùXÿ]Y¬ë‘êSïVP’UH”àïSê’S”àXõXÀúŸ]›\Ÿ\ó‹õ€JURQV
+H»]][ùXÿ]Y¬ÇÇãKHKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKBãKHàPìH‘êSï¬ãKHKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKBÇë‘êSïT–Q—H”à–“SPHXõX»»]][ùXÿ]Y¬ë‘êSï—SP’Sî—TïTUKSUH”àXõXÀú›Y[ù‹ôY⁄\›ò][€ú»»]][ùXÿ]Y¬ë‘êSï—SP’”àXõXÀòYZ[óÿX›[€ó€Ÿ»»]][ùXÿ]Y¬ÇÇãKHKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKBãKHKà—QQHíTî’QRSÇãKHH⁄X⁄Ÿ[ãX[ôYYŸ»õÿõ[Nà€õH[àYZ[àÿ[à\⁄[ù[àYZ[ã€»BãKHô\ûHö\ú›€ôH\»»ôH‹ö][à[àûH[ôàô\XŸHHXŸZ€\ÇãKHô[›»⁄]S’Tà’”àŸ⁄[à[XZ[[àù[à\»õÿ⁄Àà]\»ÿYôH¬ãKHô\X]à⁄⁄\][ù\ô[HYà[›H€›[ò]\à»]]\ãÇãKHKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKBÇë»		ëP”TëBàYZ[óŸ[XZ[VèH	‘ëTP—KU“UVS’TãQSPRS	Œ¬àYZ[ó⁄YURQ¬êëQ“SÇàQàYZ[óŸ[XZ[R—H	‘ëTP—KU“U	I»SÇàêRT—Hì’P—H	–YZ[àŸYY⁄⁄\Yàô\XŸHHXŸZ€\à[XZ[ö\ú›âŒ¬àëUTìé¬àSëQé¬Çà—SP’KöYSï»YZ[ó⁄Yîì”H]]ù\Ÿ\ú»T»H“TëH’—TäKô[XZ[
+HH’—TäYZ[óŸ[XZ[
+N¬àQàYZ[ó⁄YT»ïSSÇàêRT—HV—TS”à	”õ»]]\Ÿ\à⁄][XZ[	IÀYZ[óŸ[XZ[¬àSëQé¬ÇàSî—TïSï»XõXÀúõŸö[\»
+Y\Ÿ\õò[YKù[€ò[YJBàêSQT»
+YZ[ó⁄Y	ÿYZ[â»Qï
+YZ[ó⁄YéïVäK	–YZ[â Bà”à””ëìP’
+Y
+H»ì’SëŒ¬ÇàTUHXõXÀúõŸö[\¬à—Uõ€HH	ÿYZ[âÀô\öYöXÿ][€ó‹›]\»H	ÿ\õ›ôY	Àô\]Y\›Y‹õ€HH	…¬à“TëHYHYZ[ó⁄Y¬ÇàêRT—Hì’P—H	‘ŸYYYYZ[à	IÀYZ[óŸ[XZ[¬ëSë¬â	¬ÇÇãKHKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKBãKHLàëS–QHTH–“SPH–P“BãKHKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKBÇìì’QñH‹ú›	‹ô[ÿYÿ⁄[XIŒ¬ÇÇãKHKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKBãKHLKàëTíQñBãKH^X›Yàö]ôHõ›‹À[ô\›[H	€⁄…ÀÇãKHKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKBÇî—SP’	‹õ€Wÿ€€[[ú…»T»⁄X⁄◊€ò[YKà–T—H“Sà”’Sï
+
+äHHSà	€⁄…¬àS—H	—êRSQ
+	»”’Sï
+
+äH	ÀÕ
+I»SëT»ô\›[ëîì”H[ôõ‹õX][€ó‹ÿ⁄[XKò€€[[ú¬ï“TëHXõW‹ÿ⁄[XHH	‹XõX…»SëXõW€ò[YHH	‹õŸö[\…¬àSë€€[[ó€ò[YHSà
+	‹õ€IÀ	›ô\öYöXÿ][€ó‹›]\…À	‹ô\]Y\›Y‹õ€IÀ	›[ö]ô\ú⁄]I BïSíS”àSî—SP’	‹õ€WŸ›X\ô›öYŸŸ\âÀà–T—H“Sà”’Sï
+
+äHHHSà	€⁄…»S—H	—êRSQ
+Z\‹⁄[ô I»Sëëîì”H◊›öYŸŸ\à“TëH€ò[YHH	‹õŸö[\◊Ÿ[ôõ‹òŸW‹õ€W⁄[ùY‹ö]I»Sëì’⁄\⁄[ù\õò[ïSíS”àSî—SP’	ÿYZ[ó‹ú◊ÿ€›[ù	Àà–T—H“Sà”’Sï
+
+äHH»Sà	€⁄…»S—H	—êRSQ
+	»”’Sï
+
+äH	ÀÃ I»Sëëîì”H◊‹õÿ»T»ì“Sà◊€ò[Y\‹XŸHT»à”àãõ⁄YHúõ€ò[Y\‹XŸBï“TëHãõú‹ò[YHH	‹XõX…¬àSëúõ€ò[YHSà
+	ÿ\õ›ôW€Y[Xô\ú⁄\	À	‹ôZôX›€Y[Xô\ú⁄\	À	‹Ÿ]›\Ÿ\ó‹õ€I BïSíS”àSî—SP’	‹ôY⁄\›ò][€ú◊›XõIÀà–T—H“Sà”’Sï
+
+äHHHSà	€⁄…»S—H	—êRSQ
+Z\‹⁄[ô I»Sëëîì”H[ôõ‹õX][€ó‹ÿ⁄[XKùXõ\¬ï“TëHXõW‹ÿ⁄[XHH	‹XõX…»SëXõW€ò[YHH	‹›Y[ù‹ôY⁄\›ò][€ú…¬ïSíS”àSî—SP’	ÿ]€X\›€€ôWÿYZ[âÀà–T—H“Sà”’Sï
+
+äHàSà	€⁄…»S—H	”ì”ëHQU
+ù[àŸX›[€àJI»Sëëîì”HXõXÀúõŸö[\»“TëHõ€HH	ÿYZ[âŒ¬ÇãKHOOOOOOOOOOOHTïKÃçàZY‹ò][€úÀÃåçåLM€Y\‹ÿYŸWŸY]Ÿ[]Kú‹[OOOOOOOOOOOBãKHOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOBãKHQT‘–Q—HQU
+»SUH
+ù[à\»⁄€Hö[H[à›\Xò\ŸH‘SY]‹äBãKHù[\»[ôõ‹òŸY[ú⁄YHH]Xò\ŸKõ›ù\›H\ÇãKH
+àŸ[ô\àX^HY]›€à^Y\‹ÿYŸ\»⁄][àåZ[ù]\¬ãKH
+àŸ[ô\àX^H[]Hõ‹à]ô\û[€ôH⁄][àMHZ[ù]\¬ãKH
+à[ûH\ùX⁄\[ùX^HYHHY\‹ÿYŸHõ‹à[\Ÿ[ô\À[ûH[YBãKHÿYôH»ù[àô\X]YKÇãKHOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOBÇêSTàPìHXõXÀõY\‹ÿYŸ\¬àQ””SSàQàì’VT’»Y]Yÿ][Y\›[\ãàQ””SSàQàì’VT’»[]YŸõ‹óŸ]ô\û[€ôHõ€€X[àì’ïSQêUSêS—KàQ””SSàQàì’VT’»[]YÿûH]ZY◊Hì’ïSQêUS	ﬁﬂIŒ¬Çëì‘”P÷HQàVT’»îôX⁄\Y[ù»X\ö»Y\‹ÿYŸ\»\»ôXYà”àXõXÀõY\‹ÿYŸ\Œ¬ëì‘”P÷HQàVT’»î\ùX⁄\[ù»\]HZ\àY\‹ÿYŸ\»à”àXõXÀõY\‹ÿYŸ\Œ¬Çê‘ëPUH”P÷Hî\ùX⁄\[ù»\]HZ\àY\‹ÿYŸ\»Çà”àXõXÀõY\‹ÿYŸ\»ì‘àTUH»]][ùXÿ]YàT“Së»
+]]ùZY
+
+HHŸ[ô\ó⁄Y‘à]]ùZY
+
+HHôXŸZ]ô\ó⁄Y
+Bà“U“P“»
+]]ùZY
+
+HHŸ[ô\ó⁄Y‘à]]ùZY
+
+HHôXŸZ]ô\ó⁄Y
+N¬Çê‘ëPUH‘àëTP—HïSê’S”àXõXÀúõ›X›€Y\‹ÿYŸWŸöY[ 
+BîëUTìî»íQ——TÇìSë’PQ—H‹‹[î—UŸX\ò⁄‹]H	…¬êT»		ëP”TëBàX›‹à]ZYèH]]ùZY
+
+N¬êëQ“SÇàQàëUÀöYT»T’Sê’îì”H”öYà‘àëUÀúŸ[ô\ó⁄YT»T’Sê’îì”H”úŸ[ô\ó⁄Yà‘àëUÀúôXŸZ]ô\ó⁄YT»T’Sê’îì”H”úôXŸZ]ô\ó⁄Yà‘àëUÀò‹ôX]Yÿ]T»T’Sê’îì”H”ò‹ôX]Yÿ]àSÇàêRT—HV—TS”à	”Y\‹ÿYŸHYŸ[ô\ãôXŸZ]ô\à[ô‹ôX][€à[YHÿ[õõ›ôH⁄[ôŸYâŒ¬àSëQé¬ÇàQàëUÀô[]YŸõ‹óŸ]ô\û[€ôHT»T’Sê’îì”H”ô[]YŸõ‹óŸ]ô\û[€ôHSÇàQàëUÀô[]YŸõ‹óŸ]ô\û[€ôHàïQBà‘àX›‹àT»T’Sê’îì”H”úŸ[ô\ó⁄Yà‘à”ô[]YŸõ‹óŸ]ô\û[€ôBà‘à”ò‹ôX]Yÿ]Hõ› 
+HH[ù\ùò[	ÃMHZ[ù]\…¬àSÇàêRT—HV—TS”à	”€õHHŸ[ô\àÿ[à[]Hõ‹à]ô\û[€ôH⁄][àMHZ[ù]\ÀâŒ¬àSëQé¬àëUÀò€€ù[ùèHïS¬àëUÀõYYXW›\õèHïS¬àS“QàëUÀõYYXW›\õT»T’Sê’îì”H”õYYXW›\õSÇàêRT—HV—TS”à	”Y\‹ÿYŸHYYXHÿ[õõ›ôH⁄[ôŸYâŒ¬àS“QàëUÀò€€ù[ùT»T’Sê’îì”H”ò€€ù[ùSÇàQàX›‹àT»T’Sê’îì”H”úŸ[ô\ó⁄Yà‘à”ô[]YŸõ‹óŸ]ô\û[€ôBà‘à”ò‹ôX]Yÿ]Hõ› 
+HH[ù\ùò[	ÃåZ[ù]\…¬àSÇàêRT—HV—TS”à	”€õHHŸ[ô\àÿ[àY]HY\‹ÿYŸH⁄][àåZ[ù]\ÀâŒ¬àSëQé¬àëUÀôY]Yÿ]èHõ› 
+N¬àSëQé¬ÇàQàëUÀô[]YÿûHT»T’Sê’îì”H”ô[]YÿûHSÇàQàX›‹àT»ïSà‘à
+X›‹àà”úŸ[ô\ó⁄YSëX›‹àà”úôXŸZ]ô\ó⁄Y
+Bà‘àì’
+”ô[]YÿûHëUÀô[]YÿûJBà‘àì’
+X›‹àHSñH
+ëUÀô[]YÿûJJBà‘à€ÿ[\ÿŸJ\úò^W€[ô›
+ëUÀô[]YÿûKJK
+HÇà€ÿ[\ÿŸJ\úò^W€[ô›
+”ô[]YÿûKJK
+H
+»BàSÇàêRT—HV—TS”à	–H\ùX⁄\[ùÿ[à€õHYHHY\‹ÿYŸHõ‹à[\Ÿ[ô\ÀâŒ¬àSëQé¬àSëQé¬ÇàQàëUÀôY]Yÿ]T»T’Sê’îì”H”ôY]Yÿ]àSëì’
+ëUÀò€€ù[ùT»T’Sê’îì”H”ò€€ù[ù
+BàSÇàêRT—HV—TS”à	’HY][Y\›[\⁄[ôŸ\»€õH⁄][àX›X[Y]âŒ¬àSëQé¬ÇàQàëUÀö\◊‹ôXYT»T’Sê’îì”H”ö\◊‹ôXYSÇàQà”ö\◊‹ôXYHïQHSëëUÀö\◊‹ôXYHêS—HSÇàêRT—HV—TS”à	–HôXYY\‹ÿYŸHÿ[õõ›ôHX\öŸY[úôXYâŒ¬àSëQé¬àQàëUÀö\◊‹ôXYHïQHSëëUÀúôXYÿ]T»ïSSÇàëUÀúôXYÿ]èHì’ 
+N¬àSëQé¬àSëQé¬ÇàQàëUÀö\◊‹ôXYHêS—HSÇàëUÀúôXYÿ]èHïS¬àSëQé¬ÇàëUTìàëUŒ¬ëSë¬â	¬ÇãKHHöYŸŸ\à[ôXYH^\›»úõ€Hÿ⁄[XKú‹[»ôX]X⁄»X⁄»\Hô]»õŸKÇëì‘íQ——TàQàVT’»õ›X›€Y\‹ÿYŸWŸöY[◊›öYŸŸ\à”àXõXÀõY\‹ÿYŸ\Œ¬ê‘ëPUHíQ——Tàõ›X›€Y\‹ÿYŸWŸöY[◊›öYŸŸ\ÇàëQì‘ëHTUH”àXõXÀõY\‹ÿYŸ\¬àì‘àPP“ì’¬àVP’UHïSê’S”àXõXÀúõ›X›€Y\‹ÿYŸWŸöY[ 
+N¬ÇÇãKHOOOOOOOOOOOHTïLÃçàZY‹ò][€úÀÃåçåLMW‹õŸ‹ò[[Y\◊›[ö]◊ÿ€\‹Ÿ\Àú‹[OOOOOOOOOOOBãKHOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOBãKH–STT»””ìëP’8†%ì—‘êSSQTÀSíUÀSë”T‘»SQUPìT¬ãKHÿXò\òZ»[ö]ô\ú⁄]H€›\úŸHﬁ\›[NÇãKH
+àõŸ‹ò[[Y\Œàÿ⁄€€»[ôY‹ôY\»
+ŸYYYô[› BãKH
+à[ö]Œà€›\úŸH[ö]»\àõŸ‹ò[[YKﬁYX\ã‹Ÿ[Y\›\à
+X›\ô\ú»Y
+BãKH
+à€\‹◊‹Ÿ\‹⁄[€úŒàŸYZ€H€\‹»[à
+[YKõ€€K‹à€õ[ôH[ö BãKH
+àõŸö[\ŒàXX⁄Y[Xô\àÿ[à]X⁄õŸ‹ò[[YH
+»YX\à
+»Ÿ[Y\›\ÇãKH⁄X⁄H\⁄›‹»\»KåKãåãLKåKããÇãKHY[\›[ùàÿYôH»ù[à[‹ôH[à€òŸKÇãKHOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOBÇê‘ëPUHPìHQàì’VT’»XõXÀúõŸ‹ò[[Y\»
+àYURQíSPTñH—VHQêUSŸ[ó‹ò[ô€W›]ZY
+
+Kàÿ⁄€€Vì’ïSàò[YHVì’ïSà]ô[Vì’ïSQêUS	›[ô\ô‹òYX]IÀàX^ﬁYX\àSïì’ïSQêUSàÿ[\\»Vì’ïSQêUS	”XZ[âÀà‹X⁄X[^ò][€ú»Vì’ïSQêUS	…Àà‹ôX]Yÿ]SQT’STàì’ïSQêUSì’ 
+Kà””î’êRSïõŸ‹ò[[Y\◊€]ô[ÿ⁄X⁄¬à“P“»
+]ô[Sà
+	ÿŸ\ùYöXÿ]IÀ	Ÿ\€XIÀ	›[ô\ô‹òYX]IÀ	€X\›\ú…À	‹	 JKà””î’êRSïõŸ‹ò[[Y\◊‹ÿ⁄€€€ò[YW⁄Ÿ^HSíTUQH
+ÿ⁄€€ò[YJBäN¬ÇêSTàPìHXõXÀúõŸ‹ò[[Y\¬àQ””SSàQàì’VT’»ÿ[\\»Vì’ïSQêUS	”XZ[âÀàQ””SSàQàì’VT’»‹X⁄X[^ò][€ú»Vì’ïSQêUS	…Œ¬Çê‘ëPUHPìHQàì’VT’»XõXÀù[ö]»
+àYURQíSPTñH—VHQêUSŸ[ó‹ò[ô€W›]ZY
+
+KàõŸ‹ò[[YW⁄YURQì’ïSëQëTëSê—T»XõXÀúõŸ‹ò[[Y\ Y
+H”àSUH–T––QKà€ŸHVì’ïSà]HVì’ïSà›YWﬁYX\àSïì’ïS“P“»
+›YWﬁYX\àëU—QSàHSëäKàŸ[Y\›\àSïì’ïS“P“»
+Ÿ[Y\›\àSà
+KäJKà‹ôX]YÿûHURQì’ïSëQëTëSê—T»XõXÀúõŸö[\ Y
+H”àSUH–T––QKà‹ôX]Yÿ]SQT’STàì’ïSQêUSì’ 
+Kà””î’êRSï[ö]◊ÿ€ŸWŸõ‹õX]ÿ⁄X⁄»“P“»
+€ŸHà	◊ñ–KVòK^åNWVÀKã»KVòK^åNW^ÃKM_I	 Kà””î’êRSï[ö]◊›]W€[ô›ÿ⁄X⁄»“P“»
+⁄\ó€[ô›
+]JHëU—QSààSëLå
+Kà””î’êRSï[ö]◊‹õŸ‹ò[[YWÿ€ŸW⁄Ÿ^HSíTUQH
+õŸ‹ò[[YW⁄Y€ŸJBäN¬Çê‘ëPUHPìHQàì’VT’»XõXÀò€\‹◊‹Ÿ\‹⁄[€ú»
+àYURQíSPTñH—VHQêUSŸ[ó‹ò[ô€W›]ZY
+
+Kà[ö]⁄YURQì’ïSëQëTëSê—T»XõXÀù[ö] Y
+H”àSUH–T––QKàX›\ô\ó⁄YURQì’ïSëQëTëSê—T»XõXÀúõŸö[\ Y
+H”àSUH–T––QKàŸYZŸ^HSïì’ïS“P“»
+ŸYZŸ^HëU—QSàHSëäKà›\ù›[YHSQHì’ïSà[ô›[YHSQHì’ïSà[ŸHVì’ïSQêUS	‹\⁄Xÿ[	Ààÿÿ][€àVì’ïSQêUS	…Àà[ö»Vì’ïSQêUS	…Ààõ›HVì’ïSQêUS	…Àà‹ôX]Yÿ]SQT’STàì’ïSQêUSì’ 
+Kà””î’êRSï€\‹◊‹Ÿ\‹⁄[€ú◊€[ŸWÿ⁄X⁄»“P“»
+[ŸHSà
+	‹\⁄Xÿ[	À	€€õ[ôI JKà””î’êRSï€\‹◊‹Ÿ\‹⁄[€ú◊›[YW€‹ô\óÿ⁄X⁄»“P“»
+[ô›[YHà›\ù›[YJKà””î’êRSï€\‹◊‹Ÿ\‹⁄[€ú◊€[ö◊€[ô›ÿ⁄X⁄»“P“»
+⁄\ó€[ô›
+[ö HHÃ
+BäN¬Çê‘ëPUHSëVQàì’VT’»[ö]◊‹õŸ‹ò[[YWﬁYX\ó‹Ÿ[Y\›\ó⁄Yà”àXõXÀù[ö]»
+õŸ‹ò[[YW⁄Y›YWﬁYX\ãŸ[Y\›\äN¬ê‘ëPUHSëVQàì’VT’»€\‹◊‹Ÿ\‹⁄[€ú◊€X›\ô\ó⁄Yà”àXõXÀò€\‹◊‹Ÿ\‹⁄[€ú»
+X›\ô\ó⁄YŸYZŸ^K›\ù›[YJN¬ê‘ëPUHSëVQàì’VT’»€\‹◊‹Ÿ\‹⁄[€ú◊›[ö]⁄Yà”àXõXÀò€\‹◊‹Ÿ\‹⁄[€ú»
+[ö]⁄Y
+N¬ÇêSTàPìHXõXÀúõŸö[\¬àQ””SSàQàì’VT’»õŸ‹ò[[YW⁄YURQëQëTëSê—T»XõXÀúõŸ‹ò[[Y\ Y
+H”àSUH—UïSàQ””SSàQàì’VT’»›YWﬁYX\àSï“P“»
+›YWﬁYX\àëU—QSàHSëäKàQ””SSàQàì’VT’»Ÿ[Y\›\àSï“P“»
+Ÿ[Y\›\àSà
+KäJN¬Çê‘ëPUHSëVQàì’VT’»õŸö[\◊‹õŸ‹ò[[YW⁄Yà”àXõXÀúõŸö[\»
+õŸ‹ò[[YW⁄Y›YWﬁYX\ãŸ[Y\›\äN¬ÇãKHKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKBãKHì’»UëS—P’TíUBãKHY[Xô\ú»ôXY]ô\û][ô»]ô[€ô‹»»HXõX»ÿ][Ÿ›YN¬ãKH€õHX›\ô\ú»[ôYZ[ú»X^H‹ö]H[ö]»[ô€\‹»[úÀãKH[ô€õHZ\à›€àõ›‹ÀÇãKHKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKBÇêSTàPìHXõXÀúõŸ‹ò[[Y\»SêPìHì’»UëS—P’TíUN¬êSTàPìHXõXÀù[ö]»SêPìHì’»UëS—P’TíUN¬êSTàPìHXõXÀò€\‹◊‹Ÿ\‹⁄[€ú»SêPìHì’»UëS—P’TíUN¬Çëì‘”P÷HQàVT’»ìY[Xô\ú»öY]»õŸ‹ò[[Y\»à”àXõXÀúõŸ‹ò[[Y\Œ¬ê‘ëPUH”P÷HìY[Xô\ú»öY]»õŸ‹ò[[Y\»Çà”àXõXÀúõŸ‹ò[[Y\»ì‘à—SP’»]][ùXÿ]YàT“Së»
+ïQJN¬Çëì‘”P÷HQàVT’»ìY[Xô\ú»öY]»[ö]»à”àXõXÀù[ö]Œ¬ê‘ëPUH”P÷HìY[Xô\ú»öY]»[ö]»Çà”àXõXÀù[ö]»ì‘à—SP’»]][ùXÿ]YàT“Së»
+ïQJN¬Çëì‘”P÷HQàVT’»ìX›\ô\ú»Y[ö]»à”àXõXÀù[ö]Œ¬ê‘ëPUH”P÷HìX›\ô\ú»Y[ö]»Çà”àXõXÀù[ö]»ì‘àSî—Tï»]][ùXÿ]Yà“U“P“»
+à]]ùZY
+
+HH‹ôX]YÿûBàSëXõXÀõ^W‹õ€J
+HSà
+	€X›\ô\âÀ	ÿYZ[â Bà
+N¬Çëì‘”P÷HQàVT’»ì›€ô\ú»[ôYZ[ú»›\ò]H[ö]»à”àXõXÀù[ö]Œ¬ê‘ëPUH”P÷Hì›€ô\ú»[ôYZ[ú»›\ò]H[ö]»Çà”àXõXÀù[ö]»ì‘àTUH»]][ùXÿ]YàT“Së»
+]]ùZY
+
+HH‹ôX]YÿûH‘àXõXÀö\◊ÿYZ[ä
+JBà“U“P“»
+à]]ùZY
+
+HH‹ôX]YÿûBàSëXõXÀõ^W‹õ€J
+HSà
+	€X›\ô\âÀ	ÿYZ[â Bà‘àXõXÀö\◊ÿYZ[ä
+Bà
+N¬Çëì‘”P÷HQàVT’»ì›€ô\ú»[ôYZ[ú»ô[[›ôH[ö]»à”àXõXÀù[ö]Œ¬ê‘ëPUH”P÷Hì›€ô\ú»[ôYZ[ú»ô[[›ôH[ö]»Çà”àXõXÀù[ö]»ì‘àSUH»]][ùXÿ]YàT“Së»
+]]ùZY
+
+HH‹ôX]YÿûH‘àXõXÀö\◊ÿYZ[ä
+JN¬Çëì‘”P÷HQàVT’»ìY[Xô\ú»öY]»€\‹»Ÿ\‹⁄[€ú»à”àXõXÀò€\‹◊‹Ÿ\‹⁄[€úŒ¬ê‘ëPUH”P÷HìY[Xô\ú»öY]»€\‹»Ÿ\‹⁄[€ú»Çà”àXõXÀò€\‹◊‹Ÿ\‹⁄[€ú»ì‘à—SP’»]][ùXÿ]YàT“Së»
+ïQJN¬Çëì‘”P÷HQàVT’»ìX›\ô\ú»[àZ\à€\‹Ÿ\»à”àXõXÀò€\‹◊‹Ÿ\‹⁄[€úŒ¬ê‘ëPUH”P÷HìX›\ô\ú»[àZ\à€\‹Ÿ\»Çà”àXõXÀò€\‹◊‹Ÿ\‹⁄[€ú»ì‘àSî—Tï»]][ùXÿ]Yà“U“P“»
+à]]ùZY
+
+HHX›\ô\ó⁄YàSëXõXÀõ^W‹õ€J
+HSà
+	€X›\ô\âÀ	ÿYZ[â Bà
+N¬Çëì‘”P÷HQàVT’»ì›€ô\ú»[ôYZ[ú»Y]€\‹»[ú»à”àXõXÀò€\‹◊‹Ÿ\‹⁄[€úŒ¬ê‘ëPUH”P÷Hì›€ô\ú»[ôYZ[ú»Y]€\‹»[ú»Çà”àXõXÀò€\‹◊‹Ÿ\‹⁄[€ú»ì‘àTUH»]][ùXÿ]YàT“Së»
+]]ùZY
+
+HHX›\ô\ó⁄Y‘àXõXÀö\◊ÿYZ[ä
+JBà“U“P“»
+à]]ùZY
+
+HHX›\ô\ó⁄YàSëXõXÀõ^W‹õ€J
+HSà
+	€X›\ô\âÀ	ÿYZ[â Bà‘àXõXÀö\◊ÿYZ[ä
+Bà
+N¬Çëì‘”P÷HQàVT’»ì›€ô\ú»[ôYZ[ú»ô[[›ôH€\‹»[ú»à”àXõXÀò€\‹◊‹Ÿ\‹⁄[€úŒ¬ê‘ëPUH”P÷Hì›€ô\ú»[ôYZ[ú»ô[[›ôH€\‹»[ú»Çà”àXõXÀò€\‹◊‹Ÿ\‹⁄[€ú»ì‘àSUH»]][ùXÿ]YàT“Së»
+]]ùZY
+
+HHX›\ô\ó⁄Y‘àXõXÀö\◊ÿYZ[ä
+JN¬Çë‘êSï—SP’”àXõXÀúõŸ‹ò[[Y\»»]][ùXÿ]Y¬ë‘êSï—SP’Sî—TïTUKSUH”àXõXÀù[ö]»»]][ùXÿ]Y¬ë‘êSï—SP’Sî—TïTUKSUH”àXõXÀò€\‹◊‹Ÿ\‹⁄[€ú»»]][ùXÿ]Y¬ÇãKHKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKBãKH—QQà–PêTêR»SíUëTî“UH–“””»Sëì—‘êSSQT¬ãKHù[ŸôöX⁄X[\›
+ÿ⁄€€]ô[õŸ‹ò[[YKÿ[\\ÀãKH‹X⁄X[^ò][€úÀ€‹[€ú KàX›\ô\ú»YH[ö]\›»[àH\ÇãKH”à””ëìP’ŸY\»Y]»XYH]\à[àH\⁄[à\»ö[H\¬ãKHù[àYÿZ[ãÇãKHKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKBÇíSî—TïSï»XõXÀúõŸ‹ò[[Y\»
+ÿ⁄€€ò[YK]ô[X^ﬁYX\ãÿ[\\À‹X⁄X[^ò][€ú HêSQT¬àKHÿ⁄€€Ÿàù\⁄[ô\‹»[ôX€€õ€ZX‹¬à
+	‘ÿ⁄€€Ÿàù\⁄[ô\‹»[ôX€€õ€ZX‹…À	—ÿ›‹àŸà[‹€‹H[àù\⁄[ô\‹»YZ[ö\›ò][€âÀ	‹	ÀÀ	”òZ›\ùH⁄]IÀ	–Xÿ€›[ù[ôŒ»›ò]Y⁄X»X[òYŸ[Y[ù»[X[àô\€›\òŸHX[òYŸ[Y[ù»ö[ò[òŸN»X\öŸ][ôŒ»[ùô\ô[ô]\ú⁄\»X[òYŸ[Y[ù[ôõ‹õX][€àﬁ\›[\Œ»‹\ò][€ú»X[òYŸ[Y[ù	 Kà
+	‘ÿ⁄€€Ÿàù\⁄[ô\‹»[ôX€€õ€ZX‹…À	—ÿ›‹àŸà[‹€‹H[àö[ò[òŸIÀ	‹	ÀÀ	”òZ›\ùH⁄]IÀ	… Kà
+	‘ÿ⁄€€Ÿàù\⁄[ô\‹»[ôX€€õ€ZX‹…À	”X\›\àŸàÿ⁄Y[òŸH[àö[ò[òŸIÀ	€X\›\ú…Àã	”òZ›\ùH⁄]IÀ	—ö[ò[òŸH[ô[ùô\›Y[ù[ò[\⁄\Œ»ö[ò[òŸH[ôò[ö⁄[ô»X[òYŸ[Y[ù	 Kà
+	‘ÿ⁄€€Ÿàù\⁄[ô\‹»[ôX€€õ€ZX‹…À	”X\›\àŸàù\⁄[ô\‹»YZ[ö\›ò][€à
+PêJIÀ	€X\›\ú…Àã	”òZ›\ùH⁄]IÀ	–Xÿ€›[ù[ôŒ»›ò]Y⁄X»X[òYŸ[Y[ù»[X[àô\€›\òŸHX[òYŸ[Y[ù»ö[ò[òŸN»X\öŸ][ôŒ»[ùô\ô[ô]\ú⁄\»X[òYŸ[Y[ù[ôõ‹õX][€àﬁ\›[\Œ»‹\ò][€ú»X[òYŸ[Y[ù	 Kà
+	‘ÿ⁄€€Ÿàù\⁄[ô\‹»[ôX€€õ€ZX‹…À	”X\›\àŸàÿ⁄Y[òŸH[àõ⁄ôX›X[òYŸ[Y[ù	À	€X\›\ú…Àã	”òZ›\ùH⁄]IÀ	… Kà
+	‘ÿ⁄€€Ÿàù\⁄[ô\‹»[ôX€€õ€ZX‹…À	”X\›\àŸàÿ⁄Y[òŸH[à[X[àô\€›\òŸHX[òYŸ[Y[ù	À	€X\›\ú…Àã	”òZ›\ùH⁄]IÀ	… Kà
+	‘ÿ⁄€€Ÿàù\⁄[ô\‹»[ôX€€õ€ZX‹…À	”X\›\àŸà‹ôÿ[ö^ò][€ò[]ô[‹Y[ù	À	€X\›\ú…Àã	”òZ›\ùH⁄]IÀ	… Kà
+	‘ÿ⁄€€Ÿàù\⁄[ô\‹»[ôX€€õ€ZX‹…À	–òX⁄[‹àŸàÿ⁄Y[òŸH[à‹‹][]HX[òYŸ[Y[ù	À	›[ô\ô‹òYX]IÀ	”XZ[âÀ	… Kà
+	‘ÿ⁄€€Ÿàù\⁄[ô\‹»[ôX€€õ€ZX‹…À	–òX⁄[‹àŸàù\⁄[ô\‹»X[òYŸ[Y[ù[ô[ôõ‹õX][€àX⁄õ€ŸﬁH
+ìRU
+IÀ	›[ô\ô‹òYX]IÀ	”XZ[é»òZ›\ùH⁄]IÀ	… Kà
+	‘ÿ⁄€€Ÿàù\⁄[ô\‹»[ôX€€õ€ZX‹…À	–òX⁄[‹àŸàù\⁄[ô\‹»[ôõ‹õX][€àX⁄õ€ŸﬁH
+êíU
+IÀ	›[ô\ô‹òYX]IÀ	”XZ[é»òZ›\ùH⁄]IÀ	… Kà
+	‘ÿ⁄€€Ÿàù\⁄[ô\‹»[ôX€€õ€ZX‹…À	–òX⁄[‹àŸà€€[Y\òŸIÀ	›[ô\ô‹òYX]IÀ	”XZ[é»òZ›\ùH⁄]IÀ	–Xÿ€›[ù[ôŒ»ò[ö⁄[ô»[ôö[ò[òŸN»X⁄õ€ŸﬁK[õõ›ò][€à[ô[ùô\ô[ô]\ú⁄\»ö[ò[òŸN»[X[àô\€›\òŸHX[òYŸ[Y[ù»[ú›\ò[òŸN»X\öŸ][ôŒ»‹\ò][€ú»X[òYŸ[Y[ù	 Kà
+	‘ÿ⁄€€Ÿàù\⁄[ô\‹»[ôX€€õ€ZX‹…À	–òX⁄[‹àŸàX[òYŸ[Y[ù[ôõ‹õX][€àﬁ\›[\…À	›[ô\ô‹òYX]IÀ	”XZ[âÀ	… Kà
+	‘ÿ⁄€€Ÿàù\⁄[ô\‹»[ôX€€õ€ZX‹…À	–òX⁄[‹àŸàÿ⁄Y[òŸH[àX€€õ€ZX‹»[ôX][X]X‹…À	›[ô\ô‹òYX]IÀ	”XZ[âÀ	… Kà
+	‘ÿ⁄€€Ÿàù\⁄[ô\‹»[ôX€€õ€ZX‹…À	–òX⁄[‹àŸàÿ⁄Y[òŸH[àX€€õ€ZX‹…À	›[ô\ô‹òYX]IÀ	”XZ[âÀ	… Kà
+	‘ÿ⁄€€Ÿàù\⁄[ô\‹»[ôX€€õ€ZX‹…À	–òX⁄[‹àŸàÿ⁄Y[òŸH[àX€€õ€ZX‹»[ô›]\›X‹…À	›[ô\ô‹òYX]IÀ	”XZ[âÀ	… Kà
+	‘ÿ⁄€€Ÿàù\⁄[ô\‹»[ôX€€õ€ZX‹…À	–òX⁄[‹àŸàõÿ›\ô[Y[ù[ôŸ⁄\›X‹»X[òYŸ[Y[ù	À	›[ô\ô‹òYX]IÀ	”XZ[é»òZ›\ùH⁄]IÀ	… Kà
+	‘ÿ⁄€€Ÿàù\⁄[ô\‹»[ôX€€õ€ZX‹…À	–òX⁄[‹àŸàÿ⁄Y[òŸH[àX€€õ€ZX‹»[ôö[ò[òŸIÀ	›[ô\ô‹òYX]IÀ	”XZ[âÀ	… Kà
+	‘ÿ⁄€€Ÿàù\⁄[ô\‹»[ôX€€õ€ZX‹…À	–òX⁄[‹àŸàÿ⁄Y[òŸH[àY‹öXù\⁄[ô\‹»X[òYŸ[Y[ù	À	›[ô\ô‹òYX]IÀ	”XZ[âÀ	… Kà
+	‘ÿ⁄€€Ÿàù\⁄[ô\‹»[ôX€€õ€ZX‹…À	—\€XH[àù\⁄[ô\‹»YZ[ö\›ò][€âÀ	Ÿ\€XIÀã	”òZ›\ùH⁄]IÀ	… Kà
+	‘ÿ⁄€€Ÿàù\⁄[ô\‹»[ôX€€õ€ZX‹…À	—\€XH[àõÿ›\ô[Y[ù[ôŸ⁄\›X‹»X[òYŸ[Y[ù	À	Ÿ\€XIÀã	”òZ›\ùH⁄]IÀ	… Kà
+	‘ÿ⁄€€Ÿàù\⁄[ô\‹»[ôX€€õ€ZX‹…À	—\€XH[àù\⁄[ô\‹»X[òYŸ[Y[ù	À	Ÿ\€XIÀã	”òZ›\ùH⁄]IÀ	… Kà
+	‘ÿ⁄€€Ÿàù\⁄[ô\‹»[ôX€€õ€ZX‹…À	—\€XH[àù\⁄[ô\‹»[ôõ‹õX][€àX⁄õ€ŸﬁIÀ	Ÿ\€XIÀã	”òZ›\ùH⁄]IÀ	… Kà
+	‘ÿ⁄€€Ÿàù\⁄[ô\‹»[ôX€€õ€ZX‹…À	—\€XH[à‹‹][]HX[òYŸ[Y[ù	À	Ÿ\€XIÀã	”XZ[âÀ	… Kà
+	‘ÿ⁄€€Ÿàù\⁄[ô\‹»[ôX€€õ€ZX‹…À	—\€XH[à›\ö\€HX[òYŸ[Y[ù	À	Ÿ\€XIÀã	”XZ[âÀ	… Kà
+	‘ÿ⁄€€Ÿàù\⁄[ô\‹»[ôX€€õ€ZX‹…À	—\€XH[à[X[àô\€›\òŸHX[òYŸ[Y[ù	À	Ÿ\€XIÀã	”òZ›\ùH⁄]IÀ	… Kà
+	‘ÿ⁄€€Ÿàù\⁄[ô\‹»[ôX€€õ€ZX‹…À	—\€XH[àÿ[\»[ôX\öŸ][ô…À	Ÿ\€XIÀã	”òZ›\ùH⁄]IÀ	… Kà
+	‘ÿ⁄€€Ÿàù\⁄[ô\‹»[ôX€€õ€ZX‹…À	—\€XH[àò[ö⁄[ô»[ôö[ò[òŸIÀ	Ÿ\€XIÀã	”òZ›\ùH⁄]IÀ	… Kà
+	‘ÿ⁄€€Ÿàù\⁄[ô\‹»[ôX€€õ€ZX‹…À	—\€XH[à[€ö]‹ö[ô»[ô]ò[X][€âÀ	Ÿ\€XIÀã	”òZ›\ùH⁄]IÀ	… Kà
+	‘ÿ⁄€€Ÿàù\⁄[ô\‹»[ôX€€õ€ZX‹…À	—\€XH[àõ⁄ôX›X[òYŸ[Y[ù	À	Ÿ\€XIÀã	”òZ›\ùH⁄]IÀ	… KÇàKHÿ⁄€€Ÿàÿ⁄Y[òŸK[ô⁄[ôY\ö[ô»[ôX⁄õ€ŸﬁBà
+	‘ÿ⁄€€Ÿàÿ⁄Y[òŸK[ô⁄[ôY\ö[ô»[ôX⁄õ€ŸﬁIÀ	—ÿ›‹àŸà[‹€‹H[àU	À	‹	ÀÀ	”òZ›\ùH⁄]IÀ	… Kà
+	‘ÿ⁄€€Ÿàÿ⁄Y[òŸK[ô⁄[ôY\ö[ô»[ôX⁄õ€ŸﬁIÀ	—ÿ›‹àŸà[‹€‹H[àUŸX›\ö]H[ô]Y]	À	‹	ÀÀ	”òZ›\ùH⁄]IÀ	… Kà
+	‘ÿ⁄€€Ÿàÿ⁄Y[òŸK[ô⁄[ôY\ö[ô»[ôX⁄õ€ŸﬁIÀ	”X\›\àŸàÿ⁄Y[òŸH[à[ôõ‹õX][€àX⁄õ€ŸﬁIÀ	€X\›\ú…Àã	”òZ›\ùH⁄]IÀ	… Kà
+	‘ÿ⁄€€Ÿàÿ⁄Y[òŸK[ô⁄[ôY\ö[ô»[ôX⁄õ€ŸﬁIÀ	”X\›\àŸàÿ⁄Y[òŸH[à\⁄X‹…À	€X\›\ú…Àã	”XZ[âÀ	… Kà
+	‘ÿ⁄€€Ÿàÿ⁄Y[òŸK[ô⁄[ôY\ö[ô»[ôX⁄õ€ŸﬁIÀ	”X\›\àŸàÿ⁄Y[òŸH[àUŸX›\ö]H[ô]Y]	À	€X\›\ú…Àã	”òZ›\ùH⁄]IÀ	… Kà
+	‘ÿ⁄€€Ÿàÿ⁄Y[òŸK[ô⁄[ôY\ö[ô»[ôX⁄õ€ŸﬁIÀ	”X\›\àŸàÿ⁄Y[òŸH[à[ùö\õ€õY[ù[ÿ⁄Y[òŸIÀ	€X\›\ú…Àã	”òZ›\ùH⁄]IÀ	… Kà
+	‘ÿ⁄€€Ÿàÿ⁄Y[òŸK[ô⁄[ôY\ö[ô»[ôX⁄õ€ŸﬁIÀ	–òX⁄[‹àŸàÿ⁄Y[òŸH[à€€\]\àÿ⁄Y[òŸIÀ	›[ô\ô‹òYX]IÀ	”XZ[âÀ	… Kà
+	‘ÿ⁄€€Ÿàÿ⁄Y[òŸK[ô⁄[ôY\ö[ô»[ôX⁄õ€ŸﬁIÀ	–òX⁄[‹àŸàÿ⁄Y[òŸH[à[ôõ‹õX][€àX⁄õ€ŸﬁIÀ	›[ô\ô‹òYX]IÀ	”XZ[é»òZ›\ùH⁄]IÀ	… Kà
+	‘ÿ⁄€€Ÿàÿ⁄Y[òŸK[ô⁄[ôY\ö[ô»[ôX⁄õ€ŸﬁIÀ	–òX⁄[‹àŸàÿ⁄Y[òŸH[à[X€€[][öXÿ][€ú…À	›[ô\ô‹òYX]IÀ	”XZ[âÀ	… Kà
+	‘ÿ⁄€€Ÿàÿ⁄Y[òŸK[ô⁄[ôY\ö[ô»[ôX⁄õ€ŸﬁIÀ	–òX⁄[‹àŸàÿ⁄Y[òŸH[àX›X\öX[ÿ⁄Y[òŸIÀ	›[ô\ô‹òYX]IÀ	”XZ[âÀ	… Kà
+	‘ÿ⁄€€Ÿàÿ⁄Y[òŸK[ô⁄[ôY\ö[ô»[ôX⁄õ€ŸﬁIÀ	–òX⁄[‹àŸàÿ⁄Y[òŸH[à€€\]\àŸX›\ö]H[ôõ‹ô[ú⁄X‹…À	›[ô\ô‹òYX]IÀ	”XZ[âÀ	… Kà
+	‘ÿ⁄€€Ÿàÿ⁄Y[òŸK[ô⁄[ôY\ö[ô»[ôX⁄õ€ŸﬁIÀ	–òX⁄[‹àŸàÿ⁄Y[òŸIÀ	›[ô\ô‹òYX]IÀ	”XZ[âÀ	”X][X]X‹Œ»õ€€ŸﬁN»õ›[ûN»⁄[Z\›ûN»\⁄X‹… Kà
+	‘ÿ⁄€€Ÿàÿ⁄Y[òŸK[ô⁄[ôY\ö[ô»[ôX⁄õ€ŸﬁIÀ	–òX⁄[‹àŸàÿ⁄Y[òŸH[à[ùö\õ€õY[ù[ÿ⁄Y[òŸIÀ	›[ô\ô‹òYX]IÀ	”XZ[âÀ	… Kà
+	‘ÿ⁄€€Ÿàÿ⁄Y[òŸK[ô⁄[ôY\ö[ô»[ôX⁄õ€ŸﬁIÀ	—\€XH[à€€\]\àÿ⁄Y[òŸIÀ	Ÿ\€XIÀã	”òZ›\ùH⁄]IÀ	… Kà
+	‘ÿ⁄€€Ÿàÿ⁄Y[òŸK[ô⁄[ôY\ö[ô»[ôX⁄õ€ŸﬁIÀ	—\€XH[à[ôõ‹õX][€àX⁄õ€ŸﬁIÀ	Ÿ\€XIÀã	”òZ›\ùH⁄]IÀ	… Kà
+	‘ÿ⁄€€Ÿàÿ⁄Y[òŸK[ô⁄[ôY\ö[ô»[ôX⁄õ€ŸﬁIÀ	–Ÿ\ùYöXÿ]H[à[ôõ‹õX][€àX⁄õ€ŸﬁIÀ	ÿŸ\ùYöXÿ]IÀK	”òZ›\ùH⁄]IÀ	… Kà
+	‘ÿ⁄€€Ÿàÿ⁄Y[òŸK[ô⁄[ôY\ö[ô»[ôX⁄õ€ŸﬁIÀ	–Ÿ\ùYöXÿ]H[à[ùö\õ€õY[ù[[\X›\‹Ÿ\‹€Y[ù	À	ÿŸ\ùYöXÿ]IÀK	”òZ›\ùH⁄]IÀ	… KÇàKHÿ⁄€€ŸàYXÿ][€ã[X[ö]Y\»[ô€ÿ⁄X[ÿ⁄Y[òŸ\¬à
+	‘ÿ⁄€€ŸàYXÿ][€ã[X[ö]Y\»[ô€ÿ⁄X[ÿ⁄Y[òŸ\…À	—ÿ›‹àŸà[‹€‹H[àYXÿ][€âÀ	‹	ÀÀ	–[ÿ[\\Ÿ\…À	”X[òYŸ[Y[ù[ôXY\ú⁄\»›ZY[òŸH[ô€›[úŸ[[ôŒ»YXÿ][€à€€[][öXÿ][€àX⁄õ€ŸﬁN»YXÿ][€ò[ﬁX⁄€ŸﬁN»›\úöX›[[H›YY\… Kà
+	‘ÿ⁄€€ŸàYXÿ][€ã[X[ö]Y\»[ô€ÿ⁄X[ÿ⁄Y[òŸ\…À	”X\›\àŸàYXÿ][€à[àX[òYŸ[Y[ù[ôXY\ú⁄\ŸàYXÿ][€âÀ	€X\›\ú…Àã	–[ÿ[\\Ÿ\…À	… Kà
+	‘ÿ⁄€€ŸàYXÿ][€ã[X[ö]Y\»[ô€ÿ⁄X[ÿ⁄Y[òŸ\…À	”X\›\àŸàYXÿ][€à[à›ZY[òŸH[ô€›[úŸ[[ô…À	€X\›\ú…Àã	–[ÿ[\\Ÿ\…À	… Kà
+	‘ÿ⁄€€ŸàYXÿ][€ã[X[ö]Y\»[ô€ÿ⁄X[ÿ⁄Y[òŸ\…À	”X\›\àŸàYXÿ][€à[à›\úöX›[[H›YY\…À	€X\›\ú…Àã	–[ÿ[\\Ÿ\…À	… Kà
+	‘ÿ⁄€€ŸàYXÿ][€ã[X[ö]Y\»[ô€ÿ⁄X[ÿ⁄Y[òŸ\…À	–òX⁄[‹àŸàY‹öX›[\ò[YXÿ][€à[ô^[ú⁄[€âÀ	›[ô\ô‹òYX]IÀ	”XZ[âÀ	… Kà
+	‘ÿ⁄€€ŸàYXÿ][€ã[X[ö]Y\»[ô€ÿ⁄X[ÿ⁄Y[òŸ\…À	–òX⁄[‹àŸà\ù»[à⁄\Z[òﬁIÀ	›[ô\ô‹òYX]IÀ	”XZ[é»òZ›\ùH⁄]IÀ	… Kà
+	‘ÿ⁄€€ŸàYXÿ][€ã[X[ö]Y\»[ô€ÿ⁄X[ÿ⁄Y[òŸ\…À	–òX⁄[‹àŸàYXÿ][€à
+ÿ⁄Y[òŸJIÀ	›[ô\ô‹òYX]IÀ	”XZ[âÀ	”X][X]X‹Œ»ö[€ŸﬁN»⁄[Z\›ûN»Y‹öX›[\ôN»€€\]\é»\⁄X‹… Kà
+	‘ÿ⁄€€ŸàYXÿ][€ã[X[ö]Y\»[ô€ÿ⁄X[ÿ⁄Y[òŸ\…À	–òX⁄[‹àŸàYXÿ][€à
+\ù IÀ	›[ô\ô‹òYX]IÀ	”XZ[âÀ	—[ô€\⁄»]\ò]\ôN»\›‹ûN»]\⁄XŒ»Ÿ[Ÿ‹ò\N»⁄\›ÿZ[N»‘ëN»ù\⁄[ô\‹… Kà
+	‘ÿ⁄€€ŸàYXÿ][€ã[X[ö]Y\»[ô€ÿ⁄X[ÿ⁄Y[òŸ\…À	–òX⁄[‹àŸà[€ŸﬁIÀ	›[ô\ô‹òYX]IÀ	”XZ[âÀ	… Kà
+	‘ÿ⁄€€ŸàYXÿ][€ã[X[ö]Y\»[ô€ÿ⁄X[ÿ⁄Y[òŸ\…À	—\€XH[à[€ŸﬁIÀ	Ÿ\€XIÀã	”XZ[é»òZ›\ùH⁄]IÀ	… Kà
+	‘ÿ⁄€€ŸàYXÿ][€ã[X[ö]Y\»[ô€ÿ⁄X[ÿ⁄Y[òŸ\…À	—\€XH[à⁄\Z[òﬁIÀ	Ÿ\€XIÀã	”XZ[é»òZ›\ùH⁄]IÀ	… Kà
+	‘ÿ⁄€€ŸàYXÿ][€ã[X[ö]Y\»[ô€ÿ⁄X[ÿ⁄Y[òŸ\…À	—\€XH[àYXÿ][€à
+ÿ⁄Y[òŸJIÀ	Ÿ\€XIÀã	”XZ[âÀ	… Kà
+	‘ÿ⁄€€ŸàYXÿ][€ã[X[ö]Y\»[ô€ÿ⁄X[ÿ⁄Y[òŸ\…À	—\€XH[àYXÿ][€à
+\ù IÀ	Ÿ\€XIÀã	”XZ[âÀ	… Kà
+	‘ÿ⁄€€ŸàYXÿ][€ã[X[ö]Y\»[ô€ÿ⁄X[ÿ⁄Y[òŸ\…À	—\€XH[àYXÿ][€à
+X\õH⁄[€Ÿ]ô[‹Y[ùYXÿ][€äIÀ	Ÿ\€XIÀã	”XZ[âÀ	… Kà
+	‘ÿ⁄€€ŸàYXÿ][€ã[X[ö]Y\»[ô€ÿ⁄X[ÿ⁄Y[òŸ\…À	–Ÿ\ùYöXÿ]H[àYXÿ][€à
+X\õH⁄[€ŸYXÿ][€äIÀ	ÿŸ\ùYöXÿ]IÀK	”XZ[âÀ	… KÇàKHÿ⁄€€Ÿà]¬à
+	‘ÿ⁄€€Ÿà]…À	–òX⁄[‹àŸà]‹»
+äIÀ	›[ô\ô‹òYX]IÀ	”XZ[âÀ	… KÇàKHÿ⁄€€ŸàYYX⁄[ôH[ôX[ÿ⁄Y[òŸ\¬à
+	‘ÿ⁄€€ŸàYYX⁄[ôH[ôX[ÿ⁄Y[òŸ\…À	”X\›\àŸàYYX⁄[ôH[àò[Z[HYYX⁄[ôIÀ	€X\›\ú…ÀÀ	”XZ[âÀ	… Kà
+	‘ÿ⁄€€ŸàYYX⁄[ôH[ôX[ÿ⁄Y[òŸ\…À	”X\›\àŸàÿ⁄Y[òŸH[à[X[àù]ö][€à[ôY]]X‹…À	€X\›\ú…Àã	”XZ[âÀ	… Kà
+	‘ÿ⁄€€ŸàYYX⁄[ôH[ôX[ÿ⁄Y[òŸ\…À	”X\›\àŸàXõX»X[	À	€X\›\ú…Àã	”XZ[âÀ	… Kà
+	‘ÿ⁄€€ŸàYYX⁄[ôH[ôX[ÿ⁄Y[òŸ\…À	”X\›\àŸàÿ⁄Y[òŸH[àù\ú⁄[ô…À	€X\›\ú…Àã	”XZ[âÀ	”ZY⁄Yô\ûH[ôô\õŸX›]ôHX[ù\ú⁄[ôŒ»€ò€€ŸﬁH[ô[X]]ôHÿ\ôHù\ú⁄[ôŒ»ù\ú⁄[ô»YXÿ][€é»XY\ú⁄\[ôX[òYŸ[Y[ù[àù\ú⁄[ôŒ»‹ö]Xÿ[ÿ\ôHù\ú⁄[ôŒ»ô[€ò][[ôYX]öX»X[ù\ú⁄[ô… Kà
+	‘ÿ⁄€€ŸàYYX⁄[ôH[ôX[ÿ⁄Y[òŸ\…À	”X\›\àŸàÿ⁄Y[òŸH[à€[öXÿ[YYX⁄[ôH
+⁄[[ôY€\ÿŸ[ùX[
+IÀ	€X\›\ú…Àã	”XZ[âÀ	… Kà
+	‘ÿ⁄€€ŸàYYX⁄[ôH[ôX[ÿ⁄Y[òŸ\…À	–òX⁄[‹àŸàÿ⁄Y[òŸH[àù\ú⁄[ô»
+\ôX›[ùûJIÀ	›[ô\ô‹òYX]IÀ	”XZ[âÀ	… Kà
+	‘ÿ⁄€€ŸàYYX⁄[ôH[ôX[ÿ⁄Y[òŸ\…À	–òX⁄[‹àŸàÿ⁄Y[òŸH[àù\ú⁄[ô»
+[ãTŸ\ùöXŸJIÀ	›[ô\ô‹òYX]IÀÀ	”XZ[âÀ	… Kà
+	‘ÿ⁄€€ŸàYYX⁄[ôH[ôX[ÿ⁄Y[òŸ\…À	–òX⁄[‹àŸàÿ⁄Y[òŸH[à€[öXÿ[YYX⁄[ôIÀ	›[ô\ô‹òYX]IÀK	”XZ[âÀ	… Kà
+	‘ÿ⁄€€ŸàYYX⁄[ôH[ôX[ÿ⁄Y[òŸ\…À	–òX⁄[‹àŸàÿ⁄Y[òŸH[à€[öXÿ[YYX⁄[ôH
+[ãTŸ\ùöXŸJIÀ	›[ô\ô‹òYX]IÀ	”XZ[âÀ	… Kà
+	‘ÿ⁄€€ŸàYYX⁄[ôH[ôX[ÿ⁄Y[òŸ\…À	–òX⁄[‹àŸàÿ⁄Y[òŸH[àXõX»X[	À	›[ô\ô‹òYX]IÀ	”XZ[âÀ	… Kà
+	‘ÿ⁄€€ŸàYYX⁄[ôH[ôX[ÿ⁄Y[òŸ\…À	–òX⁄[‹àŸàÿ⁄Y[òŸH[à[X[àù]ö][€à[ôY]]X‹…À	›[ô\ô‹òYX]IÀ	”XZ[âÀ	… Kà
+	‘ÿ⁄€€ŸàYYX⁄[ôH[ôX[ÿ⁄Y[òŸ\…À	—\€XH[à[X[àù]ö][€à[ôY]]X‹…À	Ÿ\€XIÀã	”XZ[âÀ	… Kà
+	‘ÿ⁄€€ŸàYYX⁄[ôH[ôX[ÿ⁄Y[òŸ\…À	—\€XH[à[ùö\õ€õY[ù[X[	À	Ÿ\€XIÀã	”XZ[âÀ	… Kà
+	‘ÿ⁄€€ŸàYYX⁄[ôH[ôX[ÿ⁄Y[òŸ\…À	—\€XH[àYYXÿ[Xõ‹ò]‹ûHÿ⁄Y[òŸ\…À	Ÿ\€XIÀÀ	”XZ[âÀ	… Kà
+	‘ÿ⁄€€ŸàYYX⁄[ôH[ôX[ÿ⁄Y[òŸ\…À	—\€XH[à€[öXÿ[YYX⁄[ôH[ô›\ôŸ\ûIÀ	Ÿ\€XIÀÀ	”XZ[âÀ	… KÇàKHÿ⁄€€Ÿà]\⁄X»[ôYYXBà
+	‘ÿ⁄€€Ÿà]\⁄X»[ôYYXIÀ	—ÿ›‹àŸà[‹€‹H[à]\⁄X…À	‹	ÀÀ	”XZ[âÀ	”]\⁄X»YXÿ][€é»]\⁄X»€€\‹⁄][€é»]õ€]\⁄X€€ŸﬁN»]\⁄X€€ŸﬁN»⁄\ò⁄]\⁄X»[ô]\⁄X»\ò\N»]\⁄X»õŸX›[€àX⁄õ€ŸﬁI Kà
+	‘ÿ⁄€€Ÿà]\⁄X»[ôYYXIÀ	”X\›\àŸà]\⁄X…À	€X\›\ú…Àã	”XZ[âÀ	”]\⁄X»YXÿ][€é»]\⁄X€€ŸﬁN»]\⁄X»€€\‹⁄][€é»⁄\ò⁄]\⁄X… Kà
+	‘ÿ⁄€€Ÿà]\⁄X»[ôYYXIÀ	–òX⁄[‹àŸà]\⁄X»õŸX›[€àX⁄õ€ŸﬁIÀ	›[ô\ô‹òYX]IÀ	”XZ[âÀ	… Kà
+	‘ÿ⁄€€Ÿà]\⁄X»[ôYYXIÀ	–òX⁄[‹àŸà]\⁄X»[‹ûH[ô€€\‹⁄][€âÀ	›[ô\ô‹òYX]IÀ	”XZ[âÀ	… Kà
+	‘ÿ⁄€€Ÿà]\⁄X»[ôYYXIÀ	–òX⁄[‹àŸàX\‹»€€[][öXÿ][€âÀ	›[ô\ô‹òYX]IÀ	”XZ[âÀ	”YYXN»XõX»ô[][€ú… Kà
+	‘ÿ⁄€€Ÿà]\⁄X»[ôYYXIÀ	—\€XH[àX\‹»€€[][öXÿ][€âÀ	Ÿ\€XIÀã	”XZ[âÀ	”YYXN»XõX»ô[][€ú… Kà
+	‘ÿ⁄€€Ÿà]\⁄X»[ôYYXIÀ	—\€XH[à]\⁄X…À	Ÿ\€XIÀã	”XZ[âÀ	… Kà
+	‘ÿ⁄€€Ÿà]\⁄X»[ôYYXIÀ	—\€XH[à]\⁄X»õŸX›[€àX⁄õ€ŸﬁIÀ	Ÿ\€XIÀã	”XZ[âÀ	… Kà
+	‘ÿ⁄€€Ÿà]\⁄X»[ôYYXIÀ	—\€XH[àX]ôH\ù…À	Ÿ\€XIÀã	”XZ[âÀ	… Kà
+	‘ÿ⁄€€Ÿà]\⁄X»[ôYYXIÀ	—\€XH[à[X›õ€öX»YYXIÀ	Ÿ\€XIÀã	”XZ[âÀ	… Kà
+	‘ÿ⁄€€Ÿà]\⁄X»[ôYYXIÀ	—\€XH[àö[H[ôX]ôIÀ	Ÿ\€XIÀã	”XZ[âÀ	… Kà
+	‘ÿ⁄€€Ÿà]\⁄X»[ôYYXIÀ	–Ÿ\ùYöXÿ]H[à]\⁄X…À	ÿŸ\ùYöXÿ]IÀK	”XZ[âÀ	… Kà
+	‘ÿ⁄€€Ÿà]\⁄X»[ôYYXIÀ	–Ÿ\ùYöXÿ]H[à]\⁄X»õŸX›[€àX⁄õ€ŸﬁIÀ	ÿŸ\ùYöXÿ]IÀK	”XZ[âÀ	… Kà
+	‘ÿ⁄€€Ÿà]\⁄X»[ôYYXIÀ	–Ÿ\ùYöXÿ]H[àX\‹»€€[][öXÿ][€âÀ	ÿŸ\ùYöXÿ]IÀK	”XZ[âÀ	… Kà
+	‘ÿ⁄€€Ÿà]\⁄X»[ôYYXIÀ	–Ÿ\ùYöXÿ]H[àö[H[ôX]ôIÀ	ÿŸ\ùYöXÿ]IÀK	”XZ[âÀ	… KÇàKHÿ⁄€€Ÿà\õXXﬁBà
+	‘ÿ⁄€€Ÿà\õXXﬁIÀ	–òX⁄[‹àŸà\õXXﬁIÀ	›[ô\ô‹òYX]IÀK	”XZ[âÀ	… Bì”à””ëìP’
+ÿ⁄€€ò[YJH»ì’SëŒ¬ÇãKHOOOOOOOOOOOOOOOOOOOHTïLKÃçàúöY[ôò[Y\»
+€€ùX›€ò[Y\ HOOOOOOOOOBê‘ëPUHPìHQàì’VT’»XõXÀò€€ùX›€ò[Y\»
+à]]‹ó⁄YURQì’ïSëQëTëSê—T»]]ù\Ÿ\ú Y
+H”àSUH–T––QKàY\ó⁄YURQì’ïSëQëTëSê—T»]]ù\Ÿ\ú Y
+H”àSUH–T––QKàò[YHVì’ïS“P“»
+⁄\ó€[ô›
+ò[YJHëU—QSàHSë
+Kà\]Yÿ]SQT’STàì’ïSQêUSì’ 
+KàíSPTñH—VH
+]]‹ó⁄YY\ó⁄Y
+Kà“P“»
+]]‹ó⁄YàY\ó⁄Y
+BäN¬Çê‘ëPUHSëVQàì’VT’»€€ùX›€ò[Y\◊‹Y\ó⁄Yà”àXõXÀò€€ùX›€ò[Y\»
+Y\ó⁄Y
+N¬ÇêSTàPìHXõXÀò€€ùX›€ò[Y\»SêPìHì’»UëS—P’TíUN¬ë‘êSï—SP’Sî—TïTUKSUH”àXõXÀò€€ùX›€ò[Y\»»]][ùXÿ]Y¬Çëì‘”P÷HQàVT’»ï\Ÿ\ú»öY]»Z\à›€à€€ùX›ò[Y\»à”àXõXÀò€€ùX›€ò[Y\Œ¬ê‘ëPUH”P÷Hï\Ÿ\ú»öY]»Z\à›€à€€ùX›ò[Y\»Çà”àXõXÀò€€ùX›€ò[Y\»ì‘à—SP’»]][ùXÿ]YàT“Së»
+]]‹ó⁄YH
+—SP’]]ùZY
+
+JJN¬Çëì‘”P÷HQàVT’»ï\Ÿ\ú»ÿ]ôHZ\à›€à€€ùX›ò[Y\»à”àXõXÀò€€ùX›€ò[Y\Œ¬ê‘ëPUH”P÷Hï\Ÿ\ú»ÿ]ôHZ\à›€à€€ùX›ò[Y\»Çà”àXõXÀò€€ùX›€ò[Y\»ì‘àSî—Tï»]][ùXÿ]Yà“U“P“»
+à]]‹ó⁄YH
+—SP’]]ùZY
+
+JBàSë]]‹ó⁄YàY\ó⁄Yà
+N¬Çëì‘”P÷HQàVT’»ï\Ÿ\ú»\]HZ\à›€à€€ùX›ò[Y\»à”àXõXÀò€€ùX›€ò[Y\Œ¬ê‘ëPUH”P÷Hï\Ÿ\ú»\]HZ\à›€à€€ùX›ò[Y\»Çà”àXõXÀò€€ùX›€ò[Y\»ì‘àTUH»]][ùXÿ]YàT“Së»
+]]‹ó⁄YH
+—SP’]]ùZY
+
+JJBà“U“P“»
+]]‹ó⁄YH
+—SP’]]ùZY
+
+JHSë]]‹ó⁄YàY\ó⁄Y
+N¬Çëì‘”P÷HQàVT’»ï\Ÿ\ú»[]HZ\à›€à€€ùX›ò[Y\»à”àXõXÀò€€ùX›€ò[Y\Œ¬ê‘ëPUH”P÷Hï\Ÿ\ú»[]HZ\à›€à€€ùX›ò[Y\»Çà”àXõXÀò€€ùX›€ò[Y\»ì‘àSUH»]][ùXÿ]YàT“Së»
+]]‹ó⁄YH
+—SP’]]ùZY
+
+JJN¬Çìì’QñH‹ú›	‹ô[ÿYÿ⁄[XIŒ¬ãKHÿ[\\»€€õôX›8†%Y\‹ÿYŸHôXX›[€úÀ›\ú»[ôô\Y\»
+åÕäBãKHÿYôH»\›HYÿZ[à
+ôK\ù[õòXõJKà\›H[éÇãKHŒãÀ‹›\Xò\ŸKò€€KŸ\⁄õÿ\ô‹õ⁄ôX›⁄ùú[ù⁄ŸZÿú^[úô^Yã‹‹[€ô]¬ãKHH\€‹ö‹»⁄]›]\»ö[H€Àù][àôXX›[€ú»[ô›\ú»\ôH€õBãKHö\⁄XõH€à[›\à›€à€ôKàYù\à\›[ôÀõ›⁄Y\»ŸYH[KÇêëQ“Sé¬ÇãKHKà[[⁄öHôXX›[€ú»€àH⁄]Y\‹ÿYŸH
+ö\⁄XõH»õ›\ùX⁄\[ù KÇê‘ëPUHPìHQàì’VT’»XõXÀõY\‹ÿYŸW‹ôXX›[€ú»
+àY\‹ÿYŸW⁄YURQì’ïSëQëTëSê—T»XõXÀõY\‹ÿYŸ\ Y
+H”àSUH–T––QKà\Ÿ\ó⁄YURQì’ïSëQëTëSê—T»]]ù\Ÿ\ú Y
+H”àSUH–T––QKà[[⁄öHVì’ïS“P“»
+⁄\ó€[ô›
+[[⁄öJHëU—QSàHSë
+Kà‹ôX]Yÿ]SQT’STàì’ïSQêUSì’ 
+KàíSPTñH—VH
+Y\‹ÿYŸW⁄Y\Ÿ\ó⁄Y
+BäN¬Çê‘ëPUHSëVQàì’VT’»Y\‹ÿYŸW‹ôXX›[€ú◊€Y\‹ÿYŸW⁄Yà”àXõXÀõY\‹ÿYŸW‹ôXX›[€ú»
+Y\‹ÿYŸW⁄Y
+N¬ÇêSTàPìHXõXÀõY\‹ÿYŸW‹ôXX›[€ú»SêPìHì’»UëS—P’TíUN¬ë‘êSï—SP’Sî—TïSUH”àXõXÀõY\‹ÿYŸW‹ôXX›[€ú»»]][ùXÿ]Y¬Çëì‘”P÷HQàVT’»î\ùX⁄\[ù»öY]»Y\‹ÿYŸHôXX›[€ú»à”àXõXÀõY\‹ÿYŸW‹ôXX›[€úŒ¬ê‘ëPUH”P÷Hî\ùX⁄\[ù»öY]»Y\‹ÿYŸHôXX›[€ú»Çà”àXõXÀõY\‹ÿYŸW‹ôXX›[€ú»ì‘à—SP’»]][ùXÿ]YàT“Së»
+àVT’»
+à—SP’Hîì”HXõXÀõY\‹ÿYŸ\»T»Bà“TëHKöYHY\‹ÿYŸW‹ôXX›[€úÀõY\‹ÿYŸW⁄YàSë
+KúŸ[ô\ó⁄YH
+—SP’]]ùZY
+
+JH‘àKúôXŸZ]ô\ó⁄YH
+—SP’]]ùZY
+
+JJBà
+Bà
+N¬Çëì‘”P÷HQàVT’»ï\Ÿ\ú»YZ\à›€àY\‹ÿYŸHôXX›[€àà”àXõXÀõY\‹ÿYŸW‹ôXX›[€úŒ¬ê‘ëPUH”P÷Hï\Ÿ\ú»YZ\à›€àY\‹ÿYŸHôXX›[€àÇà”àXõXÀõY\‹ÿYŸW‹ôXX›[€ú»ì‘àSî—Tï»]][ùXÿ]Yà“U“P“»
+à\Ÿ\ó⁄YH
+—SP’]]ùZY
+
+JBàSëVT’»
+à—SP’Hîì”HXõXÀõY\‹ÿYŸ\»T»Bà“TëHKöYHY\‹ÿYŸW‹ôXX›[€úÀõY\‹ÿYŸW⁄YàSë
+KúŸ[ô\ó⁄YH
+—SP’]]ùZY
+
+JH‘àKúôXŸZ]ô\ó⁄YH
+—SP’]]ùZY
+
+JJBà
+Bà
+N¬Çëì‘”P÷HQàVT’»ï\Ÿ\ú»ô[[›ôHZ\à›€àY\‹ÿYŸHôXX›[€àà”àXõXÀõY\‹ÿYŸW‹ôXX›[€úŒ¬ê‘ëPUH”P÷Hï\Ÿ\ú»ô[[›ôHZ\à›€àY\‹ÿYŸHôXX›[€àÇà”àXõXÀõY\‹ÿYŸW‹ôXX›[€ú»ì‘àSUH»]][ùXÿ]YàT“Së»
+\Ÿ\ó⁄YH
+—SP’]]ùZY
+
+JJN¬ÇãKHãà›\úôYY\‹ÿYŸ\»
+Hö]ò]Hõ€⁄€X\öŒà€õHH›€ô\àŸY\»[JKÇê‘ëPUHPìHQàì’VT’»XõXÀõY\‹ÿYŸW‹›\ú»
+àY\‹ÿYŸW⁄YURQì’ïSëQëTëSê—T»XõXÀõY\‹ÿYŸ\ Y
+H”àSUH–T––QKà\Ÿ\ó⁄YURQì’ïSëQëTëSê—T»]]ù\Ÿ\ú Y
+H”àSUH–T––QKà‹ôX]Yÿ]SQT’STàì’ïSQêUSì’ 
+KàíSPTñH—VH
+Y\‹ÿYŸW⁄Y\Ÿ\ó⁄Y
+BäN¬Çê‘ëPUHSëVQàì’VT’»Y\‹ÿYŸW‹›\ú◊›\Ÿ\ó⁄Yà”àXõXÀõY\‹ÿYŸW‹›\ú»
+\Ÿ\ó⁄Y‹ôX]Yÿ]T– N¬ÇêSTàPìHXõXÀõY\‹ÿYŸW‹›\ú»SêPìHì’»UëS—P’TíUN¬ë‘êSï—SP’Sî—TïSUH”àXõXÀõY\‹ÿYŸW‹›\ú»»]][ùXÿ]Y¬Çëì‘”P÷HQàVT’»ï\Ÿ\ú»öY]»Z\à›€à›\úôYY\‹ÿYŸ\»à”àXõXÀõY\‹ÿYŸW‹›\úŒ¬ê‘ëPUH”P÷Hï\Ÿ\ú»öY]»Z\à›€à›\úôYY\‹ÿYŸ\»Çà”àXõXÀõY\‹ÿYŸW‹›\ú»ì‘à—SP’»]][ùXÿ]YàT“Së»
+\Ÿ\ó⁄YH
+—SP’]]ùZY
+
+JJN¬Çëì‘”P÷HQàVT’»ï\Ÿ\ú»›\àZ\à›€àY\‹ÿYŸ\»à”àXõXÀõY\‹ÿYŸW‹›\úŒ¬ê‘ëPUH”P÷Hï\Ÿ\ú»›\àZ\à›€àY\‹ÿYŸ\»Çà”àXõXÀõY\‹ÿYŸW‹›\ú»ì‘àSî—Tï»]][ùXÿ]Yà“U“P“»
+\Ÿ\ó⁄YH
+—SP’]]ùZY
+
+JJN¬Çëì‘”P÷HQàVT’»ï\Ÿ\ú»[ú›\àZ\à›€àY\‹ÿYŸ\»à”àXõXÀõY\‹ÿYŸW‹›\úŒ¬ê‘ëPUH”P÷Hï\Ÿ\ú»[ú›\àZ\à›€àY\‹ÿYŸ\»Çà”àXõXÀõY\‹ÿYŸW‹›\ú»ì‘àSUH»]][ùXÿ]YàT“Së»
+\Ÿ\ó⁄YH
+—SP’]]ùZY
+
+JJN¬ÇãKHÀàô\K]ŒàH€X[€ò\⁄›ŸàH][›YY\‹ÿYŸH€»H][›Hõﬁ›[ãKHô[ô\ú»]ô[àYàH‹öY⁄[ò[Y\‹ÿYŸH\»]\à[]YÇêSTàPìHXõXÀõY\‹ÿYŸ\¬àQ””SSàQàì’VT’»ô\W›»URQëQëTëSê—T»XõXÀõY\‹ÿYŸ\ Y
+H”àSUH—UïS¬ÇêSTàPìHXõXÀõY\‹ÿYŸ\¬àQ””SSàQàì’VT’»ô\W‹ô]öY]»î””êé¬Çë»	…êëQ“SÇàQàVT’»
+à—SP’Hîì”H◊ÿ€€ú›òZ[ùà“TëH€€õò[YHH	€Y\‹ÿYŸ\◊‹ô\W‹ô]öY]◊‹⁄^ôWÿ⁄X⁄…¬àSë€€úô[YH	‹XõXÀõY\‹ÿYŸ\…ŒéîëQ–”T‘¬à
+HSÇàSTàPìHXõXÀõY\‹ÿYŸ\»ì‘””î’êRSïY\‹ÿYŸ\◊‹ô\W‹ô]öY]◊‹⁄^ôWÿ⁄X⁄Œ¬àSëQé¬ëSëâ…¬ÇêSTàPìHXõXÀõY\‹ÿYŸ\¬àQ””î’êRSïY\‹ÿYŸ\◊‹ô\W‹ô]öY]◊‹⁄^ôWÿ⁄X⁄¬à“P“»
+ô\W‹ô]öY]»T»ïS‘àÿ›]€[ô›
+ô\W‹ô]öY]ŒéïV
+HHMäN¬Çê””SRU¬ÇãKHOOOOOOOOOOOHTïLãÃçàZY‹ò][€úÀÃåçåLMó€X›\ô\óÿ‹ôY[ùX[Àú‹[OOOOOOOOOOOBãKHOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOBãKH–STT»””ìëP’8†%P’TëTà‘ëQSïPSÀ’QHS—K’Qëà—¬ãKHÿXò\òZ»[ö]ô\ú⁄]Hù[\»\»YŒÇãKH
+àHX›\ô\à]\›õ›ôH[\Ÿ[ô\»⁄]Hò][€ò[Qù[Xô\ãBãKH›YôàQÿ\ôù[Xô\ã[ôHôY⁄\›ò][€àù[Xô\à‹ö][à€ÇãKHZ\à]\àŸà[ùõŸX›[€à8†%\»H›»ŸàXX⁄ãKH
+à[ù[[àYZ[à\õ›ô\»‹ŸHÿ›[Y[ù»HXÿ€›[ùÿ[õõ›‹›ãKH⁄]€€[Y[ù‹àÿ[àH[ö]ô\ú⁄]Hﬁ\›[H›^\»⁄]ãKH
+àH›YôàQÿ\ôù[Xô\àX^H€õH]ô\àô[€ô»»€ôH\ú€€ã€»BãKHX›\ô\à⁄»Yù[ô€€Y\»òX⁄»]\›ôH\‹›YYHëU»ÿ\ôãKH
+à›Y[ù»\ôHYŸŸYõ‹õX[ô]ZŸK‹à€õ[ôBãKH
+àHX›\ô\à⁄»\»õ»€ôŸ\à]H[ö]ô\ú⁄]H€Ÿ\»\‹⁄]ôH[ôãKHõ‹»›]ŸàHX›]ôH›Yôãù]HôX€‹ô\»Ÿ\ãKHY[\›[ùàÿYôH»ù[à[‹ôH[à€òŸKÇãKHOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOBÇÇãKHKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKBãKHKàëU»””SSî»”àì—íST¬ãKH›Yôó⁄Y€ù[Xô\à[ô[\ﬁ[Y[ù‹›]\»\ôH[ö]ô\ú⁄]HòX›À€»€õBãKH[àYZ[à
+‹àHZY‹ò][€äHX^H‹ö]H[H8†%ŸYHŸX›[€àKÇãKHKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKBÇêSTàPìHXõXÀúõŸö[\¬àQ””SSàQàì’VT’»›Yôó⁄Y€ù[Xô\àVì’ïSQêUS	…ÀàQ””SSàQàì’VT’»[\ﬁ[Y[ù‹›]\»Vì’ïSQêUS	ÿX›]ôIÀàQ””SSàQàì’VT’»›YW€[ŸHVì’ïSQêUS	€õ‹õX[	ÀàQ””SSàQàì’VT’»X›\ô\ó‹⁄[òŸHSQT’STé¬Çë»		êëQ“SÇàQàì’VT’»
+à—SP’Hîì”H◊ÿ€€ú›òZ[ùà“TëH€€õò[YHH	‹õŸö[\◊‹›Yôó⁄Y€ù[Xô\ó€[ô›ÿ⁄X⁄…¬àSë€€úô[YH	‹XõXÀúõŸö[\…ŒéúôYÿ€\‹¬à
+HSÇàSTàPìHXõXÀúõŸö[\¬àQ””î’êRSïõŸö[\◊‹›Yôó⁄Y€ù[Xô\ó€[ô›ÿ⁄X⁄¬à“P“»
+⁄\ó€[ô›
+›Yôó⁄Y€ù[Xô\äHHÃäN¬àSëQé¬ÇàQàì’VT’»
+à—SP’Hîì”H◊ÿ€€ú›òZ[ùà“TëH€€õò[YHH	‹õŸö[\◊Ÿ[\ﬁ[Y[ù‹›]\◊ÿ⁄X⁄…¬àSë€€úô[YH	‹XõXÀúõŸö[\…ŒéúôYÿ€\‹¬à
+HSÇàSTàPìHXõXÀúõŸö[\¬àQ””î’êRSïõŸö[\◊Ÿ[\ﬁ[Y[ù‹›]\◊ÿ⁄X⁄¬à“P“»
+[\ﬁ[Y[ù‹›]\»Sà
+	ÿX›]ôIÀ	‹\‹⁄]ôI JN¬àSëQé¬ÇàQàì’VT’»
+à—SP’Hîì”H◊ÿ€€ú›òZ[ùà“TëH€€õò[YHH	‹õŸö[\◊‹›YW€[ŸWÿ⁄X⁄…¬àSë€€úô[YH	‹XõXÀúõŸö[\…ŒéúôYÿ€\‹¬à
+HSÇàSTàPìHXõXÀúõŸö[\¬àQ””î’êRSïõŸö[\◊‹›YW€[ŸWÿ⁄X⁄¬à“P“»
+›YW€[ŸHSà
+	€õ‹õX[	À	‹ô]ZŸIÀ	€€õ[ôI JN¬àSëQé¬ëSë¬â	¬ÇãKH€ôHÿ\ô€ôH\ú€€à8†%õ‹à€€ŸàH\‹⁄]ôHX›\ô\àŸY\»Z\àù[Xô\ÇãKH\ôK⁄X⁄\»^X›H⁄]›‹»]ôZ[ô»[ôY›]YÿZ[ãÇê‘ëPUHSíTUQHSëVQàì’VT’»õŸö[\◊‹›Yôó⁄Y⁄Ÿ^Bà”àXõXÀúõŸö[\»
+›Yôó⁄Y€ù[Xô\äBà“TëH›Yôó⁄Y€ù[Xô\àà	…Œ¬Çê‘ëPUHSëVQàì’VT’»õŸö[\◊‹›Yôó‹õ€€W⁄Yà”àXõXÀúõŸö[\»
+õ€K[\ﬁ[Y[ù‹›]\ÀX›\ô\ó‹⁄[òŸHT– N¬ÇÇãKHKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKBãKHXãà”ëH“THì‘àUëTñHïSPëTÇãKHòXòÀLHãêPêÀLHà[ôêPê»Hà\ôHHÿ[YHÿ\ôàõ‹õX[\⁄[ô»ôYõ‹ôHBãKH[ö\]YH[ô^]ô\à€⁄‹»]Hò[YH\»⁄]›‹»HŸX€€ô\ú€€ÇãKH€Z[Z[ô»Hù[Xô\à]€õHYôô\ú»[àÿ\ŸH‹à‹X⁄[ôÀÇãKHKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKBÇê‘ëPUH‘àëTP—HïSê’S”àXõXÀõõ‹õX[^ôW⁄Y€ù[Xô\ä›ò[YHV
+BîëUTìî»VìSë’PQ—H‹[íSSUUPìBî—UŸX\ò⁄‹]H	…¬êT»		à—SP’TTäëQ—V‘ëTP—JïíSJ”–ST–—J›ò[YK	… JK	»
+…À	»	À	Ÿ… JBâ	¬ÇîëUì“—HS”àïSê’S”àXõXÀõõ‹õX[^ôW⁄Y€ù[Xô\äV
+Hîì”HPìPÀ[õ€ã]][ùXÿ]Y¬ë‘êSïVP’UH”àïSê’S”àXõXÀõõ‹õX[^ôW⁄Y€ù[Xô\äV
+H»]][ùXÿ]Y¬ÇÇãKHKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKBãKHãàH–’SQSïêQ¬ãKH€ôHõ›»\à€Z[K⁄]HôYHù[Xô\ú»[ôHôYHö[\Àà]\¬ãKHô]ô\àY]Y[àXŸNà[àYZ[à\õ›ô\»‹àôZôX›»][ôH\ú€€ÇãKH⁄»ÿ\»ôZôX›Y⁄[\H›XõZ]»[õ›\à€ôKÇãKHKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKBÇê‘ëPUHPìHQàì’VT’»XõXÀõX›\ô\ó‹›XõZ\‹⁄[€ú»
+àYURQíSPTñH—VHQêUSŸ[ó‹ò[ô€W›]ZY
+
+Kà\Ÿ\ó⁄YURQì’ïSëQëTëSê—T»XõXÀúõŸö[\ Y
+H”àSUH–T––QKàò][€ò[⁄Y€ù[Xô\àVì’ïSà›Yôó⁄Y€ù[Xô\àVì’ïSà[ùõŸX›[€ó€]\ó€ù[Xô\àVì’ïSàò][€ò[⁄Y‹]Vì’ïSà›Yôó⁄Y‹]Vì’ïSà[ùõŸX›[€ó€]\ó‹]Vì’ïSà›]\»Vì’ïSQêUS	‹[ô[ô…Ààô]öY]◊€õ›HVì’ïSQêUS	…Ààô]öY]ŸYÿûHURQëQëTëSê—T»XõXÀúõŸö[\ Y
+H”àSUH—UïSàô]öY]ŸYÿ]SQT’STãà‹ôX]Yÿ]SQT’STàì’ïSQêUSì’ 
+Kà\]Yÿ]SQT’STàì’ïSQêUSì’ 
+Kà””î’êRSïX›\ô\ó‹›XõZ\‹⁄[€ú◊€ò][€ò[⁄Yÿ⁄X⁄¬à“P“»
+ò][€ò[⁄Y€ù[Xô\àà	◊ñÃNW^ÕKLüI	 Kà””î’êRSïX›\ô\ó‹›XõZ\‹⁄[€ú◊‹›Yôó⁄Yÿ⁄X⁄¬à“P“»
+›Yôó⁄Y€ù[Xô\àà	◊ñ–KVòK^åNWVÀKã»KVòK^åNW^ÃãÃ_I	 Kà””î’êRSïX›\ô\ó‹›XõZ\‹⁄[€ú◊€]\óÿ⁄X⁄¬à“P“»
+[ùõŸX›[€ó€]\ó€ù[Xô\àà	◊ñ–KVòK^åNWVÀKã»KVòK^åNW^ÃãﬂI	 Kà””î’êRSïX›\ô\ó‹›XõZ\‹⁄[€ú◊‹›]\◊ÿ⁄X⁄¬à“P“»
+›]\»Sà
+	‹[ô[ô…À	ÿ\õ›ôY	À	‹ôZôX›Y	 JKà””î’êRSïX›\ô\ó‹›XõZ\‹⁄[€ú◊Ÿö[\◊ÿ⁄X⁄¬à“P“»
+ò][€ò[⁄Y‹]à	…»Së›Yôó⁄Y‹]à	…¬àSë[ùõŸX›[€ó€]\ó‹]à	… Kà””î’êRSïX›\ô\ó‹›XõZ\‹⁄[€ú◊€õ›W€[ô›ÿ⁄X⁄¬à“P“»
+⁄\ó€[ô›
+ô]öY]◊€õ›JHHÃ
+BäN¬Çê‘ëPUHSëVQàì’VT’»X›\ô\ó‹›XõZ\‹⁄[€ú◊‹›]\◊⁄Yà”àXõXÀõX›\ô\ó‹›XõZ\‹⁄[€ú»
+›]\À‹ôX]Yÿ]T– N¬ê‘ëPUHSëVQàì’VT’»X›\ô\ó‹›XõZ\‹⁄[€ú◊›\Ÿ\ó⁄Yà”àXõXÀõX›\ô\ó‹›XõZ\‹⁄[€ú»
+\Ÿ\ó⁄Y‹ôX]Yÿ]T– N¬ÇãKH€»[‹Hÿ[õõ›]Y]YHHÿ[YHÿ\ô]€òŸK[ô[à\õ›ôY€Z[BãKHŸY\»Hù[Xô\àô\Ÿ\ùôYõ‹à\»€ô»\»HôX€‹ô^\›ÀÇê‘ëPUHSíTUQHSëVQàì’VT’»X›\ô\ó‹›XõZ\‹⁄[€ú◊‹›Yôó⁄Y⁄Ÿ^Bà”àXõXÀõX›\ô\ó‹›XõZ\‹⁄[€ú»
+›Yôó⁄Y€ù[Xô\äBà“TëH›]\»Sà
+	‹[ô[ô…À	ÿ\õ›ôY	 N¬ÇãKH€ôH]ôHô\]Y\›\à\ú€€ã€»HYZ[à]Y]YHÿ[õõ›ö[⁄]€‹Y\ÀÇê‘ëPUHSíTUQHSëVQàì’VT’»X›\ô\ó‹›XõZ\‹⁄[€ú◊€€ôW‹[ô[ô◊⁄Ÿ^Bà”àXõXÀõX›\ô\ó‹›XõZ\‹⁄[€ú»
+\Ÿ\ó⁄Y
+Bà“TëH›]\»H	‹[ô[ô…Œ¬ÇêSTàPìHXõXÀõX›\ô\ó‹›XõZ\‹⁄[€ú»SêPìHì’»UëS—P’TíUN¬Çëì‘”P÷HQàVT’»ìY[Xô\ú»öY]»Z\à›€àX›\ô\à›XõZ\‹⁄[€ú»à”àXõXÀõX›\ô\ó‹›XõZ\‹⁄[€úŒ¬ê‘ëPUH”P÷HìY[Xô\ú»öY]»Z\à›€àX›\ô\à›XõZ\‹⁄[€ú»Çà”àXõXÀõX›\ô\ó‹›XõZ\‹⁄[€ú»ì‘à—SP’»]][ùXÿ]YàT“Së»
+\Ÿ\ó⁄YH
+—SP’]]ùZY
+
+JH‘àXõXÀö\◊ÿYZ[ä
+JN¬ÇãKH]ô\ûHô]»€Z[H€Ÿ\»õ›Y⁄›XõZ]€X›\ô\óÿ‹ôY[ùX[ 
+K⁄X⁄›€ú¬ãKHHõ‹õX][ô\Xÿ]H⁄X⁄‹Àà\»€XﬁH€õHÿ^\»õÿõŸHX^Hö[BãKHH€Z[H€àôZ[àŸà€€Y[€ôH[ŸKÇëì‘”P÷HQàVT’»ìY[Xô\ú»ö[HZ\à›€àX›\ô\à›XõZ\‹⁄[€ú»à”àXõXÀõX›\ô\ó‹›XõZ\‹⁄[€úŒ¬ê‘ëPUH”P÷HìY[Xô\ú»ö[HZ\à›€àX›\ô\à›XõZ\‹⁄[€ú»Çà”àXõXÀõX›\ô\ó‹›XõZ\‹⁄[€ú»ì‘àSî—Tï»]][ùXÿ]Yà“U“P“»
+\Ÿ\ó⁄YH
+—SP’]]ùZY
+
+JJN¬Çëì‘”P÷HQàVT’»êYZ[ú»\]HX›\ô\à›XõZ\‹⁄[€ú»à”àXõXÀõX›\ô\ó‹›XõZ\‹⁄[€úŒ¬ê‘ëPUH”P÷HêYZ[ú»\]HX›\ô\à›XõZ\‹⁄[€ú»Çà”àXõXÀõX›\ô\ó‹›XõZ\‹⁄[€ú»ì‘àTUH»]][ùXÿ]YàT“Së»
+XõXÀö\◊ÿYZ[ä
+JBà“U“P“»
+XõXÀö\◊ÿYZ[ä
+JN¬ÇÇãKHKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKBãKHÀàHì”—àíST»UëHSàHíUêUHïP“—UãKHÿ[YHùX⁄Ÿ]\»ö]ò]H⁄]YYXKù][àHö^Y›Xôõ€\ã[ô[ÇãKHYZ[àÿ[à€õH‹[àHö[H]H€Z[HX›X[H⁄[ù»]àõÿõŸBãKH[ŸHÿ[àôXX⁄Hÿ›[Y[ù8†%õ›]ô[àH]]X[€€õôX›[€ãÇãKHKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKBÇïTUH›‹òYŸKòùX⁄Ÿ]¬à—U[›ŸY€Z[YW›\\»HTîêVV¬à	⁄[XYŸK âÀà	›öY[À âÀà	ÿ\Xÿ][€ã‹âÀà	ÿ\Xÿ][€ã€\›€‹ô	Àà	ÿ\Xÿ][€ã›õôõ‹[û[õ‹õX]À[ŸôöXŸYÿ›[Y[ùù€‹ôõÿŸ\‹⁄[ô€[ôÿ›[Y[ù	¬àBà“TëHYH	ÿÿ[\\À\ö]ò]K[YYXIŒ¬Çëì‘”P÷HQàVT’»êYZ[ú»öY]»X›\ô\àõ€Ÿàö[\»à”à›‹òYŸKõÿöôX›Œ¬ê‘ëPUH”P÷HêYZ[ú»öY]»X›\ô\àõ€Ÿàö[\»Çà”à›‹òYŸKõÿöôX›»ì‘à—SP’»]][ùXÿ]YàT“Së»
+àùX⁄Ÿ]⁄YH	ÿÿ[\\À\ö]ò]K[YYXI¬àSëXõXÀö\◊ÿYZ[ä
+BàSëVT’»
+à—SP’Bàîì”HXõXÀõX›\ô\ó‹›XõZ\‹⁄[€ú»T»¬à“TëH	‹ö]ò]K[YYXNâ»›‹òYŸKõÿöôX›Àõò[YHSà
+àÀõò][€ò[⁄Y‹]Àú›Yôó⁄Y‹]Àö[ùõŸX›[€ó€]\ó‹]à
+Bà
+Bà
+N¬ÇÇãKHKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKBãKHàT»T»P–”’Sï–“—Q’U¬ãKH€ôHXŸHX⁄Y\»]€»Hÿ]Hÿ[õõ›öYùúõ€HHöYŸŸ\ãÇãKH€õHHY[Xô\à[\Ÿ[ô\À‹à[àYZ[ãX^H\⁄ÀÇãKHKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKKBÇê‘ëPUH‘àëTP—HïSê’S”àXõXÀòXÿ€›[ùÿõÿ⁄ŸY
+›\Ÿ\àURQ
+BîëUTìî»ì””PSÇìSë’PQ—H‹[î’PìBî—P’TíUHQíSëTÇî—UŸX\ò⁄‹]H	…¬êT»		à—SP’”–ST–—Jà
+à—SP’ùô\öYöXÿ][€ó‹›]\»H	‹ôZôX›Y	¬à‘à
+úô\]Y\›Y‹õ€HH	€X›\ô\â»Sëùô\öYöXÿ][€ó‹›]\»H	‹[ô[ô… Bà‘à
+àúõ€HH	€X›\ô\â¬àSë
+àô[\ﬁ[Y[ù‹›]\»H	‹\‹⁄]ôI¬à‘àú›Yôó⁄Y€ù[Xô\àH	…¬à‘àùô\öYöXÿ][€ó‹›]\»à	ÿ\õ›ôY	¬à
+Bà
+Bàîì”HXõXÀúõŸö[\»T»à“TëHöYH›\Ÿ\Çà
+KàêS—Bà
+BàSë”–ST–—J›\Ÿ\àH]]ùZY
+
+H‘àXõXÀö\◊ÿYZ[ä
+Kµ€≠;∂âûÀk∫wµÁeåπâ’±±ï—•πÃ(ÄÄÄÅ=HÅ%9MIPÅQ<ÅÖ’—°ïπ—•çÖ—ïê(ÄÄÄÅ]%Q Å!,Ä°Ö’—°Ω…}•êÄÙÅÖ’—†π’•ê†§Å9Å¡’â±•åπ•Õ}çΩµ¡ÖπÂ}µïµâï»†§§Ï((¥¥ÅQ°îÅâΩÖ…êÅÕΩ…—ÃÅ•π—ºÅçΩ±’µπÃ∏ÅÅçΩµ¡Öπ‰Å›…•—ïÃÅ•π—ºÅΩπîÅΩòÅ•—ÃÅΩ›∏∏(¥¥ÅQ°•ÃÅ•ÃÅ—°îÅçΩπÕ—…Ö•π–ÅAΩÕ—ù…ïÃÅπÖµïêÅâ‰Å•—Õï±òÅ›°ï∏Å—°îÅçΩ±’µ∏Å›ÖÃ(¥¥Åç…ïÖ—ïê∞ÅÕºÅë…Ω¡¡•πúÅ•–Åâ‰Å—°Ö–ÅπÖµîÅ•ÃÅ—°îÅ›°Ω±îÅïë•–∏)1QHÅQ	1Å¡’â±•åπâ’±±ï—•πÃ(ÄÄÄÅI=@Å=9MQI%9PÅ%Åa%MQLÅâ’±±ï—•πÕ}Õïç—•Ωπ}ç°ïç¨Ï)1QHÅQ	1Å¡’â±•åπâ’±±ï—•πÃ(ÄÄÄÅÅ=9MQI%9PÅâ’±±ï—•πÕ}Õïç—•Ωπ}ç°ïç¨Å!,Ä†(ÄÄÄÄÄÄÄÅÕïç—•Ω∏Å%8Ä†ù›Ω…±êú∞Äù’π•Ÿï…Õ•—‰ú∞Äù¡ïΩ¡±îú∞ÄùçΩµ¡Öπ‰ú§(ÄÄÄÄ§Ï(((¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥(¥¥Äÿ∏ÅQ10ÅA=MQIMPÅQ!ÅM!AÅ!9(¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥()9=Q%dÅ¡ù…Õ–∞Äù…ï±ΩÖêÅÕç°ïµÑúÏ(((¥¥ÄÙÙÙÙÙÙÙÙÙÙÙÙÅAIPÄƒÿº»–ËÅµ•ù…Ö—•ΩπÃº»¿»ÿƒ¿ƒ›}…ïÖ±—•µï}â…ΩÖëçÖÕ–πÕ≈∞ÄÙÙÙÙÙÙÙÙÙÙÙÙ((¥¥ÅAIPÄƒÿËÅ…ïÖ±—•µîÅâ…ΩÖëçÖÕ–ÅôΩ»Å—°îÅ—Â¡•πúÄºÅ…ïçΩ…ë•πúÅ•πë•çÖ—Ω…Ã∏(¥¥(¥¥Äâ—Â¡•πüäòàÅÖπêÄâ…ïçΩ…ë•πúÅÑÅŸΩ•çîÅµïÕÕÖùóäòàÅÖ…îÅπïŸï»ÅÕ—Ω…ïêËÅ—°ï‰Å…•ëîÅÖÃ(¥¥Å…ïÖ±—•µîÅâ…ΩÖëçÖÕ–Åô…ÖµïÃ∞ÅÕºÅ—°ï…îÅ•ÃÅπºÅ—Öâ±îÅ—ºÅâ’•±êÅ°ï…î∏ÅM’¡ÖâÖÕî(¥¥Åëïç•ëïÃÅ›°ºÅµÖ‰ÅÕïπêÅÖπêÅ…ïçï•ŸîÅ—°ΩÕîÅô…ÖµïÃÅ›•—†Å…Ω‹µ±ïŸï∞ÅÕïç’…•—‰ÅΩ∏Å•—Ã(¥¥Å•π—ï…πÖ∞Å…ïÖ±—•µîπµïÕÕÖùïÃÅ—Öâ±î∞ÅÖπêÅÑÅ¡…Ω©ïç–Å—°Ö–Å›ÖÃÅπïŸï»Åù•Ÿï∏ÅÑÅ¡Ω±•ç‰(¥¥Åë…Ω¡ÃÅ—°îÅô…ÖµïÃÅ≈’•ï—±‰∏ÅQ›ºÅ¡Ω±•ç•ïÃÅô•‡Å—°Ö–ËÅÕ•ùπïêµ•∏Å’Õï…ÃÅΩπ±‰∞ÅÖπê(¥¥ÅΩπ±‰ÅΩ∏Å—°îÅç°Ö–µÖç—•Ÿ•—‰¥®Åç°Öππï±ÃÅ—°•ÃÅÖ¡¿ÅΩ¡ïπÃ∏(¥¥(¥¥ÅŸï…Â—°•πúÅ•ÃÅ›…Ö¡¡ïêÅÕºÅÑÅ¡…Ω©ïç–Å—°Ö–Å±Öç≠ÃÅ—°îÅ—Öâ±î∞Å—°îÅçΩ±’µ∏ÅΩ»Å—°î(¥¥Åù…Öπ–Å¡…•π—ÃÅÑÅπΩ—•çîÅ•πÕ—ïÖêÅΩòÅÖâΩ…—•πúÅ—°îÅ…ïÕ–ÅΩòÅ—°îÅ¡ÖÕ—î∏()<Äëëºê)1I(ÄÄÄÅç°Öππï±}çΩ±’µ∏Å—ï·–Ï)	%8(ÄÄÄÅ%Å9=PÅa%MQLÄ†(ÄÄÄÄÄÄÄÅM1PÄƒÅI=4Å•πôΩ…µÖ—•Ωπ}Õç°ïµÑπ—Öâ±ïÃ(ÄÄÄÄÄÄÄÅ]!IÅ—Öâ±ï}Õç°ïµÑÄÙÄù…ïÖ±—•µîúÅ9Å—Öâ±ï}πÖµîÄÙÄùµïÕÕÖùïÃú(ÄÄÄÄ§ÅQ!8(ÄÄÄÄÄÄÄÅI%MÅ9=Q%Äù…ïÖ±—•µîπµïÕÕÖùïÃÅ•ÃÅµ•ÕÕ•πúËÅ—Â¡•πúÅ•πë•çÖ—Ω…ÃÅ›•±∞ÅπΩ–ÅÖ¡¡ïÖ»∏úÏ(ÄÄÄÄÄÄÄÅIQUI8Ï(ÄÄÄÅ9Å%Ï((ÄÄÄÅM1PÅåπçΩ±’µπ}πÖµîÅ%9Q<Åç°Öππï±}çΩ±’µ∏(ÄÄÄÅI=4Å•πôΩ…µÖ—•Ωπ}Õç°ïµÑπçΩ±’µπÃÅLÅå(ÄÄÄÅ]!IÅåπ—Öâ±ï}Õç°ïµÑÄÙÄù…ïÖ±—•µîú(ÄÄÄÄÄÅ9Ååπ—Öâ±ï}πÖµîÄÙÄùµïÕÕÖùïÃú(ÄÄÄÄÄÅ9ÅåπçΩ±’µπ}πÖµîÅ%8Ä†ùç°Öππï±}πÖµîú∞Äù—Ω¡•åú§(ÄÄÄÅ=IHÅ	dÅÖ……ÖÂ}¡ΩÕ•—•Ω∏°IIelùç°Öππï±}πÖµîú∞Äù—Ω¡•åùt∞ÅåπçΩ±’µπ}πÖµî§(ÄÄÄÅ1%5%PÄƒÏ((ÄÄÄÅ%Åç°Öππï±}çΩ±’µ∏Å%LÅ9U10ÅQ!8(ÄÄÄÄÄÄÄÅI%MÅ9=Q%Äù…ïÖ±—•µîπµïÕÕÖùïÃÅ°ÖÃÅπºÅç°Öππï∞ÅçΩ±’µ∏ËÅ—Â¡•πúÅ•πë•çÖ—Ω…ÃÅ›•±∞ÅπΩ–ÅÖ¡¡ïÖ»∏úÏ(ÄÄÄÄÄÄÄÅIQUI8Ï(ÄÄÄÅ9Å%Ï((ÄÄÄÄ¥¥Å…ïÖ±—•µîπµïÕÕÖùïÃÅâï±ΩπùÃÅ—ºÅM’¡ÖâÖÕîÅ•—Õï±ò∞ÅÕºÅ—°îÅ…Ω±îÅ…’ππ•πúÅ—°•ÃÅµÖ‰(ÄÄÄÄ¥¥ÅπΩ–ÅâîÅÖ±±Ω›ïêÅ—ºÅ¡Ω±•ç‰Å•–∏ÅQ°Ö–Åµ’Õ–ÅπΩ–ÅÕ—Ω¿Å—°îÅ…ïÕ–ÅΩòÅ—°îÅ¡ÖÕ—î∏(ÄÄÄÅ	%8(ÄÄÄÄÄÄÄÅI=@ÅA=1%dÅ%Åa%MQLÅç°Ö—}Öç—•Ÿ•—Â}â…ΩÖëçÖÕ—}…ïÖêÅ=8Å…ïÖ±—•µîπµïÕÕÖùïÃÏ(ÄÄÄÄÄÄÄÅaUQÅôΩ…µÖ–†(ÄÄÄÄÄÄÄÄÄÄÄÄùIQÅA=1%dÅç°Ö—}Öç—•Ÿ•—Â}â…ΩÖëçÖÕ—}…ïÖêÅ=8Å…ïÖ±—•µîπµïÕÕÖùïÃ(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅ=HÅM1PÅQ<ÅÖ’—°ïπ—•çÖ—ïêÅUM%9Ä†ï$Å1%-Äúùç°Ö–µÖç—•Ÿ•—‰¥îîúú§ú∞(ÄÄÄÄÄÄÄÄÄÄÄÅç°Öππï±}çΩ±’µ∏(ÄÄÄÄÄÄÄÄ§Ï((ÄÄÄÄÄÄÄÅI=@ÅA=1%dÅ%Åa%MQLÅç°Ö—}Öç—•Ÿ•—Â}â…ΩÖëçÖÕ—}›…•—îÅ=8Å…ïÖ±—•µîπµïÕÕÖùïÃÏ(ÄÄÄÄÄÄÄÅaUQÅôΩ…µÖ–†(ÄÄÄÄÄÄÄÄÄÄÄÄùIQÅA=1%dÅç°Ö—}Öç—•Ÿ•—Â}â…ΩÖëçÖÕ—}›…•—îÅ=8Å…ïÖ±—•µîπµïÕÕÖùïÃ(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅ=HÅ%9MIPÅQ<ÅÖ’—°ïπ—•çÖ—ïêÅ]%Q Å!,Ä†ï$Å1%-Äúùç°Ö–µÖç—•Ÿ•—‰¥îîúú§ú∞(ÄÄÄÄÄÄÄÄÄÄÄÅç°Öππï±}çΩ±’µ∏(ÄÄÄÄÄÄÄÄ§Ï((ÄÄÄÄÄÄÄÅI%MÅ9=Q%Äù	…ΩÖëçÖÕ–Å¡Ω±•ç•ïÃÅç…ïÖ—ïêÅΩ∏Å…ïÖ±—•µîπµïÕÕÖùïÃÅ’Õ•πúÄî∏ú∞Åç°Öππï±}çΩ±’µ∏Ï(ÄÄÄÅaAQ%=8Å]!8Å=Q!ILÅQ!8(ÄÄÄÄÄÄÄÅI%MÅ9=Q%ÄùΩ’±êÅπΩ–ÅÖëêÅ—°îÅâ…ΩÖëçÖÕ–Å¡Ω±•ç•ïÃËÄî∏ÅQ°îÅ—Â¡•πúÅ•πë•çÖ—Ω»ÅµÖ‰ÅÕ—Ö‰ÅÕ•±ïπ–∏ú∞ÅME1II4Ï(ÄÄÄÅ9Ï)9(ëëºêÏ()<Äëëºê)	%8(ÄÄÄÅI9PÅM1P∞Å%9MIPÅ=8Å…ïÖ±—•µîπµïÕÕÖùïÃÅQ<ÅÖ’—°ïπ—•çÖ—ïêÏ)aAQ%=8Å]!8Å=Q!ILÅQ!8(ÄÄÄÅI%MÅ9=Q%ÄùΩ’±êÅπΩ–Å…îµù…Öπ–Å…ïÖ±—•µîπµïÕÕÖùïÃÄ°Ö±…ïÖë‰Åù…Öπ—ïê∞ÅΩ»ÅπΩ–Å¡ï…µ•——ïê§ËÄîú∞ÅME1II4Ï)9(ëëºêÏ()9=Q%dÅ¡ù…Õ–∞Äù…ï±ΩÖêÅÕç°ïµÑúÏ(((¥¥ÄÙÙÙÙÙÙÙÙÙÙÙÙÅAIPÄƒ‹º»–ËÅµ•ù…Ö—•ΩπÃº»¿»ÿƒ¿ƒ›}¡…•ŸÖ—ï}ù…Ω’¡ÃπÕ≈∞ÄÙÙÙÙÙÙÙÙÙÙÙÙ((¥¥ÅAIPÄƒ‹ËÅ¡…•ŸÖ—îÅù…Ω’¿Åç°Ö—Ã∞Å—°îÅ]°Ö—Õ¡¿ÅÕ°Ö¡î∏(¥¥(¥¥ÅQ°îÅçΩµµ’π•—‰Å—Öâ±ïÃÅÖ±…ïÖë‰Åï·•Õ–∞Åâ’–ÅïŸï…Â—°•πúÅ—°ï‰ÅµÖëîÅ›ÖÃÅ¡’â±•åËÅ—°î(¥¥Å•Õ}¡’â±•åÅëïôÖ’±–Å›ÖÃÅQIUÅÖπêÅ—°îÅΩπ±‰Å›Ö‰Å—ºÅ¡’–ÅÑÅ¡ï…ÕΩ∏Å•∏ÅÑÅù…Ω’¿Å›ÖÃ(¥¥ÅôΩ»Å—°Ö–Å¡ï…ÕΩ∏Å—ºÅ›Ö±¨Å•∏Å—°ïµÕï±ŸïÃ∏ÅÅù…Ω’¿ÅÂΩ‘ÅµÖ≠îÅ›•—†ÅôΩ’»Åô…•ïπëÃÅ•Ã(¥¥Å—°îÅΩ—°ï»ÅÕ°Ö¡îÉäPÅπΩâΩë‰ÅçÖ∏ÅÕïîÅ•—ÃÅπÖµî∞Å•—ÃÅµïµâï…ÃÅΩ»Å•—ÃÅµïÕÕÖùïÃ(¥¥Å’π±ïÕÃÅÂΩ‘ÅÖ…îÅ•∏Å•–∏ÅMºÅ—°•ÃÅ¡Ö…–Åô±•¡ÃÅ—°îÅëïôÖ’±–∞ÅÖëëÃÅÑÅô’πç—•Ω∏Å—°Ö–(¥¥Åç…ïÖ—ïÃÅÑÅù…Ω’¿Å›•—†ÅÑÅç°ΩÕï∏Å±•Õ–ÅΩòÅ¡ïΩ¡±î∞ÅÖπêÅÑÅô’πç—•Ω∏Å—°Ö–Å°ÖπëÃÅ—°î(¥¥Åç°Ö–Å±•Õ–ÅïŸï…Â—°•πúÅ•–ÅπïïëÃÅ•∏ÅΩπîÅçÖ±∞∏(¥¥(¥¥ÅÅµïµâï»Å…Ω‹ÅôΩ»ÅÕΩµïΩπîÅï±ÕîÅÕ—•±∞ÅçÖππΩ–ÅâîÅ•πÕï…—ïêÅ—°…Ω’ù†Å—°îÅ¡±Ö•∏(¥¥Å¡Ω±•ç•ïÃÄ°—°ï‰ÅΩπ±‰Å±ï–ÅÂΩ‘ÅÖëêÅÂΩ’…Õï±ò§∞Å›°•ç†Å•ÃÅ›°‰Å—°îÅÖëë•πúÅ…’πÃ(¥¥Å•πÕ•ëîÅMUI%QdÅ%9HÅô’πç—•ΩπÃÅ—°Ö–Åç°ïç¨Å—°îÅ…Ω±îÅô•…Õ–∏()1QHÅQ	1Å¡’â±•åπçΩµµ’π•—•ïÃ(ÄÄÄÅ1QHÅ=1U58Å•Õ}¡’â±•åÅMPÅU1PÅ1MÏ()IQÅQ	1Å%Å9=PÅa%MQLÅ¡’â±•åπçΩµµ’π•—Â}…ïÖëÃÄ†(ÄÄÄÅçΩµµ’π•—Â}•êÅUU%Å9=PÅ9U10ÅII9LÅ¡’â±•åπçΩµµ’π•—•ïÃ°•ê§Å=8Å1QÅM∞(ÄÄÄÅ’Õï…}•êÅUU%Å9=PÅ9U10ÅII9LÅÖ’—†π’Õï…Ã°•ê§Å=8Å1QÅM∞(ÄÄÄÅ±ÖÕ—}…ïÖë}Ö–ÅQ%5MQ5AQhÅ9=PÅ9U10ÅU1PÅ9=\†§∞(ÄÄÄÅAI%5IdÅ-dÄ°çΩµµ’π•—Â}•ê∞Å’Õï…}•ê§(§Ï()1QHÅQ	1Å¡’â±•åπçΩµµ’π•—Â}…ïÖëÃÅ9	1ÅI=\Å1Y0ÅMUI%QdÏ)I9PÅM1P∞Å%9MIP∞ÅUAQÅ=8Å¡’â±•åπçΩµµ’π•—Â}…ïÖëÃÅQ<ÅÖ’—°ïπ—•çÖ—ïêÏ()I=@ÅA=1%dÅ%Åa%MQLÄâ5ïµâï…ÃÅΩ›∏Å—°ï•»ÅΩ›∏Å…ïÖêÅµÖ…≠ï»à(ÄÄÄÅ=8Å¡’â±•åπçΩµµ’π•—Â}…ïÖëÃÏ)IQÅA=1%dÄâ5ïµâï…ÃÅΩ›∏Å—°ï•»ÅΩ›∏Å…ïÖêÅµÖ…≠ï»à(ÄÄÄÅ=8Å¡’â±•åπçΩµµ’π•—Â}…ïÖëÃÅ=HÅ10ÅQ<ÅÖ’—°ïπ—•çÖ—ïê(ÄÄÄÅUM%9Ä°’Õï…}•êÄÙÄ°M1PÅÖ’—†π’•ê†§§§(ÄÄÄÅ]%Q Å!,Ä°’Õï…}•êÄÙÄ°M1PÅÖ’—†π’•ê†§§§Ï()IQÅ%9`Å%Å9=PÅa%MQLÅçΩµµ’π•—Â}…ïÖëÕ}’Õï…}•ë‡(ÄÄÄÅ=8Å¡’â±•åπçΩµµ’π•—Â}…ïÖëÃÄ°’Õï…}•ê∞Å±ÖÕ—}…ïÖë}Ö–ÅM§Ï()IQÅ=HÅIA1ÅU9Q%=8Å¡’â±•åπç…ïÖ—ï}ù…Ω’¿†(ÄÄÄÅ¡}πÖµîÅQaP∞(ÄÄÄÅ¡}µïµâï…}•ëÃÅUU%mtÅU1PÅIIemtËÈUU%mt(§)IQUI9LÅUU%)19UÅ¡±¡ùÕ≈∞)MUI%QdÅ%9H)MPÅÕïÖ…ç°}¡Ö—†ÄÙÄúú)LÄêê)1I(ÄÄÄÅπï›}çΩµµ’π•—Â}•êÅUU%Ï(ÄÄÄÅç’……ïπ—}’Õï…}•êÅUU%ÄËÙÅÖ’—†π’•ê†§Ï)	%8(ÄÄÄÅ%Åç’……ïπ—}’Õï…}•êÅ%LÅ9U10ÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8ÄùeΩ‘Åµ’Õ–ÅâîÅÕ•ùπïêÅ•∏Å—ºÅç…ïÖ—îÅÑÅù…Ω’¿∏úÏ(ÄÄÄÅ9Å%Ï(ÄÄÄÅ%Åç°Ö…}±ïπù—†°—…•¥°=1M°¡}πÖµî∞Äúú§§§Å9=PÅ	Q]8ÄÃÅ9Ä‡¿ÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8Äù…Ω’¿ÅπÖµïÃÅµ’Õ–ÅâîÅâï—›ïï∏ÄÃÅÖπêÄ‡¿Åç°Ö…Öç—ï…Ã∏úÏ(ÄÄÄÅ9Å%Ï(ÄÄÄÅ%Å=1M°Ö……ÖÂ}±ïπù—†°¡}µïµâï…}•ëÃ∞Äƒ§∞Ä¿§Ä¯Ä»¿¿ÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8ÄùÅù…Ω’¿Å—Ö≠ïÃÅÖ–ÅµΩÕ–Ä»¿¿Å¡ïΩ¡±îÅÖ–ÅÑÅ—•µî∏úÏ(ÄÄÄÅ9Å%Ï((ÄÄÄÅ%9MIPÅ%9Q<Å¡’â±•åπçΩµµ’π•—•ïÃÄ°Ω›πï…}•ê∞ÅπÖµî∞ÅëïÕç…•¡—•Ω∏∞Å≠•πê∞Å•Õ}¡’â±•å§(ÄÄÄÅY1ULÄ°ç’……ïπ—}’Õï…}•ê∞Å—…•¥°¡}πÖµî§∞Äúú∞Äùù…Ω’¿ú∞Å1M§(ÄÄÄÅIQUI9%9Å•êÅ%9Q<Åπï›}çΩµµ’π•—Â}•êÏ((ÄÄÄÅ%9MIPÅ%9Q<Å¡’â±•åπçΩµµ’π•—Â}µïµâï…ÃÄ°çΩµµ’π•—Â}•ê∞Å’Õï…}•ê∞Å…Ω±î§(ÄÄÄÅY1ULÄ°πï›}çΩµµ’π•—Â}•ê∞Åç’……ïπ—}’Õï…}•ê∞ÄùΩ›πï»ú§(ÄÄÄÅ=8Å=91%PÄ°çΩµµ’π•—Â}•ê∞Å’Õï…}•ê§Å<Å9=Q!%9Ï((ÄÄÄÄº®Å=π±‰ÅÑÅ…ïÖ∞ÅÖççΩ’π–ÅçÖ∏ÅâîÅ¡’±±ïêÅ•∏∞ÅÖπêÅÑÅâ±Ωç¨ÅΩ∏Åï•—°ï»ÅÕ•ëîÅ≠ïï¡Ã(ÄÄÄÄÄÄÅ—°îÅ¡ï…ÕΩ∏ÅΩ’–ËÅπΩâΩë‰ÅïπëÃÅ’¿Å•∏ÅÑÅù…Ω’¿Å›•—†ÅÕΩµïΩπîÅ—°ï‰Åâ±Ωç≠ïê∏Ä®º(ÄÄÄÅ%9MIPÅ%9Q<Å¡’â±•åπçΩµµ’π•—Â}µïµâï…ÃÄ°çΩµµ’π•—Â}•ê∞Å’Õï…}•ê∞Å…Ω±î§(ÄÄÄÅM1PÅπï›}çΩµµ’π•—Â}•ê∞ÅçÖπë•ëÖ—îπ’Õï…}•ê∞Äùµïµâï»ú(ÄÄÄÅI=4Å’ππïÕ–°=1M°¡}µïµâï…}•ëÃ∞ÅIIemtËÈUU%mt§§ÅLÅçÖπë•ëÖ—î°’Õï…}•ê§(ÄÄÄÅ]!IÅçÖπë•ëÖ—îπ’Õï…}•êÄ¯Åç’……ïπ—}’Õï…}•ê(ÄÄÄÄÄÅ9Åa%MQLÄ†(ÄÄÄÄÄÄÄÄÄÅM1PÄƒ(ÄÄÄÄÄÄÄÄÄÅI=4Å¡’â±•åπ¡…Ωô•±ïÃÅLÅ¡…Ωô•±î(ÄÄÄÄÄÄÄÄÄÅ]!IÅ¡…Ωô•±îπ•êÄÙÅçÖπë•ëÖ—îπ’Õï…}•ê(ÄÄÄÄÄÄ§(ÄÄÄÄÄÅ9Å9=PÅa%MQLÄ†(ÄÄÄÄÄÄÄÄÄÅM1PÄƒ(ÄÄÄÄÄÄÄÄÄÅI=4Å¡’â±•åπ’Õï…}â±Ωç≠ÃÅLÅâ±Ωç≠ï»(ÄÄÄÄÄÄÄÄÄÅ]!IÄ°â±Ωç≠ï»πâ±Ωç≠ï…}•êÄÙÅç’……ïπ—}’Õï…}•êÅ9Åâ±Ωç≠ï»πâ±Ωç≠ïë}•êÄÙÅçÖπë•ëÖ—îπ’Õï…}•ê§(ÄÄÄÄÄÄÄÄÄÄÄÄÅ=HÄ°â±Ωç≠ï»πâ±Ωç≠ï…}•êÄÙÅçÖπë•ëÖ—îπ’Õï…}•êÅ9Åâ±Ωç≠ï»πâ±Ωç≠ïë}•êÄÙÅç’……ïπ—}’Õï…}•ê§(ÄÄÄÄÄÄ§(ÄÄÄÅ=8Å=91%PÄ°çΩµµ’π•—Â}•ê∞Å’Õï…}•ê§Å<Å9=Q!%9Ï((ÄÄÄÅIQUI8Åπï›}çΩµµ’π•—Â}•êÏ)9Ï(êêÏ()IQÅ=HÅIA1ÅU9Q%=8Å¡’â±•åπÖëë}ù…Ω’¡}µïµâï…Ã†(ÄÄÄÅ¡}çΩµµ’π•—Â}•êÅUU%∞(ÄÄÄÅ¡}’Õï…}•ëÃÅUU%mt(§)IQUI9LÅ%9P)19UÅ¡±¡ùÕ≈∞)MUI%QdÅ%9H)MPÅÕïÖ…ç°}¡Ö—†ÄÙÄúú)LÄêê)1I(ÄÄÄÅç’……ïπ—}’Õï…}•êÅUU%ÄËÙÅÖ’—†π’•ê†§Ï(ÄÄÄÅ—Ω—Ö±}µïµâï…ÃÅ%9PÏ)	%8(ÄÄÄÅ%Åç’……ïπ—}’Õï…}•êÅ%LÅ9U10ÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8ÄùeΩ‘Åµ’Õ–ÅâîÅÕ•ùπïêÅ•∏Å—ºÅÖëêÅ¡ïΩ¡±î∏úÏ(ÄÄÄÅ9Å%Ï(ÄÄÄÅ%Å9=PÅ¡’â±•åπçÖπ}µÖπÖùï}çΩµµ’π•—‰°¡}çΩµµ’π•—Â}•ê§ÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8Äù=π±‰Å—°îÅΩ›πï»ÅΩ»ÅÖ∏ÅÖëµ•∏ÅçÖ∏ÅÖëêÅ¡ïΩ¡±îÅ—ºÅ—°•ÃÅù…Ω’¿∏úÏ(ÄÄÄÅ9Å%Ï(ÄÄÄÅ%Å=1M°Ö……ÖÂ}±ïπù—†°¡}’Õï…}•ëÃ∞Äƒ§∞Ä¿§Ä¯Ä»¿¿ÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8ÄùÅù…Ω’¿Å—Ö≠ïÃÅÖ–ÅµΩÕ–Ä»¿¿Å¡ïΩ¡±îÅÖ–ÅÑÅ—•µî∏úÏ(ÄÄÄÅ9Å%Ï((ÄÄÄÅ%9MIPÅ%9Q<Å¡’â±•åπçΩµµ’π•—Â}µïµâï…ÃÄ°çΩµµ’π•—Â}•ê∞Å’Õï…}•ê∞Å…Ω±î§(ÄÄÄÅM1PÅ¡}çΩµµ’π•—Â}•ê∞ÅçÖπë•ëÖ—îπ’Õï…}•ê∞Äùµïµâï»ú(ÄÄÄÅI=4Å’ππïÕ–°=1M°¡}’Õï…}•ëÃ∞ÅIIemtËÈUU%mt§§ÅLÅçÖπë•ëÖ—î°’Õï…}•ê§(ÄÄÄÅ]!IÅçÖπë•ëÖ—îπ’Õï…}•êÄ¯Åç’……ïπ—}’Õï…}•ê(ÄÄÄÄÄÅ9Åa%MQLÄ†(ÄÄÄÄÄÄÄÄÄÅM1PÄƒ(ÄÄÄÄÄÄÄÄÄÅI=4Å¡’â±•åπ¡…Ωô•±ïÃÅLÅ¡…Ωô•±î(ÄÄÄÄÄÄÄÄÄÅ]!IÅ¡…Ωô•±îπ•êÄÙÅçÖπë•ëÖ—îπ’Õï…}•ê(ÄÄÄÄÄÄ§(ÄÄÄÄÄÅ9Å9=PÅa%MQLÄ†(ÄÄÄÄÄÄÄÄÄÅM1PÄƒ(ÄÄÄÄÄÄÄÄÄÅI=4Å¡’â±•åπ’Õï…}â±Ωç≠ÃÅLÅâ±Ωç≠ï»(ÄÄÄÄÄÄÄÄÄÅ]!IÄ°â±Ωç≠ï»πâ±Ωç≠ï…}•êÄÙÅç’……ïπ—}’Õï…}•êÅ9Åâ±Ωç≠ï»πâ±Ωç≠ïë}•êÄÙÅçÖπë•ëÖ—îπ’Õï…}•ê§(ÄÄÄÄÄÄÄÄÄÄÄÄÅ=HÄ°â±Ωç≠ï»πâ±Ωç≠ï…}•êÄÙÅçÖπë•ëÖ—îπ’Õï…}•êÅ9Åâ±Ωç≠ï»πâ±Ωç≠ïë}•êÄÙÅç’……ïπ—}’Õï…}•ê§(ÄÄÄÄÄÄ§(ÄÄÄÅ=8Å=91%PÄ°çΩµµ’π•—Â}•ê∞Å’Õï…}•ê§Å<Å9=Q!%9Ï((ÄÄÄÅM1PÅçΩ’π–†®§Å%9Q<Å—Ω—Ö±}µïµâï…Ã(ÄÄÄÅI=4Å¡’â±•åπçΩµµ’π•—Â}µïµâï…ÃÅLÅµïµâï»(ÄÄÄÅ]!IÅµïµâï»πçΩµµ’π•—Â}•êÄÙÅ¡}çΩµµ’π•—Â}•êÏ((ÄÄÄÅIQUI8Å—Ω—Ö±}µïµâï…ÃÏ)9Ï(êêÏ((º®Å=πîÅçÖ±∞Å¡Ö•π—ÃÅ—°îÅ›°Ω±îÅç°Ö–Å±•Õ–ËÅïŸï…‰Åù…Ω’¿Å$ÅÖ¥Å•∏Å›•—†Å›°ºÅµÖëîÅ•–∞(ÄÄÅ°Ω‹ÅµÖπ‰ÅÖ…îÅ•πÕ•ëî∞Å—°îÅ±ÖÕ–ÅµïÕÕÖùîÅÖπêÅ°Ω‹ÅµÖπ‰Å$Å°ÖŸîÅπΩ–Å…ïÖê∏ÅIïÖë•πú(ÄÄÅ•–Å—°…Ω’ù†Å—°îÅ¡±Ö•∏Å—Öâ±ïÃÅ›Ω’±êÅ—Ö≠îÅôΩ’»Å…Ω’πêÅ—…•¡ÃÅ¡ï»Åù…Ω’¿∏Ä®º)IQÅ=HÅIA1ÅU9Q%=8Å¡’â±•åπµÂ}ù…Ω’¡Ã†§)IQUI9LÅQ	1Ä†(ÄÄÄÅ•êÅUU%∞(ÄÄÄÅπÖµîÅQaP∞(ÄÄÄÅëïÕç…•¡—•Ω∏ÅQaP∞(ÄÄÄÅΩ›πï…}•êÅUU%∞(ÄÄÄÅµÂ}…Ω±îÅQaP∞(ÄÄÄÅµïµâï…}çΩ’π–Å	%%9P∞(ÄÄÄÅ±ÖÕ—}µïÕÕÖùï}Ö–ÅQ%5MQ5AQh∞(ÄÄÄÅ±ÖÕ—}Õïπëï…}•êÅUU%∞(ÄÄÄÅ±ÖÕ—}çΩπ—ïπ–ÅQaP∞(ÄÄÄÅ±ÖÕ—}µïë•Ö}’…∞ÅQaP∞(ÄÄÄÅ’π…ïÖë}çΩ’π–Å	%%9P(§)19UÅÕ≈∞)MQ	1)MUI%QdÅ%9H)MPÅÕïÖ…ç°}¡Ö—†ÄÙÄúú)LÄêê(ÄÄÄÅM1PÅçΩµµ’π•—‰π•ê∞(ÄÄÄÄÄÄÄÄÄÄÅçΩµµ’π•—‰ππÖµî∞(ÄÄÄÄÄÄÄÄÄÄÅçΩµµ’π•—‰πëïÕç…•¡—•Ω∏∞(ÄÄÄÄÄÄÄÄÄÄÅçΩµµ’π•—‰πΩ›πï…}•ê∞(ÄÄÄÄÄÄÄÄÄÄÅµïµâï…Õ°•¿π…Ω±î∞(ÄÄÄÄÄÄÄÄÄÄÅçΩ’π—ï»πµïµâï…}çΩ’π–∞(ÄÄÄÄÄÄÄÄÄÄÅ±Ö—ïÕ–πç…ïÖ—ïë}Ö–∞(ÄÄÄÄÄÄÄÄÄÄÅ±Ö—ïÕ–πÕïπëï…}•ê∞(ÄÄÄÄÄÄÄÄÄÄÅ±Ö—ïÕ–πçΩπ—ïπ–∞(ÄÄÄÄÄÄÄÄÄÄÅ±Ö—ïÕ–πµïë•Ö}’…∞∞(ÄÄÄÄÄÄÄÄÄÄÅ=1M°’π…ïÖêπ’π…ïÖë}çΩ’π–∞Ä¿§(ÄÄÄÅI=4Å¡’â±•åπçΩµµ’π•—Â}µïµâï…ÃÅLÅµïµâï…Õ°•¿(ÄÄÄÅ)=%8Å¡’â±•åπçΩµµ’π•—•ïÃÅLÅçΩµµ’π•—‰(ÄÄÄÄÄÄÄÅ=8ÅçΩµµ’π•—‰π•êÄÙÅµïµâï…Õ°•¿πçΩµµ’π•—Â}•ê(ÄÄÄÅI=MLÅ)=%8Å1QI0Ä†(ÄÄÄÄÄÄÄÅM1PÅçΩ’π–†®§ÅLÅµïµâï…}çΩ’π–(ÄÄÄÄÄÄÄÅI=4Å¡’â±•åπçΩµµ’π•—Â}µïµâï…ÃÅLÅïŸï…Â}µïµâï»(ÄÄÄÄÄÄÄÅ]!IÅïŸï…Â}µïµâï»πçΩµµ’π•—Â}•êÄÙÅçΩµµ’π•—‰π•ê(ÄÄÄÄ§ÅLÅçΩ’π—ï»(ÄÄÄÅ1PÅ)=%8Å¡’â±•åπçΩµµ’π•—Â}…ïÖëÃÅLÅµÖ…≠ï»(ÄÄÄÄÄÄÄÅ=8ÅµÖ…≠ï»πçΩµµ’π•—Â}•êÄÙÅçΩµµ’π•—‰π•ê(ÄÄÄÄÄÄÅ9ÅµÖ…≠ï»π’Õï…}•êÄÙÅµïµâï…Õ°•¿π’Õï…}•ê(ÄÄÄÅ1PÅ)=%8Å1QI0Ä†(ÄÄÄÄÄÄÄÅM1PÅµïÕÕÖùîπç…ïÖ—ïë}Ö–∞(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅµïÕÕÖùîπÕïπëï…}•ê∞(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅµïÕÕÖùîπçΩπ—ïπ–∞(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅµïÕÕÖùîπµïë•Ö}’…∞(ÄÄÄÄÄÄÄÅI=4Å¡’â±•åπçΩµµ’π•—Â}µïÕÕÖùïÃÅLÅµïÕÕÖùî(ÄÄÄÄÄÄÄÅ]!IÅµïÕÕÖùîπçΩµµ’π•—Â}•êÄÙÅçΩµµ’π•—‰π•ê(ÄÄÄÄÄÄÄÅ=IHÅ	dÅµïÕÕÖùîπç…ïÖ—ïë}Ö–ÅM(ÄÄÄÄÄÄÄÅ1%5%PÄƒ(ÄÄÄÄ§ÅLÅ±Ö—ïÕ–Å=8ÅQIU(ÄÄÄÅ1PÅ)=%8Å1QI0Ä†(ÄÄÄÄÄÄÄÅM1PÅçΩ’π–†®§ÅLÅ’π…ïÖë}çΩ’π–(ÄÄÄÄÄÄÄÅI=4Å¡’â±•åπçΩµµ’π•—Â}µïÕÕÖùïÃÅLÅµïÕÕÖùî(ÄÄÄÄÄÄÄÅ]!IÅµïÕÕÖùîπçΩµµ’π•—Â}•êÄÙÅçΩµµ’π•—‰π•ê(ÄÄÄÄÄÄÄÄÄÅ9ÅµïÕÕÖùîπÕïπëï…}•êÄ¯Åµïµâï…Õ°•¿π’Õï…}•ê(ÄÄÄÄÄÄÄÄÄÅ9ÅµïÕÕÖùîπç…ïÖ—ïë}Ö–Ä¯(ÄÄÄÄÄÄÄÄÄÄÄÄÄÅ=1M°µÖ…≠ï»π±ÖÕ—}…ïÖë}Ö–∞Äùï¡Ωç†úËÈQ%5MQ5AQh§(ÄÄÄÄ§ÅLÅ’π…ïÖêÅ=8ÅQIU(ÄÄÄÅ]!IÅµïµâï…Õ°•¿π’Õï…}•êÄÙÄ°M1PÅÖ’—†π’•ê†§§(ÄÄÄÄÄÅ9ÅçΩµµ’π•—‰π≠•πêÄÙÄùù…Ω’¿úÏ(êêÏ()IQÅ=HÅIA1ÅU9Q%=8Å¡’â±•åπµÖ…≠}ù…Ω’¡}…ïÖê°¡}çΩµµ’π•—Â}•êÅUU%§)IQUI9LÅY=%)19UÅÕ≈∞)MUI%QdÅ%9H)MPÅÕïÖ…ç°}¡Ö—†ÄÙÄúú)LÄêê(ÄÄÄÅ%9MIPÅ%9Q<Å¡’â±•åπçΩµµ’π•—Â}…ïÖëÃÄ°çΩµµ’π•—Â}•ê∞Å’Õï…}•ê∞Å±ÖÕ—}…ïÖë}Ö–§(ÄÄÄÅY1ULÄ°¡}çΩµµ’π•—Â}•ê∞Ä°M1PÅÖ’—†π’•ê†§§∞Å9=\†§§(ÄÄÄÅ=8Å=91%PÄ°çΩµµ’π•—Â}•ê∞Å’Õï…}•ê§(ÄÄÄÅ<ÅUAQÅMPÅ±ÖÕ—}…ïÖë}Ö–ÄÙ(ÄÄÄÄÄÄÄÅIQMP°çΩµµ’π•—Â}…ïÖëÃπ±ÖÕ—}…ïÖë}Ö–∞Åa1Uπ±ÖÕ—}…ïÖë}Ö–§Ï(êêÏ()IY=-Å10Å=8ÅU9Q%=8Å¡’â±•åπç…ïÖ—ï}ù…Ω’¿°QaP∞ÅUU%mt§ÅI=4ÅAU	1%∞ÅÖπΩ∏Ï)IY=-Å10Å=8ÅU9Q%=8Å¡’â±•åπÖëë}ù…Ω’¡}µïµâï…Ã°UU%∞ÅUU%mt§ÅI=4ÅAU	1%∞ÅÖπΩ∏Ï)IY=-Å10Å=8ÅU9Q%=8Å¡’â±•åπµÂ}ù…Ω’¡Ã†§ÅI=4ÅAU	1%∞ÅÖπΩ∏Ï)IY=-Å10Å=8ÅU9Q%=8Å¡’â±•åπµÖ…≠}ù…Ω’¡}…ïÖê°UU%§ÅI=4ÅAU	1%∞ÅÖπΩ∏Ï()I9PÅaUQÅ=8ÅU9Q%=8Å¡’â±•åπç…ïÖ—ï}ù…Ω’¿°QaP∞ÅUU%mt§ÅQ<ÅÖ’—°ïπ—•çÖ—ïêÏ)I9PÅaUQÅ=8ÅU9Q%=8Å¡’â±•åπÖëë}ù…Ω’¡}µïµâï…Ã°UU%∞ÅUU%mt§ÅQ<ÅÖ’—°ïπ—•çÖ—ïêÏ)I9PÅaUQÅ=8ÅU9Q%=8Å¡’â±•åπµÂ}ù…Ω’¡Ã†§ÅQ<ÅÖ’—°ïπ—•çÖ—ïêÏ)I9PÅaUQÅ=8ÅU9Q%=8Å¡’â±•åπµÖ…≠}ù…Ω’¡}…ïÖê°UU%§ÅQ<ÅÖ’—°ïπ—•çÖ—ïêÏ()9=Q%dÅ¡ù…Õ–∞Äù…ï±ΩÖêÅÕç°ïµÑúÏ(((¥¥ÄÙÙÙÙÙÙÙÙÙÙÙÙÅAIPÄƒ‡º»–ËÅµ•ù…Ö—•ΩπÃº»¿»ÿƒ¿ƒ›}¡’Õ°}—Ω≠ïπÃπÕ≈∞ÄÙÙÙÙÙÙÙÙÙÙÙÙ((¥¥ÅAIPÄƒ‡ËÅ—°îÅëïŸ•çîÅ±•Õ–Åâï°•πêÅ¡’Õ†ÅÖ±ï…—Ã∏(¥¥(¥¥ÅIïÖ±—•µîÅΩπ±‰Å…ïÖç°ïÃÅÑÅ¡°ΩπîÅ—°Ö–Å•ÃÅÖ›Ö≠îÅÖπêÅΩ¡ï∏∏ÅÅ¡°ΩπîÅ—°Ö–Å°ÖÃÅâïï∏(¥¥ÅÕ›•¡ïêÅÖ›Ö‰Åô…Ω¥Å—°îÅ…ïçïπ—ÃÅÕç…ïï∏ÅπïïëÃÅ•…ïâÖÕîÅ±Ω’êÅ5ïÕÕÖù•πúÅ—ºÅ›Ö≠î(¥¥Å•–∞ÅÖπêÅ4ÅπïïëÃÅΩπîÅ…ïù•Õ—…Ö—•Ω∏Å—Ω≠ï∏Å¡ï»ÅëïŸ•çî∏ÅQ°îÅ—Öâ±îÅâï±Ω‹Å•ÃÅ—°Ö–(¥¥Å±•Õ–ËÅπΩ—°•πúÅ•ÃÅÕ—Ω…ïêÅÖâΩ’–Å—°îÅµïÕÕÖùîÅ•—Õï±ò∞ÅΩπ±‰Å›°•ç†Å¡°ΩπîÅâï±ΩπùÃÅ—º(¥¥Å›°•ç†ÅÕ—’ëïπ–∏(¥¥(¥¥ÅÅ—Ω≠ï∏Å•ÃÅç±ΩÕîÅ—ºÅÑÅ≠ï‰ÉäPÅ›°ΩïŸï»Å°Ω±ëÃÅΩπîÅçÖ∏ÅµÖ≠îÅ—°Ö–Å¡°ΩπîÅ…•πú∏ÅMºÅÑ(¥¥ÅÕ—’ëïπ–ÅµÖ‰ÅΩπ±‰ÅïŸï»Å…ïÖêÅΩ»Åëï±ï—îÅ—°ï•»ÅΩ›∏Å…Ω›Ã∞ÅÖπêÅ—°ï…îÅ•ÃÅπºÅ%9MIP(¥¥Å¡Ω±•ç‰ÅÖ–ÅÖ±∞ËÅ›…•—•πúÅùΩïÃÅ—°…Ω’ù†Å…ïù•Õ—ï…}ëïŸ•çï}—Ω≠ï∏∞Å›°•ç†ÅÕ—Öµ¡Ã(¥¥ÅÖ’—†π’•ê†§Å•—Õï±òÅÖπêÅ—°ï…ïôΩ…îÅçÖππΩ–ÅâîÅ¡Ω•π—ïêÅÖ–ÅÖπΩ—°ï»ÅÖççΩ’π–∏()IQÅQ	1Å%Å9=PÅa%MQLÅ¡’â±•åπëïŸ•çï}—Ω≠ïπÃÄ†(ÄÄÄÅ’Õï…}•êÅUU%Å9=PÅ9U10(ÄÄÄÄÄÄÄÅII9LÅÖ’—†π’Õï…Ã°•ê§Å=8Å1QÅM∞((ÄÄÄÅ—Ω≠ï∏ÅQaPÅ9=PÅ9U10∞((ÄÄÄÅ¡±Ö—ôΩ…¥ÅQaPÅ9=PÅ9U10ÅU1PÄùÖπë…Ω•êú(ÄÄÄÄÄÄÄÅ!,Ä°¡±Ö—ôΩ…¥Å%8Ä†ùÖπë…Ω•êú∞Äù•ΩÃú∞Äù›ïàú§§∞((ÄÄÄÅ’¡ëÖ—ïë}Ö–ÅQ%5MQ5AQhÅ9=PÅ9U10ÅU1PÅ9=\†§∞((ÄÄÄÅAI%5IdÅ-dÄ°—Ω≠ï∏∞Å’Õï…}•ê§(§Ï()1QHÅQ	1Å¡’â±•åπëïŸ•çï}—Ω≠ïπÃÅ9	1ÅI=\Å1Y0ÅMUI%QdÏ)I9PÅM1P∞Å1QÅ=8Å¡’â±•åπëïŸ•çï}—Ω≠ïπÃÅQ<ÅÖ’—°ïπ—•çÖ—ïêÏ()I=@ÅA=1%dÅ%Åa%MQLÄâ=›πï…ÃÅ…ïÖêÅ—°ï•»ÅΩ›∏ÅëïŸ•çïÃàÅ=8Å¡’â±•åπëïŸ•çï}—Ω≠ïπÃÏ)IQÅA=1%dÄâ=›πï…ÃÅ…ïÖêÅ—°ï•»ÅΩ›∏ÅëïŸ•çïÃà(ÄÄÄÅ=8Å¡’â±•åπëïŸ•çï}—Ω≠ïπÃÅ=HÅM1PÅQ<ÅÖ’—°ïπ—•çÖ—ïê(ÄÄÄÅUM%9Ä°’Õï…}•êÄÙÄ°M1PÅÖ’—†π’•ê†§§§Ï()I=@ÅA=1%dÅ%Åa%MQLÄâ=›πï…ÃÅôΩ…ùï–Å—°ï•»ÅΩ›∏ÅëïŸ•çïÃàÅ=8Å¡’â±•åπëïŸ•çï}—Ω≠ïπÃÏ)IQÅA=1%dÄâ=›πï…ÃÅôΩ…ùï–Å—°ï•»ÅΩ›∏ÅëïŸ•çïÃà(ÄÄÄÅ=8Å¡’â±•åπëïŸ•çï}—Ω≠ïπÃÅ=HÅ1QÅQ<ÅÖ’—°ïπ—•çÖ—ïê(ÄÄÄÅUM%9Ä°’Õï…}•êÄÙÄ°M1PÅÖ’—†π’•ê†§§§Ï()IQÅ%9`Å%Å9=PÅa%MQLÅëïŸ•çï}—Ω≠ïπÕ}’Õï…}•ë‡(ÄÄÄÅ=8Å¡’â±•åπëïŸ•çï}—Ω≠ïπÃÄ°’Õï…}•ê§Ï()IQÅ=HÅIA1ÅU9Q%=8Å¡’â±•åπ…ïù•Õ—ï…}ëïŸ•çï}—Ω≠ï∏†(ÄÄÄÅ¡}—Ω≠ï∏ÅQaP∞(ÄÄÄÅ¡}¡±Ö—ôΩ…¥ÅQaPÅU1PÄùÖπë…Ω•êú(§)IQUI9LÅY=%)19UÅ¡±¡ùÕ≈∞)MUI%QdÅ%9H)MPÅÕïÖ…ç°}¡Ö—†ÄÙÄúú)LÄêê)1I(ÄÄÄÅç’……ïπ—}’Õï…}•êÅUU%ÄËÙÅÖ’—†π’•ê†§Ï(ÄÄÄÅç±ïÖπ}—Ω≠ï∏ÅQaPÄËÙÅ—…•¥°=1M°¡}—Ω≠ï∏∞Äúú§§Ï(ÄÄÄÅç±ïÖπ}¡±Ö—ôΩ…¥ÅQaPÄËÙÅM(ÄÄÄÄÄÄÄÅ]!8Å¡}¡±Ö—ôΩ…¥Å%8Ä†ùÖπë…Ω•êú∞Äù•ΩÃú∞Äù›ïàú§ÅQ!8Å¡}¡±Ö—ôΩ…¥(ÄÄÄÄÄÄÄÅ1MÄùÖπë…Ω•êú(ÄÄÄÅ9Ï)	%8(ÄÄÄÅ%Åç’……ïπ—}’Õï…}•êÅ%LÅ9U10ÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8ÄùeΩ‘Åµ’Õ–ÅâîÅÕ•ùπïêÅ•∏Å—ºÅÕ—Ω…îÅÑÅëïŸ•çî∏úÏ(ÄÄÄÅ9Å%Ï(ÄÄÄÄ¥¥Å∏Å4Å—Ω≠ï∏Å•ÃÅÑÅ±ΩπúÅΩ¡Ö≈’îÅÕ—…•πú∏ÅπÂ—°•πúÅÕ°Ω…—ï»Å›ÖÃÅπïŸï»ÅÑÅ—Ω≠ï∏∞(ÄÄÄÄ¥¥ÅÖπêÅÕ—Ω…•πúÅ©’π¨Å°ï…îÅ›Ω’±êÅΩπ±‰ÅµÖ≠îÅ—°îÅ¡°ΩπîÅÕ•±ïπ—±‰Åµ•ÕÃÅÖ±ï…—Ã∏(ÄÄÄÅ%Åç°Ö…}±ïπù—†°ç±ïÖπ}—Ω≠ï∏§Å9=PÅ	Q]8Ä»¿Å9Äÿ¿¿ÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8ÄùQ°Ö–ÅëïŸ•çîÅ—Ω≠ï∏ÅëΩïÃÅπΩ–Å±ΩΩ¨Å…ïÖ∞∏úÏ(ÄÄÄÅ9Å%Ï((ÄÄÄÅ%9MIPÅ%9Q<Å¡’â±•åπëïŸ•çï}—Ω≠ïπÃÄ°’Õï…}•ê∞Å—Ω≠ï∏∞Å¡±Ö—ôΩ…¥∞Å’¡ëÖ—ïë}Ö–§(ÄÄÄÅY1ULÄ°ç’……ïπ—}’Õï…}•ê∞Åç±ïÖπ}—Ω≠ï∏∞Åç±ïÖπ}¡±Ö—ôΩ…¥∞Å9=\†§§(ÄÄÄÅ=8Å=91%PÄ°—Ω≠ï∏∞Å’Õï…}•ê§(ÄÄÄÅ<ÅUAQÅMPÅ¡±Ö—ôΩ…¥ÄÙÅa1Uπ¡±Ö—ôΩ…¥∞Å’¡ëÖ—ïë}Ö–ÄÙÅ9=\†§Ï((ÄÄÄÄ¥¥ÅÅ¡°ΩπîÅ—°Ö–Å•ÃÅπïŸï»ÅΩ¡ïπïêÅÖùÖ•∏Å±ïÖŸïÃÅÑÅëïÖêÅ—Ω≠ï∏Åâï°•πêÅÖπêÅ4(ÄÄÄÄ¥¥Å≠ïï¡ÃÅÖπÕ›ï…•πúÅ›•—†ÅÖ∏Åï……Ω»ÅôΩ»Å•–∏ÅQ°•…—‰ÅëÖÂÃÅΩòÅÕ•±ïπçîÅ…ï—•…ïÃÅ•–∏(ÄÄÄÅ1QÅI=4Å¡’â±•åπëïŸ•çï}—Ω≠ïπÃ(ÄÄÄÅ]!IÅëïŸ•çï}—Ω≠ïπÃπ’Õï…}•êÄÙÅç’……ïπ—}’Õï…}•ê(ÄÄÄÄÄÅ9ÅëïŸ•çï}—Ω≠ïπÃπ’¡ëÖ—ïë}Ö–ÄÅ9=\†§Ä¥Å%9QIY0ÄúÃ¿ÅëÖÂÃúÏ)9ÄêêÏ((¥¥ÅM•ùπ•πúÅΩ’–Å°ÖÃÅ—ºÅ…ïµΩŸîÅ—°•ÃÅëïŸ•çîÅô…Ω¥Å—°îÅ±•Õ–∞ÅΩ—°ï…›•ÕîÅ—°îÅπï·–(¥¥ÅÕ—’ëïπ–Å—ºÅ¡•ç¨Å’¿Å—°îÅ¡°ΩπîÅ≠ïï¡ÃÅùï——•πúÅÕΩµïâΩë‰Åï±ÕîùÃÅÖ±ï…—Ã∏)IQÅ=HÅIA1ÅU9Q%=8Å¡’â±•åπôΩ…ùï—}ëïŸ•çï}—Ω≠ï∏°¡}—Ω≠ï∏ÅQaP§)IQUI9LÅY=%)19UÅÕ≈∞)MUI%QdÅ%9H)MPÅÕïÖ…ç°}¡Ö—†ÄÙÄúú)LÄêê(ÄÄÄÅ1QÅI=4Å¡’â±•åπëïŸ•çï}—Ω≠ïπÃ(ÄÄÄÅ]!IÅ’Õï…}•êÄÙÅÖ’—†π’•ê†§(ÄÄÄÄÄÅ9Å—Ω≠ï∏ÄÙÅ—…•¥°=1M°¡}—Ω≠ï∏∞Äúú§§Ï(êêÏ()IY=-Å10Å=8ÅU9Q%=8Å¡’â±•åπ…ïù•Õ—ï…}ëïŸ•çï}—Ω≠ï∏°QaP∞ÅQaP§ÅI=4ÅAU	1%∞ÅÖπΩ∏Ï)IY=-Å10Å=8ÅU9Q%=8Å¡’â±•åπôΩ…ùï—}ëïŸ•çï}—Ω≠ï∏°QaP§ÅI=4ÅAU	1%∞ÅÖπΩ∏Ï)I9PÅaUQÅ=8ÅU9Q%=8Å¡’â±•åπ…ïù•Õ—ï…}ëïŸ•çï}—Ω≠ï∏°QaP∞ÅQaP§ÅQ<ÅÖ’—°ïπ—•çÖ—ïêÏ)I9PÅaUQÅ=8ÅU9Q%=8Å¡’â±•åπôΩ…ùï—}ëïŸ•çï}—Ω≠ï∏°QaP§ÅQ<ÅÖ’—°ïπ—•çÖ—ïêÏ()9=Q%dÅ¡ù…Õ–∞Äù…ï±ΩÖêÅÕç°ïµÑúÏ(((¥¥ÄÙÙÙÙÙÙÙÙÙÙÙÙÅAIPÄƒ‰º»–ËÅµ•ù…Ö—•ΩπÃº»¿»ÿƒ¿ƒ·}çÖµ¡’Õ}•ëïπ—•—‰πÕ≈∞ÄÙÙÙÙÙÙÙÙÙÙÙÙ((¥¥ÄÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙ(¥¥Å5AULÅ=99PÉäPÅ=9ÅAIM=8∞Å=9ÅM!==0∞Å!%LÅ=]8ÅAI=I55(¥¥ÅAÖ…–Äƒ‰ÅΩòÅ—°îÅÕï—’¿∏Å%ëïµ¡Ω—ïπ–ËÅÕÖôîÅ—ºÅ…’∏ÅµΩ…îÅ—°Ö∏ÅΩπçî∏(¥¥(¥¥ÅQ°îÅÕç°ΩΩ∞Å…’±ïÃÅ—°•ÃÅÖëëÃË(¥¥ÄÄÄ®ÅÑÅçÖµ¡’ÃÅÖççΩ’π–ÅÕÖÂÃÅ›°•ç†Å’π•Ÿï…Õ•—‰Å•–Åâï±ΩπùÃÅ—ºÅ›°•±îÅ•–Å•Ã(¥¥ÄÄÄÄÅâï•πúÅç…ïÖ—ïê∞ÅâïçÖ’ÕîÅ—°îÅπΩ—•çïÃ∞Å—°îÅç±ÖÕÃÅ±•Õ—ÃÅÖπêÅ—°îÅ¡ïΩ¡±î(¥¥ÄÄÄÄÅÈΩπîÅÖ…îÅÖ±∞Å°’πúÅΩôòÅ—°Ö–ÅΩπîÅπÖµî(¥¥ÄÄÄ®ÅÑÅÕ—’ëïπ–∞Å±ïç—’…ï»ÅΩ»ÅÕ—ÖôòÅÖççΩ’π–ÅπïŸï»Å±ΩÕïÃÅ•—ÃÅ’π•Ÿï…Õ•—‰(¥¥ÄÄÄÄÅÖùÖ•∏ÏÅΩπ±‰ÅÖ∏ÅÖëµ•∏ÅµΩŸïÃÅÑÅµïµâï»Åâï—›ïï∏ÅÕç°ΩΩ±Ã(¥¥ÄÄÄ®ÅΩπîÅ9Ö—•ΩπÖ∞Å%ÅçÖ…êÅ•ÃÅÖ¡¡…ΩŸïêÅôΩ»ÅΩπîÅÕ—ÖôòÅÖççΩ’π–∞ÅÕºÅ—°îÅÕÖµî(¥¥ÄÄÄÄÅ¡ï…ÕΩ∏ÅçÖππΩ–ÅŸï…•ô‰Å—›•çîÅ›•—†Å—›ºÅïµÖ•∞ÅÖëë…ïÕÕïÃ(¥¥ÄÄÄ®ÅÖ∏ÅÖëµ•∏ÅçÖ∏ÅçΩ……ïç–Å—°îÅÕç°ΩΩ∞ÅΩ»Å—°îÅ¡…Ωù…ÖµµîÅÑÅµïµâï»Åç°ΩÕî(¥¥ÄÄÄ®ÅÑÅ±ïç—’…ï»Åç°ΩΩÕïÃÅ°•ÃÅΩ›∏Å¡…Ωù…ÖµµîÅ°•µÕï±òÅÖπêÅ•–ÅÕ—ÖÂÃÅ°•ÃÏ(¥¥ÄÄÄÄÅïŸï…‰Å±ïç—’…ï»ÅÕ—•±∞Å°ÖÃÅï·Öç—±‰Å—°îÅÕÖµîÅ±ïç—’…ï»Å—ÖÕ≠Ã(¥¥(¥¥Åï¡ïπëÃÅΩ∏Å—°îÅ…Ω±ïÃÅ¡Ö…–Ä°•Õ}Öëµ•∏§∞Å—°îÅ¡…Ωù…ÖµµïÃÅ¡Ö…–Ä°¡…Ωù…ÖµµïÃ∞(¥¥Å¡…Ωô•±ïÃπ¡…Ωù…Öµµï}•ê§ÅÖπêÅ—°îÅ±ïç—’…ï»Åç…ïëïπ—•Ö±ÃÅ¡Ö…–Ä°πΩ…µÖ±•Èï}•ë}π’µâï»∞(¥¥Å±ïç—’…ï…}Õ’âµ•ÕÕ•ΩπÃ§∏ÅQ°Ö–Å•ÃÅ›°‰Å—°îÅΩπîµÕ°Ω–Åô•±îÅ•ÃÅ¡ÖÕ—ïêÅ›°Ω±î∏(¥¥ÄÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙ(((¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥(¥¥Äƒ∏ÅÅ5AULÅ=U9PÅ95LÅ%QLÅU9%YIM%QdÅ]!%1Å%PÅ%LÅ	=I8(¥¥ÅQ°îÅÕÖµîÅ—…•ùùï»Å—°Ö–Åç…ïÖ—ïÃÅ—°îÅ¡…Ωô•±îÅ…Ω‹ÅπΩ‹ÅÖ±ÕºÅ…ïÖëÃÅ—°îÅÕç°ΩΩ∞(¥¥ÅΩ’–ÅΩòÅ—°îÅÕ•ù∏µ’¿ÅëÖ—Ñ∏ÅÅâ±Öπ¨ÅÕç°ΩΩ∞ÅÖâΩ…—ÃÅ—°îÅ•πÕï…–∞ÅÕºÅπºÅÖççΩ’π–(¥¥Åï·•Õ—ÃÅÖ–ÅÖ±∞ÉäPÅ›°•ç†Å•ÃÅ›°Ö–Äâ—°îÅÕÂÕ—ï¥Å…ïô’ÕïÃàÅµïÖπÃ∏(¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥()IQÅ=HÅIA1ÅU9Q%=8Å¡’â±•åπ°Öπë±ï}πï›}Ö’—°}’Õï»†§)IQUI9LÅQI%H)19UÅ¡±¡ùÕ≈∞)MUI%QdÅ%9H)MPÅÕïÖ…ç°}¡Ö—†ÄÙÄúú)LÄêê)1I(ÄÄÄÅ’Õï…πÖµï}âÖÕîÅQaPÏ(ÄÄÄÅçÖπë•ëÖ—ï}’Õï…πÖµîÅQaPÏ(ÄÄÄÅÖ——ïµ¡–Å%9QHÏ(ÄÄÄÅµï—ÖëÖ—ÑÅ)M=9Ï(ÄÄÄÅÖççΩ’π—}≠•πêÅQaPÏ(ÄÄÄÅç±Ö•µïë}π’µâï»ÅQaPÏ(ÄÄÄÅç±Ö•µïë}çÖ…êÅQaPÏ(ÄÄÄÅç±Ö•µïë}’π•Ÿï…Õ•—‰ÅQaPÏ(ÄÄÄÅç±ÖÕ°}πÖµîÅQaPÏ)	%8(ÄÄÄÅµï—ÖëÖ—ÑÄËÙÅ=1M°9\π…Ö›}’Õï…}µï—Ö}ëÖ—Ñ∞ÄùÌÙúËÈ)M=9§Ï(ÄÄÄÅÖççΩ’π—}≠•πêÄËÙÅ1=]H°	QI%4°=1M°µï—ÖëÖ—Ñ¥¯¯ùÖççΩ’π—}≠•πêú∞Äúú§§§Ï(ÄÄÄÅç±Ö•µïë}π’µâï»ÄËÙÅ¡’â±•åππΩ…µÖ±•Èï}•ë}π’µâï»°µï—ÖëÖ—Ñ¥¯¯ù…ïù•Õ—…Ö—•Ωπ}π’µâï»ú§Ï(ÄÄÄÅç±Ö•µïë}çÖ…êÄËÙÅ¡’â±•åππΩ…µÖ±•Èï}•ë}π’µâï»°µï—ÖëÖ—Ñ¥¯¯ùÕ—Öôô}•ë}π’µâï»ú§Ï(ÄÄÄÅç±Ö•µïë}’π•Ÿï…Õ•—‰ÄËÙÅ1P°	QI%4°=1M°µï—ÖëÖ—Ñ¥¯¯ù’π•Ÿï…Õ•—‰ú∞Äúú§§∞Äƒ¿¿§Ï((ÄÄÄÄ¥¥Å]°Ö—ïŸï»ÅÖ∏ÅΩ±ëï»ÅÖ¡¿ÅŸï…Õ•Ω∏ÅÕïπëÃ∞Å—°îÅπ’µâï»Å•ÃÅΩπ±‰ÅïŸï»(ÄÄÄÄ¥¥Åç±Ö•µïêÅΩπçî∞ÅÖπêÅÑÅµïµâï»ÅπïŸï»Å°ÖÃÅΩπî∏(ÄÄÄÅ%ÅÖççΩ’π—}≠•πêÄÙÄùµïµâï»úÅQ!8(ÄÄÄÄÄÄÄÅç±Ö•µïë}π’µâï»ÄËÙÄúúÏ(ÄÄÄÄÄÄÄÅç±Ö•µïë}çÖ…êÄËÙÄúúÏ(ÄÄÄÅ9Å%Ï((ÄÄÄÄ¥¥ÅÅçΩµ¡Öπ‰ÅÖπêÅÑÅ¡Ö…ïπ–Åâï±ΩπúÅ—ºÅπºÅçÖµ¡’Ã∞ÅÕºÅ—°ï‰ÅÖ…îÅπΩ–ÅÖÕ≠ïê∏(ÄÄÄÅ%ÅÖççΩ’π—}≠•πêÅ%8Ä†ùÕ—’ëïπ–ú∞Äù±ïç—’…ï»ú∞ÄùÕïç’…•—‰ú§Å9Åç±Ö•µïë}’π•Ÿï…Õ•—‰ÄÙÄúúÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8Äù9ÖµîÅ—°îÅ’π•Ÿï…Õ•—‰ÅΩ»ÅçΩ±±ïùîÅÂΩ‘Åâï±ΩπúÅ—ºÅâïôΩ…îÅ—°•ÃÅÖççΩ’π–ÅçÖ∏ÅâîÅç…ïÖ—ïê∏ú(ÄÄÄÄÄÄÄÄÄÄÄÅUM%9ÅII=ÄÙÄú»»¿»ÃúÏ(ÄÄÄÅ9Å%Ï((ÄÄÄÅ’Õï…πÖµï}âÖÕîÄËÙÅ1=]H†(ÄÄÄÄÄÄÄÅIaA}IA1†(ÄÄÄÄÄÄÄÄÄÄÄÅ=1M†(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅµï—ÖëÖ—Ñ¥¯¯ù’Õï…πÖµîú∞(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅMA1%Q}AIP°=1M°9\πïµÖ•∞∞Å9\π¡°Ωπî∞ÄùÕ—’ëïπ–ú§∞Äù ú∞Äƒ§(ÄÄÄÄÄÄÄÄÄÄÄÄ§∞(ÄÄÄÄÄÄÄÄÄÄÄÄùmyÑµÈµh¿¥Â}tú∞(ÄÄÄÄÄÄÄÄÄÄÄÄúú∞(ÄÄÄÄÄÄÄÄÄÄÄÄùúú(ÄÄÄÄÄÄÄÄ§(ÄÄÄÄ§Ï(ÄÄÄÅ’Õï…πÖµï}âÖÕîÄËÙÅ1P°’Õï…πÖµï}âÖÕî∞Ä»¿§Ï(ÄÄÄÅ%Åç°Ö…}±ïπù—†°’Õï…πÖµï}âÖÕî§ÄÄÃÅQ!8(ÄÄÄÄÄÄÄÅ’Õï…πÖµï}âÖÕîÄËÙÄùÕ—’ëïπ–úÏ(ÄÄÄÅ9Å%Ï((ÄÄÄÅ=HÅÖ——ïµ¡–Å%8Ä¿∏∏‘Å1==@(ÄÄÄÄÄÄÄÅçÖπë•ëÖ—ï}’Õï…πÖµîÄËÙÅM(ÄÄÄÄÄÄÄÄÄÄÄÅ]!8ÅÖ——ïµ¡–ÄÙÄ¿ÅQ!8Å’Õï…πÖµï}âÖÕî(ÄÄÄÄÄÄÄÄÄÄÄÅ1MÅ1P°’Õï…πÖµï}âÖÕî∞Äƒ‰§ÅÒÄù|úÅÒÅ1P°9\π•êËÈQaP∞Ä‡§ÅÒ(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅMÅ]!8ÅÖ——ïµ¡–Ä¯ÄƒÅQ!8Äù|úÅÒÄ°Ö——ïµ¡–Ä¥Äƒ§ËÈQaPÅ1MÄúúÅ9(ÄÄÄÄÄÄÄÅ9Ï((ÄÄÄÄÄÄÄÅ	%8(ÄÄÄÄÄÄÄÄÄÄÄÅ%9MIPÅ%9Q<Å¡’â±•åπ¡…Ωô•±ïÃÄ†(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅ•ê∞(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅ’Õï…πÖµî∞(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅô’±±}πÖµî∞(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅçΩ’…Õî∞(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅ…Ω±î∞(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅÕ—Öôô}•ë}π’µâï»(ÄÄÄÄÄÄÄÄÄÄÄÄ§(ÄÄÄÄÄÄÄÄÄÄÄÅY1ULÄ†(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅ9\π•ê∞(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅçÖπë•ëÖ—ï}’Õï…πÖµî∞(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅ1P°=1M°µï—ÖëÖ—Ñ¥¯¯ùô’±±}πÖµîú∞Äù5ïµâï»ú§∞Äƒ¿¿§∞(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅ1P°=1M°µï—ÖëÖ—Ñ¥¯¯ùçΩ’…Õîú∞Äúú§∞Äƒ»¿§∞(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅMÅ]!8ÅÖççΩ’π—}≠•πêÄÙÄùµïµâï»úÅQ!8Äùµïµâï»úÅ1MÄùÕ—’ëïπ–úÅ9∞(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅMÅ]!8ÅÖççΩ’π—}≠•πêÅ%8Ä†ù±ïç—’…ï»ú∞ÄùÕïç’…•—‰ú§ÅQ!8Åç±Ö•µïë}çÖ…êÅ1MÄúúÅ9(ÄÄÄÄÄÄÄÄÄÄÄÄ§(ÄÄÄÄÄÄÄÄÄÄÄÅ=8Å=91%PÄ°•ê§Å<Å9=Q!%9Ï(ÄÄÄÄÄÄÄÄÄÄÄÅa%PÏ(ÄÄÄÄÄÄÄÅaAQ%=8Å]!8Å’π•≈’ï}Ÿ•Ω±Ö—•Ω∏ÅQ!8(ÄÄÄÄÄÄÄÄÄÄÄÅPÅMQ-Å%9=MQ%LÅç±ÖÕ°}πÖµîÄÙÅ=9MQI%9Q}95Ï(ÄÄÄÄÄÄÄÄÄÄÄÅ%Åç±ÖÕ°}πÖµîÄÙÄù¡…Ωô•±ïÕ}Õ—Öôô}•ë}≠ï‰úÅQ!8(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅI%MÅaAQ%=8ÄùQ°Ö–ÅÕ—ÖôòÅ%ÅçÖ…êÅÖ±…ïÖë‰Åâï±ΩπùÃÅ—ºÅÖπΩ—°ï»ÅÖççΩ’π–∏Å9ΩâΩë‰ÅçÖ∏Å…ïù•Õ—ï»Å—›•çîÅ›•—†ÅΩπîÅçÖ…ê∏ú(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅUM%9ÅII=ÄÙÄú»Ã‘¿‘úÏ(ÄÄÄÄÄÄÄÄÄÄÄÅ9Å%Ï(ÄÄÄÄÄÄÄÄÄÄÄÅ%ÅÖ——ïµ¡–ÄÙÄ‘ÅQ!8(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅI%MÏ(ÄÄÄÄÄÄÄÄÄÄÄÅ9Å%Ï(ÄÄÄÄÄÄÄÅ9Ï(ÄÄÄÅ9Å1==@Ï((ÄÄÄÅ%ÅÖççΩ’π—}≠•πêÄÙÄùÕ—’ëïπ–úÅ=HÅÖççΩ’π—}≠•πêÄÙÄúúÅQ!8(ÄÄÄÄÄÄÄÅ%Åç±Ö•µïë}π’µâï»Ä¯ÄúúÅQ!8(ÄÄÄÄÄÄÄÄÄÄÄÅ	%8(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅ%9MIPÅ%9Q<Å¡’â±•åπÕ—’ëïπ—}…ïù•Õ—…Ö—•ΩπÃÄ°’Õï…}•ê∞Å…ïù•Õ—…Ö—•Ωπ}π’µâï»§(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅY1ULÄ°9\π•ê∞Åç±Ö•µïë}π’µâï»§Ï(ÄÄÄÄÄÄÄÄÄÄÄÅaAQ%=8Å]!8Å’π•≈’ï}Ÿ•Ω±Ö—•Ω∏ÅQ!8(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅI%MÅaAQ%=8ÄùQ°Ö–Å…ïù•Õ—…Ö—•Ω∏Åπ’µâï»Å•ÃÅÖ±…ïÖë‰Å≠πΩ›∏Å—ºÅ—°îÅ’π•Ÿï…Õ•—‰ÅÕÂÕ—ï¥∏Å°ïç¨Å•–∞ÅΩ»ÅÖÕ¨ÅÖ∏ÅÖëµ•∏∏ÅŸï∏Å—›ºÅ¡ïΩ¡±îÅ›•—†Å—°îÅÕÖµîÅπÖµîÅçÖππΩ–ÅÕ°Ö…îÅΩπîÅπ’µâï»∏ú(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅUM%9ÅII=ÄÙÄú»Ã‘¿‘úÏ(ÄÄÄÄÄÄÄÄÄÄÄÅ9Ï(ÄÄÄÄÄÄÄÅ9Å%Ï(ÄÄÄÅ9Å%Ï((ÄÄÄÅ%ÅÖççΩ’π—}≠•πêÄÙÄù±ïç—’…ï»úÅ9Åç±Ö•µïë}çÖ…êÄÙÄúúÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8ÄùÅ±ïç—’…ï»Å…ïù•Õ—ï…ÃÅ›•—†Å—°îÅπ’µâï»ÅΩ∏Å—°ï•»ÅÕ—ÖôòÅ%ÅçÖ…ê∏ú(ÄÄÄÄÄÄÄÄÄÄÄÅUM%9ÅII=ÄÙÄú»»¿»ÃúÏ(ÄÄÄÅ9Å%Ï((ÄÄÄÄ¥¥ÅQ°îÅÕç°ΩΩ∞Å—°îÅµïµâï»ÅπÖµïêÅ•ÃÅ›…•——ï∏Åπï·–Å—ºÅ—°îÅ¡…Ωô•±î∏ÅQ°î(ÄÄÄÄ¥¥ÅçΩ±’µ∏ÅçΩµïÃÅô…Ω¥Å—°îÅ…Ω±ïÃÅ¡Ö…–ÏÅÑÅëÖ—ÖâÖÕîÅ—°Ö–Å°ÖÃÅπΩ–Å…ïÖç°ïê(ÄÄÄÄ¥¥Å•–ÅÂï–Å≠ïï¡ÃÅ—°îÅÖπÕ›ï»ÅΩ∏Å—°îÅÖççΩ’π–Å•πÕ—ïÖêÅΩòÅ±ΩÕ•πúÅ—°îÅÕ•ùπ’¿∏(ÄÄÄÅ%Åç±Ö•µïë}’π•Ÿï…Õ•—‰Ä¯ÄúúÅQ!8(ÄÄÄÄÄÄÄÅ	%8(ÄÄÄÄÄÄÄÄÄÄÄÅUAQÅ¡’â±•åπ¡…Ωô•±ïÃ(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅMPÅ’π•Ÿï…Õ•—‰ÄÙÅç±Ö•µïë}’π•Ÿï…Õ•—‰(ÄÄÄÄÄÄÄÄÄÄÄÄÅ]!IÅ•êÄÙÅ9\π•êÏ(ÄÄÄÄÄÄÄÅaAQ%=8Å]!8Å’πëïô•πïë}çΩ±’µ∏ÅQ!8(ÄÄÄÄÄÄÄÄÄÄÄÅI%MÅ9=Q%Äù¡…Ωô•±ïÃπ’π•Ÿï…Õ•—‰Å•ÃÅπΩ–Å°ï…îÅÂï–∞ÅÕºÄîÅÕ—ÖÂÃÅΩ∏Å—°îÅÖççΩ’π–ÅÖ±Ωπî∏ú∞Åç±Ö•µïë}’π•Ÿï…Õ•—‰Ï(ÄÄÄÄÄÄÄÅ9Ï(ÄÄÄÅ9Å%Ï((ÄÄÄÅIQUI8Å9\Ï)9Ï(êêÏ()IY=-Å10Å=8ÅU9Q%=8Å¡’â±•åπ°Öπë±ï}πï›}Ö’—°}’Õï»†§ÅI=4ÅAU	1%∞ÅÖπΩ∏∞ÅÖ’—°ïπ—•çÖ—ïêÏ(((¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥(¥¥Ä»∏ÅÅ5AULÅ=U9PÅ9YHÅ1=MLÅ%QLÅU9%YIM%Qd(¥¥ÅQ°îÅÖ¡¿Å›…•—ïÃÅ—°îÅ›°Ω±îÅ¡…Ωô•±îÅ…Ω‹ÅΩ∏ÅïŸï…‰ÅÕÖŸî∞ÅÕºÅÑÅô•ï±êÅç±ïÖ…ïê(¥¥Åâ‰ÅÖçç•ëïπ–Å›Ω’±êÅÕ•±ïπ—±‰Åë…Ω¿ÅÑÅµïµâï»ÅΩ’–ÅΩòÅ°•ÃÅΩ›∏ÅÈΩπî∏Å∏ÅÖëµ•∏(¥¥ÅµÖ‰ÅÕ—•±∞ÅµΩŸîÅÑÅµïµâï»Åâï—›ïï∏ÅÕç°ΩΩ±Ã∏(¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥()<Äêê)	%8(ÄÄÄÅ%Å9=PÅa%MQLÄ†(ÄÄÄÄÄÄÄÅM1PÄƒÅI=4Å•πôΩ…µÖ—•Ωπ}Õç°ïµÑπçΩ±’µπÃ(ÄÄÄÄÄÄÄÅ]!IÅ—Öâ±ï}Õç°ïµÑÄÙÄù¡’â±•åúÅ9Å—Öâ±ï}πÖµîÄÙÄù¡…Ωô•±ïÃúÅ9ÅçΩ±’µπ}πÖµîÄÙÄù’π•Ÿï…Õ•—‰ú(ÄÄÄÄ§ÅQ!8(ÄÄÄÄÄÄÄÅI%MÅ9=Q%Äù¡…Ωô•±ïÃπ’π•Ÿï…Õ•—‰Å•ÃÅµ•ÕÕ•πú∞ÅÕºÅ…’±îÄ»Å•ÃÅÕ≠•¡¡ïêÅ’π—•∞Å—°îÅ…Ω±ïÃÅ¡Ö…–Å…’πÃ∏úÏ(ÄÄÄÄÄÄÄÅIQUI8Ï(ÄÄÄÅ9Å%Ï((ÄÄÄÅIQÅ=HÅIA1ÅU9Q%=8Å¡’â±•åπïπôΩ…çï}¡…Ωô•±ï}çÖµ¡’Õ}•ëïπ—•—‰†§(ÄÄÄÅIQUI9LÅQI%H(ÄÄÄÅ19UÅ¡±¡ùÕ≈∞(ÄÄÄÅY=1Q%1(ÄÄÄÅMPÅÕïÖ…ç°}¡Ö—†ÄÙÄúú(ÄÄÄÅLÄëô∏ê(ÄÄÄÅ	%8(ÄÄÄÄÄÄÄÄ¥¥Å—Ω}©ÕΩπà†§Å•ÃÅ’ÕïêÅôΩ»Å—°îÅçΩµ¡Öπ‰ÅΩ∏Å¡’…¡ΩÕîËÅÑÅçΩµ¡Öπ‰ÅÖççΩ’π–(ÄÄÄÄÄÄÄÄ¥¥Å°ÖÃÅπºÅçÖµ¡’ÃÅÖπêÅµ’Õ–ÅπïŸï»ÅâîÅÕ—Ω¡¡ïêÅâ‰Å—°•ÃÅ…’±î∞Å•πç±’ë•πú(ÄÄÄÄÄÄÄÄ¥¥ÅΩ∏ÅÑÅëÖ—ÖâÖÕîÅ›°ï…îÅ—°îÅçΩµ¡Öπ•ïÃÅ¡Ö…–Å°ÖÃÅπΩ–Å…’∏∏(ÄÄÄÄÄÄÄÅ%Å9\π…Ω±îÅ%8Ä†ùÕ—’ëïπ–ú∞Äù±ïç—’…ï»ú∞ÄùÕïç’…•—‰ú§(ÄÄÄÄÄÄÄÄÄÄÅ9Å=1M°9U11%°	QI%4°=1M†°—Ω}©ÕΩπà°9\§Ä¥¯¯ÄùçΩµ¡Öπ‰ú§∞Äúú§§∞Äúú§∞Äúú§ÄÙÄúú(ÄÄÄÄÄÄÄÄÄÄÅ9Å9U11%°	QI%4°=1M°9\π’π•Ÿï…Õ•—‰∞Äúú§§∞Äúú§Å%LÅ9U10(ÄÄÄÄÄÄÄÄÄÄÅ9Å9=PÅ¡’â±•åπ•Õ}Öëµ•∏†§(ÄÄÄÄÄÄÄÅQ!8(ÄÄÄÄÄÄÄÄÄÄÄÅI%MÅaAQ%=8ÄùÅÕ—’ëïπ–∞Å±ïç—’…ï»ÅΩ»ÅÕ—ÖôòÅÖççΩ’π–ÅÖ±›ÖÂÃÅâï±ΩπùÃÅ—ºÅÑÅ’π•Ÿï…Õ•—‰∏ÅÕ¨ÅÖ∏ÅÖëµ•∏Å—ºÅµΩŸîÅ•–Å—ºÅÖπΩ—°ï»ÅÕç°ΩΩ∞∏ú(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅUM%9ÅII=ÄÙÄú»»¿»ÃúÏ(ÄÄÄÄÄÄÄÅ9Å%Ï(ÄÄÄÄÄÄÄÅIQUI8Å9\Ï(ÄÄÄÅ9Ï(ÄÄÄÄëô∏êÏ((ÄÄÄÅIY=-Å10Å=8ÅU9Q%=8Å¡’â±•åπïπôΩ…çï}¡…Ωô•±ï}çÖµ¡’Õ}•ëïπ—•—‰†§ÅI=4ÅAU	1%∞ÅÖπΩ∏∞ÅÖ’—°ïπ—•çÖ—ïêÏ((ÄÄÄÅI=@ÅQI%HÅ%Åa%MQLÅ¡…Ωô•±ïÕ}ïπôΩ…çï}çÖµ¡’Õ}•ëïπ—•—‰Å=8Å¡’â±•åπ¡…Ωô•±ïÃÏ(ÄÄÄÅIQÅQI%HÅ¡…Ωô•±ïÕ}ïπôΩ…çï}çÖµ¡’Õ}•ëïπ—•—‰(ÄÄÄÄÄÄÄÅ	=IÅUAQÅ=Å’π•Ÿï…Õ•—‰∞Å…Ω±îÅ=8Å¡’â±•åπ¡…Ωô•±ïÃ(ÄÄÄÄÄÄÄÅ=HÅ ÅI=\ÅaUQÅU9Q%=8Å¡’â±•åπïπôΩ…çï}¡…Ωô•±ï}çÖµ¡’Õ}•ëïπ—•—‰†§Ï)9Ï(êêÏ(((¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥(¥¥ÄÃ∏Å=9Å9Q%=90Å%ÅI∞Å=9ÅAAI=YÅMQÅ=U9P(¥¥ÅÅ±ïç—’…ï»Å•ÃÅŸï…•ô•ïêÅ›•—†Å°•ÃÅ9Ö—•ΩπÖ∞Å%∏Å]•—°Ω’–Å—°•ÃÅ…’±îÅ—°îÅÕÖµî(¥¥Å¡ï…ÕΩ∏ÅçΩ’±êÅâîÅÖ¡¡…ΩŸïêÅΩ∏ÅÑÅÕïçΩπêÅÖççΩ’π–Å’πëï»ÅÑÅÕïçΩπêÅïµÖ•∞(¥¥ÅÖëë…ïÕÃ∏ÅIîµÕïπë•πúÅΩπîùÃÅΩ›∏ÅëΩç’µïπ—ÃÅÕ—ÖÂÃÅÖ±±Ω›ïêËÅΩπ±‰ÅÑÅ%I9P(¥¥ÅÖççΩ’π–Å•ÃÅ…ïô’Õïê∏(¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥()<Äêê)	%8(ÄÄÄÅ%Å9=PÅa%MQLÄ†(ÄÄÄÄÄÄÄÅM1PÄƒÅI=4Å•πôΩ…µÖ—•Ωπ}Õç°ïµÑπçΩ±’µπÃ(ÄÄÄÄÄÄÄÅ]!IÅ—Öâ±ï}Õç°ïµÑÄÙÄù¡’â±•åúÅ9Å—Öâ±ï}πÖµîÄÙÄù±ïç—’…ï…}Õ’âµ•ÕÕ•ΩπÃú(ÄÄÄÄÄÄÄÄÄÅ9ÅçΩ±’µπ}πÖµîÄÙÄùπÖ—•ΩπÖ±}•ë}π’µâï»ú(ÄÄÄÄ§ÅQ!8(ÄÄÄÄÄÄÄÅI%MÅ9=Q%Äù±ïç—’…ï…}Õ’âµ•ÕÕ•ΩπÃππÖ—•ΩπÖ±}•ë}π’µâï»Å•ÃÅµ•ÕÕ•πú∞ÅÕºÅ…’±îÄÃÅ•ÃÅÕ≠•¡¡ïêÅ’π—•∞Å—°îÅç…ïëïπ—•Ö±ÃÅ¡Ö…–Å…’πÃ∏úÏ(ÄÄÄÄÄÄÄÅIQUI8Ï(ÄÄÄÅ9Å%Ï((ÄÄÄÅIQÅ=HÅIA1ÅU9Q%=8Å¡’â±•åπïπôΩ…çï}Ωπï}¡ï…ÕΩπ}Ωπï}Õ—Öôô}ÖççΩ’π–†§(ÄÄÄÅIQUI9LÅQI%H(ÄÄÄÅ19UÅ¡±¡ùÕ≈∞(ÄÄÄÅY=1Q%1(ÄÄÄÅMUI%QdÅ%9H(ÄÄÄÅMPÅÕïÖ…ç°}¡Ö—†ÄÙÄúú(ÄÄÄÅLÄëô∏ê(ÄÄÄÅ1I(ÄÄÄÄÄÄÄÅΩ—°ï»ÅUU%Ï(ÄÄÄÅ	%8(ÄÄÄÄÄÄÄÅ%Å=1M°9\πÕ—Ö—’Ã∞Äúú§Ä¯ÄùÖ¡¡…ΩŸïêúÅQ!8(ÄÄÄÄÄÄÄÄÄÄÄÅIQUI8Å9\Ï(ÄÄÄÄÄÄÄÅ9Å%Ï(ÄÄÄÄÄÄÄÅ%Å9U11%°	QI%4°=1M°9\ππÖ—•ΩπÖ±}•ë}π’µâï»∞Äúú§§∞Äúú§Å%LÅ9U10ÅQ!8(ÄÄÄÄÄÄÄÄÄÄÄÅIQUI8Å9\Ï(ÄÄÄÄÄÄÄÅ9Å%Ï((ÄÄÄÄÄÄÄÅM1PÅÕ’âµ•ÕÕ•Ω∏π’Õï…}•êÅ%9Q<ÅΩ—°ï»(ÄÄÄÄÄÄÄÄÄÅI=4Å¡’â±•åπ±ïç—’…ï…}Õ’âµ•ÕÕ•ΩπÃÅLÅÕ’âµ•ÕÕ•Ω∏(ÄÄÄÄÄÄÄÄÅ]!IÅ1=]H°	QI%4°Õ’âµ•ÕÕ•Ω∏ππÖ—•ΩπÖ±}•ë}π’µâï»§§ÄÙÅ1=]H°	QI%4°9\ππÖ—•ΩπÖ±}•ë}π’µâï»§§(ÄÄÄÄÄÄÄÄÄÄÅ9ÅÕ’âµ•ÕÕ•Ω∏πÕ—Ö—’ÃÄÙÄùÖ¡¡…ΩŸïêú(ÄÄÄÄÄÄÄÄÄÄÅ9ÅÕ’âµ•ÕÕ•Ω∏π’Õï…}•êÄ¯Å9\π’Õï…}•ê(ÄÄÄÄÄÄÄÄÅ1%5%PÄƒÏ((ÄÄÄÄÄÄÄÅ%ÅΩ—°ï»Å%LÅ9=PÅ9U10ÅQ!8(ÄÄÄÄÄÄÄÄÄÄÄÅI%MÅaAQ%=8ÄùQ°Ö–Å9Ö—•ΩπÖ∞Å%Å•ÃÅÖ±…ïÖë‰ÅÖ¡¡…ΩŸïêÅΩ∏ÅÖπΩ—°ï»ÅÖççΩ’π–∏Å=πîÅ¡ï…ÕΩ∏Åùï—ÃÅΩπîÅÕ—ÖôòÅÖççΩ’π–∏ú(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅUM%9ÅII=ÄÙÄú»Ã‘¿‘úÏ(ÄÄÄÄÄÄÄÅ9Å%Ï((ÄÄÄÄÄÄÄÅIQUI8Å9\Ï(ÄÄÄÅ9Ï(ÄÄÄÄëô∏êÏ((ÄÄÄÅIY=-Å10Å=8ÅU9Q%=8Å¡’â±•åπïπôΩ…çï}Ωπï}¡ï…ÕΩπ}Ωπï}Õ—Öôô}ÖççΩ’π–†§ÅI=4ÅAU	1%∞ÅÖπΩ∏∞ÅÖ’—°ïπ—•çÖ—ïêÏ((ÄÄÄÅI=@ÅQI%HÅ%Åa%MQLÅ±ïç—’…ï…}Õ’âµ•ÕÕ•ΩπÕ}Ωπï}¡ï…ÕΩ∏Å=8Å¡’â±•åπ±ïç—’…ï…}Õ’âµ•ÕÕ•ΩπÃÏ(ÄÄÄÅIQÅQI%HÅ±ïç—’…ï…}Õ’âµ•ÕÕ•ΩπÕ}Ωπï}¡ï…ÕΩ∏(ÄÄÄÄÄÄÄÅ	=IÅ%9MIPÅ=HÅUAQÅ=ÅÕ—Ö—’Ã∞ÅπÖ—•ΩπÖ±}•ë}π’µâï»Å=8Å¡’â±•åπ±ïç—’…ï…}Õ’âµ•ÕÕ•ΩπÃ(ÄÄÄÄÄÄÄÅ=HÅ ÅI=\ÅaUQÅU9Q%=8Å¡’â±•åπïπôΩ…çï}Ωπï}¡ï…ÕΩπ}Ωπï}Õ—Öôô}ÖççΩ’π–†§Ï)9Ï(êêÏ(((¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥(¥¥Ä–∏Å]!PÅQ!ÅM!==0Ä°8Å5%8§Å5dÅ=IIP(¥¥ÅÅµïµâï»Å¡•ç≠ÃÅ°•ÃÅΩ›∏ÅÕç°ΩΩ∞ÅÖπê∞Å•òÅ°îÅ—ïÖç°ïÃ∞Å°•ÃÅΩ›∏Å¡…Ωù…Öµµî∏(¥¥Å]°ï∏Å°îÅùï—ÃÅ•–Å›…Ωπú∞ÅΩπ±‰ÅÖ∏ÅÖëµ•∏ÅçÖ∏ÅµΩŸîÅ°•¥∏(¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥()IQÅ=HÅIA1ÅU9Q%=8Å¡’â±•åπÕï—}µïµâï…}’π•Ÿï…Õ•—‰†(ÄÄÄÅ¡}’Õï»ÅUU%∞(ÄÄÄÅ¡}’π•Ÿï…Õ•—‰ÅQaP(§)IQUI9LÅQaP)19UÅ¡±¡ùÕ≈∞)MUI%QdÅ%9H)MPÅÕïÖ…ç°}¡Ö—†ÄÙÄúú)LÄêê)1I(ÄÄÄÅç±ïÖπïêÅQaPÄËÙÅ1P°	QI%4°=1M°¡}’π•Ÿï…Õ•—‰∞Äúú§§∞Äƒ¿¿§Ï)	%8(ÄÄÄÅ%Å9=PÅ¡’â±•åπ•Õ}Öëµ•∏†§ÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8Äù=π±‰ÅÖ∏ÅÖëµ•∏ÅçÖ∏Åç°ÖπùîÅ›°•ç†ÅÕç°ΩΩ∞ÅÑÅµïµâï»Åâï±ΩπùÃÅ—º∏ú(ÄÄÄÄÄÄÄÄÄÄÄÅUM%9ÅII=ÄÙÄú–»‘¿ƒúÏ(ÄÄÄÅ9Å%Ï(ÄÄÄÅ%Åç±ïÖπïêÄÙÄúúÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8ÄùÅµïµâï»Å°ÖÃÅ—ºÅâîÅµΩŸïêÅ—ºÅÑÅπÖµïêÅÕç°ΩΩ∞∞ÅπΩ–ÅÖ›Ö‰Åô…Ω¥ÅΩπî∏ú(ÄÄÄÄÄÄÄÄÄÄÄÅUM%9ÅII=ÄÙÄú»»¿»ÃúÏ(ÄÄÄÅ9Å%Ï((ÄÄÄÅUAQÅ¡’â±•åπ¡…Ωô•±ïÃ(ÄÄÄÄÄÄÅMPÅ’π•Ÿï…Õ•—‰ÄÙÅç±ïÖπïê(ÄÄÄÄÅ]!IÅ•êÄÙÅ¡}’Õï»Ï((ÄÄÄÅ%Å9=PÅ=U9ÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8ÄùQ°Ö–Åµïµâï»Å°ÖÃÅπºÅ¡…Ωô•±îÅ…Ω‹∏ú(ÄÄÄÄÄÄÄÄÄÄÄÅUM%9ÅII=ÄÙÄù@¿¿¿»úÏ(ÄÄÄÅ9Å%Ï((ÄÄÄÅIQUI8Åç±ïÖπïêÏ)9Ï(êêÏ()IQÅ=HÅIA1ÅU9Q%=8Å¡’â±•åπÕï—}µïµâï…}¡…Ωù…Öµµî†(ÄÄÄÅ¡}’Õï»ÅUU%∞(ÄÄÄÅ¡}¡…Ωù…Öµµï}•êÅUU%(§)IQUI9LÅY=%)19UÅ¡±¡ùÕ≈∞)MUI%QdÅ%9H)MPÅÕïÖ…ç°}¡Ö—†ÄÙÄúú)LÄêê)	%8(ÄÄÄÅ%Å9=PÅ¡’â±•åπ•Õ}Öëµ•∏†§ÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8Äù=π±‰ÅÖ∏ÅÖëµ•∏ÅçÖ∏ÅµΩŸîÅÑÅµïµâï»Å—ºÅÖπΩ—°ï»Å¡…Ωù…Öµµî∏ú(ÄÄÄÄÄÄÄÄÄÄÄÅUM%9ÅII=ÄÙÄú–»‘¿ƒúÏ(ÄÄÄÅ9Å%Ï((ÄÄÄÄ¥¥ÅÅ¡…Ωù…ÖµµîÅ—°Ö–Å—°îÅÕç°ΩΩ∞Å°ÖÃÅπΩ–Å¡’â±•Õ°ïêÅçÖππΩ–ÅâîÅù•Ÿï∏ÅΩ’–∏(ÄÄÄÅ%Å¡}¡…Ωù…Öµµï}•êÅ%LÅ9=PÅ9U10Å9Å9=PÅa%MQLÄ†(ÄÄÄÄÄÄÄÅM1PÄƒÅI=4Å¡’â±•åπ¡…Ωù…ÖµµïÃÅ]!IÅ•êÄÙÅ¡}¡…Ωù…Öµµï}•ê(ÄÄÄÄ§ÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8ÄùQ°Ö–Å¡…Ωù…ÖµµîÅ•ÃÅπΩ–Å•∏Å—°îÅÕç°ΩΩ∞ÅçÖ—Ö±Ωù’î∏ú(ÄÄÄÄÄÄÄÄÄÄÄÅUM%9ÅII=ÄÙÄú»»¿»ÃúÏ(ÄÄÄÅ9Å%Ï((ÄÄÄÅUAQÅ¡’â±•åπ¡…Ωô•±ïÃ(ÄÄÄÄÄÄÅMPÅ¡…Ωù…Öµµï}•êÄÙÅ¡}¡…Ωù…Öµµï}•ê(ÄÄÄÄÅ]!IÅ•êÄÙÅ¡}’Õï»Ï((ÄÄÄÅ%Å9=PÅ=U9ÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8ÄùQ°Ö–Åµïµâï»Å°ÖÃÅπºÅ¡…Ωô•±îÅ…Ω‹∏ú(ÄÄÄÄÄÄÄÄÄÄÄÅUM%9ÅII=ÄÙÄù@¿¿¿»úÏ(ÄÄÄÅ9Å%Ï)9Ï(êêÏ()IY=-Å10Å=8ÅU9Q%=8Å¡’â±•åπÕï—}µïµâï…}’π•Ÿï…Õ•—‰°UU%∞ÅQaP§ÅI=4ÅAU	1%∞ÅÖπΩ∏Ï)IY=-Å10Å=8ÅU9Q%=8Å¡’â±•åπÕï—}µïµâï…}¡…Ωù…Öµµî°UU%∞ÅUU%§ÅI=4ÅAU	1%∞ÅÖπΩ∏Ï)I9PÅaUQÅ=8ÅU9Q%=8Å¡’â±•åπÕï—}µïµâï…}’π•Ÿï…Õ•—‰°UU%∞ÅQaP§ÅQ<ÅÖ’—°ïπ—•çÖ—ïêÏ)I9PÅaUQÅ=8ÅU9Q%=8Å¡’â±•åπÕï—}µïµâï…}¡…Ωù…Öµµî°UU%∞ÅUU%§ÅQ<ÅÖ’—°ïπ—•çÖ—ïêÏ)1QHÅU9Q%=8Å¡’â±•åπÕï—}µïµâï…}’π•Ÿï…Õ•—‰°UU%∞ÅQaP§Å=]9HÅQ<Å¡ΩÕ—ù…ïÃÏ)1QHÅU9Q%=8Å¡’â±•åπÕï—}µïµâï…}¡…Ωù…Öµµî°UU%∞ÅUU%§Å=]9HÅQ<Å¡ΩÕ—ù…ïÃÏ(((¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥(¥¥Ä‘∏ÅQ10ÅA=MQIMPÅQ!ÅM!AÅ!9(¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥()9=Q%dÅ¡ù…Õ–∞Äù…ï±ΩÖêÅÕç°ïµÑúÏ(((¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥(¥¥Äÿ∏Å]!PÅM!=U1Å=5Å	,(¥¥ÅŸï…‰Å…Ω‹Å…ïÖëÃÄùΩ¨úÅ›°ï∏Å—°•ÃÅ¡Ö…–Å•ÃÅ•∏Å¡±Öçî∏(¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥()M1P(ÄÄÄÄù¡…Ωù…ÖµµîÅ…¡åúÅLÅç°ïç¨∞(ÄÄÄÅMÅ]!8Åa%MQLÄ†(ÄÄÄÄÄÄÄÅM1PÄƒÅI=4Å¡ù}çÖ—Ö±Ωúπ¡ù}¡…Ωå(ÄÄÄÄÄÄÄÅ]!IÅ¡…ΩπÖµîÄÙÄùÕï—}µïµâï…}¡…Ωù…Öµµîú(ÄÄÄÄÄÄÄÄÄÅ9Å¡…ΩπÖµïÕ¡ÖçîÄÙÄù¡’â±•åúËÈ…ïùπÖµïÕ¡Öçî(ÄÄÄÄ§ÅQ!8ÄùΩ¨úÅ1MÄù5%MM%9úÅ9ÅLÅ…ïÕ’±–)U9%=8Å10)M1PÄù’π•Ÿï…Õ•—‰Å…¡åú∞(ÄÄÄÅMÅ]!8Åa%MQLÄ†(ÄÄÄÄÄÄÄÅM1PÄƒÅI=4Å¡ù}çÖ—Ö±Ωúπ¡ù}¡…Ωå(ÄÄÄÄÄÄÄÅ]!IÅ¡…ΩπÖµîÄÙÄùÕï—}µïµâï…}’π•Ÿï…Õ•—‰ú(ÄÄÄÄÄÄÄÄÄÅ9Å¡…ΩπÖµïÕ¡ÖçîÄÙÄù¡’â±•åúËÈ…ïùπÖµïÕ¡Öçî(ÄÄÄÄ§ÅQ!8ÄùΩ¨úÅ1MÄù5%MM%9úÅ9)U9%=8Å10)M1PÄùÕ•ùπ’¿Åù’Ö…êú∞(ÄÄÄÅMÅ]!8Å¡ù}çÖ—Ö±Ωúπ¡ù}ùï—}ô’πç—•Ωπëïò†(ÄÄÄÄÄÄÄÄ°M1PÅΩ•êÅI=4Å¡ù}çÖ—Ö±Ωúπ¡ù}¡…Ωå(ÄÄÄÄÄÄÄÄÄÅ]!IÅ¡…ΩπÖµîÄÙÄù°Öπë±ï}πï›}Ö’—°}’Õï»ú(ÄÄÄÄÄÄÄÄÄÄÄÅ9Å¡…ΩπÖµïÕ¡ÖçîÄÙÄù¡’â±•åúËÈ…ïùπÖµïÕ¡Öçî(ÄÄÄÄÄÄÄÄÄÅ1%5%PÄƒ§(ÄÄÄÄ§Å1%-Äúïç±Ö•µïë}’π•Ÿï…Õ•—‰îúÅQ!8ÄùΩ¨úÅ1MÄù5%MM%9úÅ9)U9%=8Å10)M1PÄùΩπîÅ¡ï…ÕΩ∏Å—…•ùùï»ú∞(ÄÄÄÅMÅ]!8Åa%MQLÄ†(ÄÄÄÄÄÄÄÅM1PÄƒÅI=4Å¡ù}çÖ—Ö±Ωúπ¡ù}—…•ùùï»ÅLÅ—…•ùùï…}…Ω‹(ÄÄÄÄÄÄÄÄÄÅ)=%8Å¡ù}çÖ—Ö±Ωúπ¡ù}ç±ÖÕÃÅLÅ—Öâ±ï}ç±ÖÕÃÅ=8Å—Öâ±ï}ç±ÖÕÃπΩ•êÄÙÅ—…•ùùï…}…Ω‹π—ù…ï±•ê(ÄÄÄÄÄÄÄÄÅ]!IÅ—…•ùùï…}…Ω‹π—ùπÖµîÄÙÄù±ïç—’…ï…}Õ’âµ•ÕÕ•ΩπÕ}Ωπï}¡ï…ÕΩ∏ú(ÄÄÄÄÄÄÄÄÄÄÅ9Å—Öâ±ï}ç±ÖÕÃπ…ï±πÖµîÄÙÄù±ïç—’…ï…}Õ’âµ•ÕÕ•ΩπÃú(ÄÄÄÄÄÄÄÄÄÄÅ9Å—…•ùùï…}…Ω‹π—ù•Õ•π—ï…πÖ∞ÄÙÅ1M(ÄÄÄÄ§ÅQ!8ÄùΩ¨úÅ1MÄù5%MM%9úÅ9Ï(((¥¥ÄÙÙÙÙÙÙÙÙÙÙÙÙÅAIPÄ»¿º»–ËÅµ•ù…Ö—•ΩπÃº»¿»ÿƒ¿ƒÂ}ç°Ö—}Ω…ùÖπ•ÈîπÕ≈∞ÄÙÙÙÙÙÙÙÙÙÙÙÙ((¥¥ÄÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙ(¥¥Å5AULÅ=99PÉäPÅ!QLÅe=TÅI!%Y∞Å5UQ∞Å1=,Å=HÅ1	0(¥¥ÅAÖ…–Ä»¿ÅΩòÅ—°îÅÕï—’¿∏Å%ëïµ¡Ω—ïπ–ËÅÕÖôîÅ—ºÅ…’∏ÅµΩ…îÅ—°Ö∏ÅΩπçî∏(¥¥(¥¥ÅQ°îÅç°Ö–Å±•Õ–ÅÖ±…ïÖë‰Å≠πΩ›ÃÅ›°ºÅÑÅµïµâï»Åâ±Ωç≠ïêÅÖπêÅ›°ºÅ—°ï‰ÅÕ—Ö……ïê∏(¥¥ÅQ°•ÃÅÖëëÃÅ—°îÅôΩ’»Å—°•πùÃÅÑÅÕ—’ëïπ–Åï·¡ïç—ÃÅ—ºÅÕï–ÅΩ∏ÅΩπîÅçΩπŸï…ÕÖ—•Ω∏(¥¥ÅÖô—ï»Å¡…ïÕÕ•πúÅ•–ÅôΩ»ÅÑÅµΩµïπ–∞Å—°îÅ›Ö‰Å]°Ö—Õ¡¿ÅëΩïÃË(¥¥ÄÄÄ®ÅÖ…ç°•ŸïêÄÄ¥Å—°îÅç°Ö–Å±ïÖŸïÃÅ—°îÅµÖ•∏Å±•Õ–Åâ’–ÅπΩ—°•πúÅ•ÃÅ±ΩÕ–ÏÅ•–(¥¥ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅ›Ö•—ÃÅ’πëï»Å•—ÃÅΩ›∏Å°ïÖë•πúÅ’π—•∞Å•–Å•ÃÅ’πÖ…ç°•Ÿïê(¥¥ÄÄÄ®Åµ’—ïêÄÄÄÄÄ¥Å—°îÅ¡°ΩπîÅÕ—ÖÂÃÅ≈’•ï–Å›°ï∏Å—°Ö–Å¡ï…ÕΩ∏ÅΩ»Åù…Ω’¿Å›…•—ïÃ∞(¥¥ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅ›°•±îÅ—°îÅµïÕÕÖùïÃÅÕ—•±∞ÅÖ……•ŸîÅÖπêÅÕ—•±∞Å…ïÖêÅÖÃÅ’π…ïÖê(¥¥ÄÄÄ®Å±Ωç≠ïêÄÄÄÄ¥Å—°îÅ¡°ΩπîÅµ’Õ–Å…ïçΩùπ•ÕîÅ—°•ÃÅµïµâï»Ä°ô•πùï…¡…•π–∞ÅôÖçî(¥¥ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅΩ»Å—°îÅçΩëîÅ—°ï‰ÅÕï–§ÅâïôΩ…îÅ—°Ö–Åç°Ö–ÅΩ¡ïπÃ(¥¥ÄÄÄ®Åç°Ö—}±•Õ–Ä¥ÅÑÅÕ°Ω…–Å±Öâï∞∞ÅÕºÄâM≈’ÖêàÅΩ»Äâ±ÖÕÃÅ’π•—ÃàÅçÖ∏Å°Ω±êÅ—°î(¥¥ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅç°Ö—ÃÅÑÅµïµâï»Å›Öπ—ÃÅ—Ωùï—°ï»(¥¥ÄÄÄ®Å—°ïµîÄÄÄÄÄ¥Å—°îÅçΩ±Ω’»ÅÕï–Åç°ΩÕï∏ÅôΩ»Å—°Ö–ÅçΩπŸï…ÕÖ—•Ω∏Ä†â¡…ïÕï–È¡±’¥à(¥¥ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅΩ»ÄâçΩ±Ω»Ëå›ÑÕçôòà§ÏÅïµ¡—‰ÅµïÖπÃÅ—°îÅâ’•±–µ•∏Å¡Ö±ï——î∞ÅÕº(¥¥ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅ—°îÅÖ¡¿ùÃÅëïôÖ’±–Å±ΩΩ¨Å•ÃÅπïŸï»ÅÕ—Ω…ïêÅÖÃÅÑÅ¡…ïôï…ïπçî(¥¥ÄÄÄ®Åç±ïÖ…ïë}Ö–¥ÅïŸï…Â—°•πúÅΩ±ëï»Å—°Ö∏Å—°•ÃÅ•πÕ—Öπ–Å•ÃÅùΩπîÅô…Ω¥Å—°•Ã(¥¥ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅµïµâï»ùÃÅŸ•ï‹ÅΩòÅ—°îÅç°Ö–∏ÅQ°îÅΩ—°ï»Å¡ï…ÕΩ∏Å≠ïï¡ÃÅ—°ï•»(¥¥ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅçΩ¡‰∞Åï·Öç—±‰ÅÖÃÅ]°Ö—Õ¡¿ùÃÅ±ïÖ»Åç°Ö–Åâï°ÖŸïÃ(¥¥ÄÄÄ®Å°•ëëïπ}Ö–Ä¥Å—°îÅç°Ö–ÅÖ±ÕºÅ±ïÖŸïÃÅ—°îÅ±•Õ–Å’π—•∞Å—°Ö–Å¡ï…ÕΩ∏Å›…•—ïÃ(¥¥ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅÖùÖ•∏∞Å›°•ç†Å•ÃÅ›°Ö–Åï±ï—îÅç°Ö–ÅµïÖπÃÅ°ï…î(¥¥(¥¥Å9Ω—°•πúÅ•∏Å—°•ÃÅ—Öâ±îÅëïÕ—…ΩÂÃÅÑÅµïÕÕÖùî∏Å	Ω—†Å—•µïÕ—Öµ¡ÃÅΩπ±‰ÅïŸï»ÅÕÖ‰(¥¥ÄâëºÅπΩ–ÅÕ°Ω‹Å—°•ÃÅµïµâï»Å›°Ö–Å°Ö¡¡ïπïêÅâïôΩ…îÅ—°•ÃÅµΩµïπ–à∞ÅÕºÅÑÅç°Ö–(¥¥Åç±ïÖ…ïêÅâ‰Åµ•Õ—Ö≠îÅçÖ∏ÅâîÅâ…Ω’ù°–ÅâÖç¨Åâ‰ÅÖ∏ÅÖëµ•∏Å›°ºÅ≠πΩ›ÃÅ—°îÅπ’µâï»∏(¥¥(¥¥Å=πîÅ…Ω‹Å¡ï»Ä°µïµâï»∞ÅçΩπŸï…ÕÖ—•Ω∏§∏ÅÅçΩπŸï…ÕÖ—•Ω∏Å•ÃÅï•—°ï»ÅÑÅ¡ï…ÕΩ∏ÅΩ»(¥¥ÅÑÅù…Ω’¿∞ÅÕºÅ¡ïï…}•êÅëï±•âï…Ö—ï±‰ÅçÖ……•ïÃÅ9<ÅôΩ…ï•ù∏Å≠ï‰ËÅ—°îÅÕÖµîÅçΩ±’µ∏(¥¥Å°Ω±ëÃÅÑÅ¡…Ωô•±îÅ•êÅÖπêÅÑÅçΩµµ’π•—‰Å•ê∞ÅÖπêÅÑÅù…Ω’¿ÅçÖ∏ÅâîÅëï±ï—ïêÅΩ’–(¥¥Åô…Ω¥Å’πëï»ÅÑÅç°Ö–Å›•—°Ω’–Å—Ö≠•πúÅ—°îÅµïµâï»ùÃÅµ’—îÅÕï——•πúÅ›•—†Å•–∏(¥¥(¥¥Å9ΩâΩë‰Åâ’–Å—°îÅΩ›πï»ÅïŸï»Å…ïÖëÃÅΩ»Å›…•—ïÃÅ—°ïÕîÅô±ÖùÃ∏ÅQ°ï‰ÅÖ…îÅπΩ–(¥¥ÅŸ•Õ•â±îÅ—ºÅ—°îÅΩ—°ï»Å¡ï…ÕΩ∏∞ÅÕºÅµ’—•πúÅΩ»ÅÖ…ç°•Ÿ•πúÅÑÅç°Ö–ÅçÖππΩ–Å—•¿(¥¥Å—°ï¥ÅΩôò∞ÅÖπêÅÖ∏ÅÖëµ•∏Å…ïŸ•ï›•πúÅÖççΩ’π—ÃÅ°ÖÃÅπºÅ…ïÖÕΩ∏Å—ºÅÕïîÅ—°ï¥∏(¥¥(¥¥ÅQ°îÅÖ¡¿Å›Ω…≠ÃÅ›•—°Ω’–Å—°•ÃÅ¡Ö…–ËÅ’π—•∞Å•–Å•ÃÅ…’∏∞Å—°îÅÕÖµîÅôΩ’»ÅÕï——•πùÃ(¥¥ÅÖ…îÅ≠ï¡–ÅΩ∏Å—°îÅ¡°ΩπîÅ•—Õï±ò∏ÅI’ππ•πúÅ•–Å’¡ù…ÖëïÃÅ—°ï¥Å—ºÅôΩ±±Ω‹Å—°î(¥¥Åµïµâï»ÅΩπ—ºÅÖπ‰ÅëïŸ•çîÅ—°ï‰ÅÕ•ù∏Å•∏Åô…Ω¥∏(¥¥ÄÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙ(((¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥(¥¥Äƒ∏Å=9ÅI=\ÅAHÅ55	HÅAHÅ=9YIMQ%=8(¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥()IQÅQ	1Å%Å9=PÅa%MQLÅ¡’â±•åπçΩπŸï…ÕÖ—•Ωπ}Õï——•πùÃÄ†(ÄÄÄÅ’Õï…}•êÅUU%Å9=PÅ9U10ÅII9LÅÖ’—†π’Õï…Ã°•ê§Å=8Å1QÅM∞(ÄÄÄÅ¡ïï…}•êÅUU%Å9=PÅ9U10∞(ÄÄÄÅÖ…ç°•ŸïêÅ	==18Å9=PÅ9U10ÅU1PÅ1M∞(ÄÄÄÅµ’—ïêÅ	==18Å9=PÅ9U10ÅU1PÅ1M∞(ÄÄÄÅ±Ωç≠ïêÅ	==18Å9=PÅ9U10ÅU1PÅ1M∞(ÄÄÄÅç°Ö—}±•Õ–ÅQaP∞(ÄÄÄÅ—°ïµîÅQaP∞(ÄÄÄÅç±ïÖ…ïë}Ö–ÅQ%5MQ5AQh∞(ÄÄÄÅ°•ëëïπ}Ö–ÅQ%5MQ5AQh∞(ÄÄÄÅ’¡ëÖ—ïë}Ö–ÅQ%5MQ5AQhÅ9=PÅ9U10ÅU1PÅ9=\†§∞(ÄÄÄÅAI%5IdÅ-dÄ°’Õï…}•ê∞Å¡ïï…}•ê§∞(ÄÄÄÅ=9MQI%9PÅçΩπŸï…ÕÖ—•Ωπ}Õï——•πùÕ}±•Õ—}±ïπù—†(ÄÄÄÄÄÄÄÅ!,Ä°ç°Ö—}±•Õ–Å%LÅ9U10Å=HÅç°Ö…}±ïπù—†°	QI%4°ç°Ö—}±•Õ–§§Å	Q]8ÄƒÅ9Ä–¿§∞(ÄÄÄÅ=9MQI%9PÅçΩπŸï…ÕÖ—•Ωπ}Õï——•πùÕ}—°ïµï}±ïπù—†(ÄÄÄÄÄÄÄÅ!,Ä°—°ïµîÅ%LÅ9U10Å=HÅç°Ö…}±ïπù—†°	QI%4°—°ïµî§§ÄÙÄ–¿§(§Ï((º®Å∏ÅΩ±ëï»ÅçΩ¡‰ÅΩòÅ—°•ÃÅ¡Ö…–ÅµÖ‰ÅÖ±…ïÖë‰Å°ÖŸîÅâïï∏Å¡ÖÕ—ïêÅ›•—°Ω’–Å—°îÅ—›º(ÄÄÅ—•µïÕ—Öµ¡ÃÅΩ»Å—°îÅçΩ±Ω’»Åç°Ω•çî∞ÅÖπêÅIQÅQ	1Å%Å9=PÅa%MQLÅ›Ω’±êÅ—°ï∏(ÄÄÅ°ÖŸîÅÕ≠•¡¡ïêÅ—°ï¥∏Ä®º)1QHÅQ	1Å¡’â±•åπçΩπŸï…ÕÖ—•Ωπ}Õï——•πùÃ(ÄÄÄÅÅ=1U58Å%Å9=PÅa%MQLÅç±ïÖ…ïë}Ö–ÅQ%5MQ5AQh∞(ÄÄÄÅÅ=1U58Å%Å9=PÅa%MQLÅ°•ëëïπ}Ö–ÅQ%5MQ5AQh∞(ÄÄÄÅÅ=1U58Å%Å9=PÅa%MQLÅ—°ïµîÅQaPÏ()IQÅ%9`Å%Å9=PÅa%MQLÅçΩπŸï…ÕÖ—•Ωπ}Õï——•πùÕ}’Õï…}•ë‡(ÄÄÄÅ=8Å¡’â±•åπçΩπŸï…ÕÖ—•Ωπ}Õï——•πùÃÄ°’Õï…}•ê§Ï()IQÅ%9`Å%Å9=PÅa%MQLÅçΩπŸï…ÕÖ—•Ωπ}Õï——•πùÕ}Ö…ç°•Ÿïë}•ë‡(ÄÄÄÅ=8Å¡’â±•åπçΩπŸï…ÕÖ—•Ωπ}Õï——•πùÃÄ°’Õï…}•ê§Å]!IÅÖ…ç°•ŸïêÏ(((¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥(¥¥Ä»∏Å-@Å’¡ëÖ—ïë}Ö–Å!=9MP(¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥()I=@ÅQI%HÅ%Åa%MQLÅçΩπŸï…ÕÖ—•Ωπ}Õï——•πùÕ}Õï—}’¡ëÖ—ïë}Ö–(ÄÄÄÅ=8Å¡’â±•åπçΩπŸï…ÕÖ—•Ωπ}Õï——•πùÃÏ)IQÅQI%HÅçΩπŸï…ÕÖ—•Ωπ}Õï——•πùÕ}Õï—}’¡ëÖ—ïë}Ö–(ÄÄÄÅ	=IÅUAQÅ=8Å¡’â±•åπçΩπŸï…ÕÖ—•Ωπ}Õï——•πùÃ(ÄÄÄÅ=HÅ ÅI=\(ÄÄÄÅaUQÅU9Q%=8Å¡’â±•åπÕï—}’¡ëÖ—ïë}Ö–†§Ï(((¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥(¥¥ÄÃ∏Å=91dÅQ!Å=]9H∞Å1]eL(¥¥ÅΩ’»ÅÕï¡Ö…Ö—îÅ¡Ω±•ç•ïÃÅ…Ö—°ï»Å—°Ö∏ÅΩπîÅ¡ï…µ•ÕÕ•ŸîÅçÖ—ç†µÖ±∞∞ÅÕºÅÑ(¥¥Åµïµâï»ÅçÖ∏Åç°ÖπùîÅÑÅô±ÖúÅâ’–ÅçÖππΩ–ÅµΩŸîÅÑÅ…Ω‹ÅΩπ—ºÅÕΩµïâΩë‰Åï±ÕîùÃ(¥¥ÅÖççΩ’π–ËÅ—°îÅ]%Q Å!,ÅÕ•ëîÅ•ÃÅ›°Ö–ÅÕ—Ω¡ÃÅ—°Ö–∏(¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥()1QHÅQ	1Å¡’â±•åπçΩπŸï…ÕÖ—•Ωπ}Õï——•πùÃÅ9	1ÅI=\Å1Y0ÅMUI%QdÏ()I=@ÅA=1%dÅ%Åa%MQLÅçΩπŸï…ÕÖ—•Ωπ}Õï——•πùÕ}Ω›πï…}…ïÖêÅ=8Å¡’â±•åπçΩπŸï…ÕÖ—•Ωπ}Õï——•πùÃÏ)IQÅA=1%dÅçΩπŸï…ÕÖ—•Ωπ}Õï——•πùÕ}Ω›πï…}…ïÖêÅ=8Å¡’â±•åπçΩπŸï…ÕÖ—•Ωπ}Õï——•πùÃ(ÄÄÄÅ=HÅM1PÅQ<ÅÖ’—°ïπ—•çÖ—ïê(ÄÄÄÅUM%9Ä°’Õï…}•êÄÙÅÖ’—†π’•ê†§§Ï()I=@ÅA=1%dÅ%Åa%MQLÅçΩπŸï…ÕÖ—•Ωπ}Õï——•πùÕ}Ω›πï…}ÖëêÅ=8Å¡’â±•åπçΩπŸï…ÕÖ—•Ωπ}Õï——•πùÃÏ)IQÅA=1%dÅçΩπŸï…ÕÖ—•Ωπ}Õï——•πùÕ}Ω›πï…}ÖëêÅ=8Å¡’â±•åπçΩπŸï…ÕÖ—•Ωπ}Õï——•πùÃ(ÄÄÄÅ=HÅ%9MIPÅQ<ÅÖ’—°ïπ—•çÖ—ïê(ÄÄÄÅ]%Q Å!,Ä°’Õï…}•êÄÙÅÖ’—†π’•ê†§§Ï()I=@ÅA=1%dÅ%Åa%MQLÅçΩπŸï…ÕÖ—•Ωπ}Õï——•πùÕ}Ω›πï…}ç°ÖπùîÅ=8Å¡’â±•åπçΩπŸï…ÕÖ—•Ωπ}Õï——•πùÃÏ)IQÅA=1%dÅçΩπŸï…ÕÖ—•Ωπ}Õï——•πùÕ}Ω›πï…}ç°ÖπùîÅ=8Å¡’â±•åπçΩπŸï…ÕÖ—•Ωπ}Õï——•πùÃ(ÄÄÄÅ=HÅUAQÅQ<ÅÖ’—°ïπ—•çÖ—ïê(ÄÄÄÅUM%9Ä°’Õï…}•êÄÙÅÖ’—†π’•ê†§§(ÄÄÄÅ]%Q Å!,Ä°’Õï…}•êÄÙÅÖ’—†π’•ê†§§Ï()I=@ÅA=1%dÅ%Åa%MQLÅçΩπŸï…ÕÖ—•Ωπ}Õï——•πùÕ}Ω›πï…}…ïµΩŸîÅ=8Å¡’â±•åπçΩπŸï…ÕÖ—•Ωπ}Õï——•πùÃÏ)IQÅA=1%dÅçΩπŸï…ÕÖ—•Ωπ}Õï——•πùÕ}Ω›πï…}…ïµΩŸîÅ=8Å¡’â±•åπçΩπŸï…ÕÖ—•Ωπ}Õï——•πùÃ(ÄÄÄÅ=HÅ1QÅQ<ÅÖ’—°ïπ—•çÖ—ïê(ÄÄÄÅUM%9Ä°’Õï…}•êÄÙÅÖ’—†π’•ê†§§Ï()I9PÅM1P∞Å%9MIP∞ÅUAQ∞Å1QÅ=8Å¡’â±•åπçΩπŸï…ÕÖ—•Ωπ}Õï——•πùÃÅQ<ÅÖ’—°ïπ—•çÖ—ïêÏ)IY=-Å10Å=8Å¡’â±•åπçΩπŸï…ÕÖ—•Ωπ}Õï——•πùÃÅI=4ÅÖπΩ∏Ï(()9=Q%dÅ¡ù…Õ–∞Äù…ï±ΩÖêÅÕç°ïµÑúÏ(((¥¥ÄÙÙÙÙÙÙÙÙÙÙÙÙÅAIPÄ»ƒº»–ËÅµ•ù…Ö—•ΩπÃº»¿»ÿƒ¿»¡}¡°Ωπï}•ëïπ—•—‰πÕ≈∞ÄÙÙÙÙÙÙÙÙÙÙÙÙ(¥¥ÄÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙ(¥¥ÅAIPÄ»ƒËÅÅA!=9Å9U5	HÅ%LÅ8ÅIML(¥¥ÅÖµ¡’ÃÅΩππïç–ÅπΩ‹Å±ï—ÃÅÑÅÕ—’ëïπ–∞ÅÑÅ±ïç—’…ï»ÅΩ»ÅÑÅÕïç’…•—‰Åù’Ö…êÅ©Ω•∏Å›•—†(¥¥Å—°îÅπ’µâï»ÅΩ∏Å—°ï•»ÅM%4ÅçÖ…êÅÖ±Ωπî∏ÅQ›ºÅ—°•πùÃÅ°ÖŸîÅ—ºÅâîÅ—…’îÅÖ–ÅΩπçîËÅ—°î(¥¥ÅÖ¡¿Åµ’Õ–ÅâîÅÖâ±îÅ—ºÅô•πêÅ—°îÅÖççΩ’π–Åâï°•πêÅÑÅπ’µâï»∞ÅÖπêÅ—°îÅπ’µâï»Åµ’Õ–(¥¥ÅÕ—Ö‰ÅΩôòÅ—°îÅ¡…Ωô•±îÅçÖ…êÅΩòÅÖπÂâΩë‰Å›°ºÅë•êÅπΩ–Åç°ΩΩÕîÅ—ºÅÕ°Ω‹Å•–∏ÅMºÅ—°î(¥¥Åë•ù•—ÃÅùï–ÅÑÅçΩ±’µ∏ÅΩòÅ—°ï•»ÅΩ›∏∞Å›°•ç†Å—°îÅ¡…•ŸÖç‰ÅµÖÕ¨ÅπïŸï»Å…ïÖëÃ∞ÅÖπê(¥¥Å—°îÅΩπ±‰ÅëΩΩ»Å—ºÅ—°Ö–ÅçΩ±’µ∏Å•ÃÅΩπîÅô’πç—•Ω∏Å—°Ö–ÅÖπÕ›ï…ÃÅΩπîÅπ’µâï»Å›•—†(¥¥ÅΩπîÅµïµâï»∏(¥¥(¥¥ÅMÖôîÅ—ºÅ…’∏ÅµΩ…îÅ—°Ö∏ÅΩπçîËÅïŸï…‰ÅÕ—Ö—ïµïπ–Å•ÃÅ%Å9=PÅa%MQL∞(¥¥ÅIQÅ=HÅIA1∞ÅΩ»ÅÖ∏Å•ëïµ¡Ω—ïπ–Å1QHΩI9P∏(¥¥ÅI’∏Å—°•ÃÅô•±îÅQHÅëÖ—ÖâÖÕîΩÕç°ïµÑπÕ≈∞ÅÖπêÅQHÅïŸï…‰ÅïÖ…±•ï»Å¡Ö…–∏(¥¥ÄÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙ(((¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥(¥¥Äƒ∏ÅQ!ÅM!AÅ=ÅÅ9U5	H(¥¥Å=πîÅ…’±îÅôΩ»Å—°îÅ›°Ω±îÅÖ¡¿ËÅë•ù•—ÃÅΩπ±‰∞ÅÖπêÅÑÅ±ΩçÖ∞Ä¿›a`Åaa`Åaa`Å•ÃÅ—°î(¥¥ÅÕÖµîÅÕ’âÕç…•âï»ÅÖÃÄ»‘–›a`Åaa`Åaa`∏Å%55UQ	1ÅâïçÖ’ÕîÅÖ∏Å•πëï‡Åï·¡…ïÕÕ•Ω∏(¥¥ÅÖπêÅÑÅ—…•ùùï»ÅâΩ—†ÅëïµÖπêÅ—°Ö–∏(¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥()IQÅ=HÅIA1ÅU9Q%=8Å¡’â±•åππΩ…µÖ±•Èï}¡°Ωπï}ë•ù•—Ã°¡}ŸÖ±’îÅQaP§)IQUI9LÅQaP)19UÅÕ≈∞)%55UQ	1)MPÅÕïÖ…ç°}¡Ö—†ÄÙÄúú)LÄêê(ÄÄÄÅM1PÅM(ÄÄÄÄÄÄÄÅ]!8Åç°Ö…}±ïπù—†°àπ—…•µµïê§ÄÙÄƒ¿Å9Åàπ—…•µµïêÅ1%-Äú¿îú(ÄÄÄÄÄÄÄÄÄÄÄÅQ!8Äú»‘–úÅÒÅI%!P°àπ—…•µµïê∞Ä‰§(ÄÄÄÄÄÄÄÅ1MÅàπ—…•µµïê(ÄÄÄÅ9(ÄÄÄÅI=4Ä†(ÄÄÄÄÄÄÄÅM1PÅIaA}IA1°=1M°¡}ŸÖ±’î∞Äúú§∞Äùmx¿¥Âtú∞Äúú∞Äùúú§ÅLÅ—…•µµïê(ÄÄÄÄ§ÅLÅàÏ(êêÏ()IY=-Å10Å=8ÅU9Q%=8Å¡’â±•åππΩ…µÖ±•Èï}¡°Ωπï}ë•ù•—Ã°QaP§ÅI=4ÅAU	1%∞ÅÖπΩ∏Ï)I9PÅaUQÅ=8ÅU9Q%=8Å¡’â±•åππΩ…µÖ±•Èï}¡°Ωπï}ë•ù•—Ã°QaP§ÅQ<ÅÖ’—°ïπ—•çÖ—ïêÏ(((¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥(¥¥Ä»∏ÅÅ=1U58ÅQ!ÅAI%YdÅ5M,Å9YHÅIL(¥¥ÅçΩπ—Öç—}¡°ΩπîÅ•ÃÅ›°Ö–ÅÑÅµïµâï»ÅÕ°Ω›ÃÅΩ∏Å°•ÃÅçÖ…êÏÅ¡°Ωπï}ë•ù•—ÃÅ•ÃÅ›°Ö–Å—°î(¥¥ÅÕç°ΩΩ∞Å’ÕïÃÅ—ºÅ…Ω’—îÅÑÅµïÕÕÖùîÅΩ»ÅÑÅçÖ±∞Å—ºÅ°•¥∏Å=π±‰Å—°îÅÕïçΩπêÅΩπîÅ•Ã(¥¥Å≠ï¡–Å›°ï∏Å—°îÅµïµâï»ÅÕ—Ω¡ÃÅÕ°Ω›•πúÅ—°îÅô•…Õ–∞ÅÖπêÅ—°îÅç°ïç¨Å±ï—ÃÅπΩ—°•πú(¥¥Åâ’–ÅÑÅ…ïÖ∞Åπ’µâï»Å…ïÖç†Å•–∏(¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥()<Äêê)	%8(ÄÄÄÅ%Å9=PÅa%MQLÄ†(ÄÄÄÄÄÄÄÅM1PÄƒÅI=4Å•πôΩ…µÖ—•Ωπ}Õç°ïµÑπçΩ±’µπÃ(ÄÄÄÄÄÄÄÅ]!IÅ—Öâ±ï}Õç°ïµÑÄÙÄù¡’â±•åú(ÄÄÄÄÄÄÄÄÄÅ9Å—Öâ±ï}πÖµîÄÙÄù¡…Ωô•±ïÃú(ÄÄÄÄÄÄÄÄÄÅ9ÅçΩ±’µπ}πÖµîÄÙÄù¡°Ωπï}ë•ù•—Ãú(ÄÄÄÄ§ÅQ!8(ÄÄÄÄÄÄÄÅ1QHÅQ	1Å¡’â±•åπ¡…Ωô•±ïÃ(ÄÄÄÄÄÄÄÄÄÄÄÅÅ=1U58Å¡°Ωπï}ë•ù•—ÃÅQaPÅ9=PÅ9U10ÅU1PÄúúÏ(ÄÄÄÅ9Å%Ï)9Ï(êêÏ()1QHÅQ	1Å¡’â±•åπ¡…Ωô•±ïÃ(ÄÄÄÅI=@Å=9MQI%9PÅ%Åa%MQLÅ¡…Ωô•±ïÕ}¡°Ωπï}ë•ù•—Õ}Õ°Ö¡ï}ç°ïç¨Ï)1QHÅQ	1Å¡’â±•åπ¡…Ωô•±ïÃ(ÄÄÄÅÅ=9MQI%9PÅ¡…Ωô•±ïÕ}¡°Ωπï}ë•ù•—Õ}Õ°Ö¡ï}ç°ïç¨(ÄÄÄÅ!,Ä°¡°Ωπï}ë•ù•—ÃÄÙÄúúÅ=HÅ¡°Ωπï}ë•ù•—ÃÅ¯Äùyl¿¥ÂuÏ‹∞ƒ’Ùêú§Ï(((¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥(¥¥ÄÃ∏ÅQ ÅQ!Å9U5	HÅ	=IÅQ!ÅIÅ!%LÅ%P(¥¥ÅQ°îÅÕ°Ö…•πúÅ—…•ùùï»Å’ÕïêÅ—ºÅâ±Öπ¨ÅÑÅπ’µâï»Å—°îÅµΩµïπ–Å•—ÃÅΩ›πï»ÅÕ—Ω¡¡ïê(¥¥ÅÕ°Ω›•πúÅ•–∞Å›°•ç†Å≈’•ï—±‰Åëï±ï—ïêÅ°•ÃÅÖëë…ïÕÃÅô…Ω¥Å—°îÅ›°Ω±îÅÕç°ΩΩ∞∏ÅQ°î(¥¥Åë•ù•—ÃÅÖ…îÅπΩ‹ÅçΩ¡•ïêÅΩ’–ÅΩòÅ—°îÅ›Ö‰Åô•…Õ–∞ÅÕºÅ°•ë•πúÅÑÅπ’µâï»ÅΩ∏ÅÑÅçÖ…ê(¥¥ÅçΩÕ—ÃÅπΩ—°•πúÅâ’–Å—°îÅë•Õ¡±Ö‰∏(¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥()IQÅ=HÅIA1ÅU9Q%=8Å¡’â±•åπïπôΩ…çï}¡…Ωô•±ï}çΩπ—Öç—}Õ°Ö…•πú†§)IQUI9LÅQI%H)19UÅ¡±¡ùÕ≈∞)MPÅÕïÖ…ç°}¡Ö—†ÄÙÄúú)LÄêê)1I(ÄÄÄÅçÖ¡—’…ïêÅQaPÏ)	%8(ÄÄÄÅ%Å	QI%4°=1M°9\πçΩπ—Öç—}¡°Ωπî∞Äúú§§Ä¯ÄúúÅQ!8(ÄÄÄÄÄÄÄÅçÖ¡—’…ïêÄËÙÅ¡’â±•åππΩ…µÖ±•Èï}¡°Ωπï}ë•ù•—Ã°9\πçΩπ—Öç—}¡°Ωπî§Ï(ÄÄÄÄÄÄÄÅ%ÅçÖ¡—’…ïêÅ¯Äùyl¿¥ÂuÏ‹∞ƒ’ÙêúÅQ!8(ÄÄÄÄÄÄÄÄÄÄÄÅ9\π¡°Ωπï}ë•ù•—ÃÄËÙÅçÖ¡—’…ïêÏ(ÄÄÄÄÄÄÄÅ9Å%Ï(ÄÄÄÅ9Å%Ï(ÄÄÄÅ%Å9=PÅ9\πÕ°Ö…ï}ïµÖ•∞ÅQ!8(ÄÄÄÄÄÄÄÅ9\πçΩπ—Öç—}ïµÖ•∞ÄËÙÄúúÏ(ÄÄÄÅ9Å%Ï(ÄÄÄÅ%Å9=PÅ9\πÕ°Ö…ï}¡°ΩπîÅQ!8(ÄÄÄÄÄÄÄÅ9\πçΩπ—Öç—}¡°ΩπîÄËÙÄúúÏ(ÄÄÄÅ9Å%Ï(ÄÄÄÅIQUI8Å9\Ï)9Ï(êêÏ()IY=-Å10Å=8ÅU9Q%=8Å¡’â±•åπïπôΩ…çï}¡…Ωô•±ï}çΩπ—Öç—}Õ°Ö…•πú†§ÅI=4ÅAU	1%∞ÅÖπΩ∏∞ÅÖ’—°ïπ—•çÖ—ïêÏ(((¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥(¥¥Ä–∏Å%YÅ	,ÅQ!Å9U5	ILÅQ!Å=1Å5M,Å1IdÅQ(¥¥ÅŸï…ÂΩπîÅ›°ºÅïŸï»Å—•ç≠ïêÄâÕ°Ω‹Åµ‰ÅçΩπ—Öç–Å¡°ΩπîàÅÕ—•±∞Å°ÖÃÅ—°îÅπ’µâï»ÅΩ∏(¥¥Å—°îÅçÖ…ê∞ÅÕºÅ—°ΩÕîÅë•ù•—ÃÅÖ…îÅçΩ¡•ïêÅÖç…ΩÕÃÅΩπçî∏ÅÅπ’µâï»Å—›ºÅÖççΩ’π—Ã(¥¥ÅâΩ—†Åç±Ö•¥Å•ÃÅ±ïô–ÅÖ±ΩπîÅ…Ö—°ï»Å—°Ö∏Åù•Ÿï∏Å—ºÅΩπîÅΩòÅ—°ï¥∞ÅÕºÅ—°îÅπï·–(¥¥ÅÕ—ï¿ÅçÖ∏ÅÕ—•±∞Å¡…Ωµ•ÕîÅΩπîÅπ’µâï»∞ÅΩπîÅÖççΩ’π–∏(¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥()UAQÅ¡’â±•åπ¡…Ωô•±ïÃÅLÅ¡…Ωô•±î(ÄÄÅMPÅ¡°Ωπï}ë•ù•—ÃÄÙÅ¡’â±•åππΩ…µÖ±•Èï}¡°Ωπï}ë•ù•—Ã°¡…Ωô•±îπçΩπ—Öç—}¡°Ωπî§(ÄÅI=4Ä†(ÄÄÄÄÄÄÄÅM1PÅ¡’â±•åππΩ…µÖ±•Èï}¡°Ωπï}ë•ù•—Ã°çÖ…êπçΩπ—Öç—}¡°Ωπî§ÅLÅë•ù•—Ã(ÄÄÄÄÄÄÄÅI=4Å¡’â±•åπ¡…Ωô•±ïÃÅLÅçÖ…ê(ÄÄÄÄÄÄÄÅ]!IÅ	QI%4°=1M°çÖ…êπçΩπ—Öç—}¡°Ωπî∞Äúú§§Ä¯Äúú(ÄÄÄÄÄÄÄÅI=U@Å	dÄƒ(ÄÄÄÄÄÄÄÅ!Y%9Å=U9P†®§ÄÙÄƒ(ÄÄÄÄÄ§ÅLÅÕ•πù±î(Å]!IÅ¡…Ωô•±îπ¡°Ωπï}ë•ù•—ÃÄÙÄúú(ÄÄÅ9Å¡’â±•åππΩ…µÖ±•Èï}¡°Ωπï}ë•ù•—Ã°¡…Ωô•±îπçΩπ—Öç—}¡°Ωπî§ÄÙÅÕ•πù±îπë•ù•—Ã(ÄÄÅ9ÅÕ•πù±îπë•ù•—ÃÅ¯Äùyl¿¥ÂuÏ‹∞ƒ’ÙêúÏ(((¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥(¥¥Ä‘∏Å=9Å9U5	H∞Å=9Å=U9P(¥¥ÅQ°îÅÕÖµîÅù’Ö…Öπ—ïîÅ—°îÅ…ïù•Õ—…Ö—•Ω∏Åπ’µâï»ÅÖ±…ïÖë‰Å°ÖÃËÅπΩâΩë‰ÅçÖ∏ÅΩ¡ï∏ÅÑ(¥¥ÅÕïçΩπêÅÖççΩ’π–ÅΩ∏ÅÑÅπ’µâï»ÅÕΩµïâΩë‰Åï±ÕîÅç±Ö•µïê∏Å	Ω—†Å•πëï·ïÃÅΩπ±‰Å±ΩΩ¨(¥¥ÅÖ–Å…Ω›ÃÅ—°Ö–ÅÖç—’Ö±±‰ÅçÖ……‰ÅÑÅπ’µâï»∞ÅÕºÅÖ∏ÅΩ±ëï»Åµïµâï»Å›•—†ÅπΩπîÅÕ—ÖÂÃ(¥¥ÅΩ’–ÅΩòÅ—°îÅ›Ö‰∏(¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥()<Äêê)	%8(ÄÄÄÅ	%8(ÄÄÄÄÄÄÄÅIQÅU9%EUÅ%9`Å¡…Ωô•±ïÕ}¡°Ωπï}ë•ù•—Õ}≠ï‰(ÄÄÄÄÄÄÄÄÄÄÄÅ=8Å¡’â±•åπ¡…Ωô•±ïÃÄ°¡°Ωπï}ë•ù•—Ã§(ÄÄÄÄÄÄÄÄÄÄÄÅ]!IÅ¡°Ωπï}ë•ù•—ÃÄ¯ÄúúÏ(ÄÄÄÅaAQ%=8Å]!8Å’π•≈’ï}Ÿ•Ω±Ö—•Ω∏ÅQ!8(ÄÄÄÄÄÄÄÄ¥¥ÅQ›ºÅÖççΩ’π—ÃÅÖ±…ïÖë‰Å°Ω±êÅΩπîÅπ’µâï»∞ÅÕºÅ—°îÅ¡…Ωµ•ÕîÅçÖππΩ–ÅâîÅµÖëî(ÄÄÄÄÄÄÄÄ¥¥ÅΩŸï»Å—°Ö–Å¡Ö•»∏ÅÅ¡±Ö•∏Å•πëï‡ÅÕ—•±∞ÅÖπÕ›ï…ÃÅ—°îÅÕïÖ…ç†∞ÅÖπêÅ—°î(ÄÄÄÄÄÄÄÄ¥¥ÅπΩ—•çîÅÕÖÂÃÅ›°•ç†Å¡Ö•»ÅÖ∏ÅÖëµ•∏Å°ÖÃÅ—ºÅÕï¡Ö…Ö—î∏(ÄÄÄÄÄÄÄÅI%MÅ9=Q%ÄùQ›ºÅÖççΩ’π—ÃÅÖ±…ïÖë‰ÅÕ°Ö…îÅΩπîÅ¡°ΩπîÅπ’µâï»∞ÅÕºÅ—°îÅΩπîµπ’µâï»Å…’±îÅ•ÃÅπΩ–ÅïπôΩ…çïêÅÂï–∏Å°ïç¨ËÄîú∞(ÄÄÄÄÄÄÄÄÄÄÄÄ°M1PÅÕ—…•πù}Öùú°ë•ù•—Ã∞Äú∞Äú§ÅI=4Ä†(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅM1PÅ¡°Ωπï}ë•ù•—ÃÅLÅë•ù•—ÃÅI=4Å¡’â±•åπ¡…Ωô•±ïÃ(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅ]!IÅ¡°Ωπï}ë•ù•—ÃÄ¯Äúú(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅI=U@Å	dÅ¡°Ωπï}ë•ù•—ÃÅ!Y%9Å=U9P†®§Ä¯Äƒ(ÄÄÄÄÄÄÄÄÄÄÄÄ§ÅLÅç±ÖÕ°ïÃ§Ï(ÄÄÄÄÄÄÄÅIQÅ%9`Å%Å9=PÅa%MQLÅ¡…Ωô•±ïÕ}¡°Ωπï}ë•ù•—Õ}≠ï‰(ÄÄÄÄÄÄÄÄÄÄÄÅ=8Å¡’â±•åπ¡…Ωô•±ïÃÄ°¡°Ωπï}ë•ù•—Ã§(ÄÄÄÄÄÄÄÄÄÄÄÅ]!IÅ¡°Ωπï}ë•ù•—ÃÄ¯ÄúúÏ(ÄÄÄÅ9Ï)9Ï(êêÏ()IQÅ%9`Å%Å9=PÅa%MQLÅ¡…Ωô•±ïÕ}¡°Ωπï}ë•ù•—Õ}ÕïÖ…ç°}•ë‡(ÄÄÄÅ=8Å¡’â±•åπ¡…Ωô•±ïÃÅUM%9Å%8Ä°¡°Ωπï}ë•ù•—ÃÅù•π}—…ùµ}Ω¡Ã§(ÄÄÄÅ]!IÅ¡°Ωπï}ë•ù•—ÃÄ¯ÄúúÏ((¥¥ÅQ°îÅ—Ö•∞Å•πëï‡Å•ÃÅ›°Ö–ÅµÖ≠ïÃÄâÂΩ‘Åë•Ö±±ïêÄ¿ﬂäò∞Å—°îÅÖççΩ’π–Å•ÃÅÕ—Ω…ïêÅÖÃ(¥¥Ä»‘–ﬂäòàÅÑÅç°ïÖ¿Å±ΩΩ≠’¿Å•πÕ—ïÖêÅΩòÅÑÅÕçÖ∏ÅΩòÅïŸï…‰Åµïµâï»∏)IQÅ%9`Å%Å9=PÅa%MQLÅ¡…Ωô•±ïÕ}¡°Ωπï}ë•ù•—Õ}—Ö•±}•ë‡(ÄÄÄÅ=8Å¡’â±•åπ¡…Ωô•±ïÃÄ°I%!P°¡°Ωπï}ë•ù•—Ã∞Ä‰§§(ÄÄÄÅ]!IÅ¡°Ωπï}ë•ù•—ÃÄ¯ÄúúÏ(((¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥(¥¥Äÿ∏ÅQ!Å=9Å==HËÅM,Å=HÅÅ55	HÅ	dÅ9U5	H(¥¥ÅMUI%QdÅ%9H∞ÅÕºÅ•–ÅçÖ∏Å…ïÖêÅ—°îÅçΩ±’µ∏Å—°îÅ¡Ω±•ç•ïÃÅ≠ïï¿Å—º(¥¥Å—°ïµÕï±ŸïÃ∞Åâ’–Å•–Å°ÖπëÃÅâÖç¨ÅπºÅµΩ…îÅ—°Ö∏Å—°îÅ¡…Ωô•±îÅ¡ÖùîÅ›Ω’±êÅ°ÖŸî(¥¥ÅÕ°Ω›∏ÅÖπÂ›Ö‰ËÅ—°îÅçÖ…êÅΩòÅÑÅµïµâï»Å—°îÅçÖ±±ï»ÅµÖ‰ÅÖ±…ïÖë‰ÅÕïî∞Å›•—†Å—°î(¥¥Åπ’µâï»Å±ïô–ÅΩôòÅ’π±ïÕÃÅ•—ÃÅΩ›πï»ÅÕ°Ω›ÃÅ•–∏ÅÅçÖ±±ï»Å°ÖÃÅ—ºÅù•ŸîÅÖ–Å±ïÖÕ–(¥¥ÅÕïŸï∏Åë•ù•—Ã∞ÅÖ∏Åï·Öç–ÅµÖ—ç†ÅâïÖ—ÃÅÑÅ±ÖÕ–µπ•πîÅµÖ—ç†∞ÅÖπêÅÑÅâ±Ωç≠ïêÅ¡Ö•»(¥¥ÅÖπÕ›ï…ÃÅπΩ—°•πúÅÖ–ÅÖ±∞∏(¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥()IQÅ=HÅIA1ÅU9Q%=8Å¡’â±•åπô•πë}µïµâï…}âÂ}¡°Ωπî°¡}¡°ΩπîÅQaP§)IQUI9LÅQ	1Ä†(ÄÄÄÅ•êÅUU%∞(ÄÄÄÅ’Õï…πÖµîÅQaP∞(ÄÄÄÅô’±±}πÖµîÅQaP∞(ÄÄÄÅùïπëï»ÅQaP∞(ÄÄÄÅçΩ’…ÕîÅQaP∞(ÄÄÄÅâ•ºÅQaP∞(ÄÄÄÅÖŸÖ—Ö…}’…∞ÅQaP∞(ÄÄÄÅçΩπ—Öç—}ïµÖ•∞ÅQaP∞(ÄÄÄÅçΩπ—Öç—}¡°ΩπîÅQaP∞(ÄÄÄÅÕ°Ö…ï}ïµÖ•∞Å	==18∞(ÄÄÄÅÕ°Ö…ï}¡°ΩπîÅ	==18∞(ÄÄÄÅ•Õ}ë•ÕçΩŸï…Öâ±îÅ	==18∞(ÄÄÄÅ’π•Ÿï…Õ•—‰ÅQaP∞(ÄÄÄÅ…Ω±îÅQaP∞(ÄÄÄÅŸï…•ô•çÖ—•Ωπ}Õ—Ö—’ÃÅQaP∞(ÄÄÄÅïµ¡±ΩÂµïπ—}Õ—Ö—’ÃÅQaP∞(ÄÄÄÅÕ—’ëÂ}µΩëîÅQaP(§)19UÅÕ≈∞)MQ	1)MUI%QdÅ%9H)MPÅÕïÖ…ç°}¡Ö—†ÄÙÄúú)LÄêê(ÄÄÄÅM1PÅ¡…Ωô•±îπ•ê∞(ÄÄÄÄÄÄÄÄÄÄÅ¡…Ωô•±îπ’Õï…πÖµî∞(ÄÄÄÄÄÄÄÄÄÄÅ¡…Ωô•±îπô’±±}πÖµî∞(ÄÄÄÄÄÄÄÄÄÄÅ¡…Ωô•±îπùïπëï»∞(ÄÄÄÄÄÄÄÄÄÄÅ¡…Ωô•±îπçΩ’…Õî∞(ÄÄÄÄÄÄÄÄÄÄÅ¡…Ωô•±îπâ•º∞(ÄÄÄÄÄÄÄÄÄÄÅ¡…Ωô•±îπÖŸÖ—Ö…}’…∞∞(ÄÄÄÄÄÄÄÄÄÄÅ¡…Ωô•±îπçΩπ—Öç—}ïµÖ•∞∞(ÄÄÄÄÄÄÄÄÄÄÅ¡…Ωô•±îπçΩπ—Öç—}¡°Ωπî∞(ÄÄÄÄÄÄÄÄÄÄÅ¡…Ωô•±îπÕ°Ö…ï}ïµÖ•∞∞(ÄÄÄÄÄÄÄÄÄÄÅ¡…Ωô•±îπÕ°Ö…ï}¡°Ωπî∞(ÄÄÄÄÄÄÄÄÄÄÅ¡…Ωô•±îπ•Õ}ë•ÕçΩŸï…Öâ±î∞(ÄÄÄÄÄÄÄÄÄÄÅ¡…Ωô•±îπ’π•Ÿï…Õ•—‰∞(ÄÄÄÄÄÄÄÄÄÄÅ¡…Ωô•±îπ…Ω±î∞(ÄÄÄÄÄÄÄÄÄÄÅ¡…Ωô•±îπŸï…•ô•çÖ—•Ωπ}Õ—Ö—’Ã∞(ÄÄÄÄÄÄÄÄÄÄÅ¡…Ωô•±îπïµ¡±ΩÂµïπ—}Õ—Ö—’Ã∞(ÄÄÄÄÄÄÄÄÄÄÅ¡…Ωô•±îπÕ—’ëÂ}µΩëî(ÄÄÄÅI=4Å¡’â±•åπ¡…Ωô•±ïÃÅLÅ¡…Ωô•±î(ÄÄÄÅ]!IÄ°M1PÅÖ’—†π’•ê†§§Å%LÅ9=PÅ9U10(ÄÄÄÄÄÅ9Åç°Ö…}±ïπù—†°¡’â±•åππΩ…µÖ±•Èï}¡°Ωπï}ë•ù•—Ã°¡}¡°Ωπî§§Ä¯ÙÄ‹(ÄÄÄÄÄÅ9Å¡…Ωô•±îπ¡°Ωπï}ë•ù•—ÃÄ¯Äúú(ÄÄÄÄÄÅ9Å¡…Ωô•±îπ•êÄ¯Ä°M1PÅÖ’—†π’•ê†§§(ÄÄÄÄÄÅ9Å9=PÅ¡’â±•åπ•Õ}â±Ωç≠ïë}âï—›ïï∏†°M1PÅÖ’—†π’•ê†§§∞Å¡…Ωô•±îπ•ê§(ÄÄÄÄÄÅ9Ä†(ÄÄÄÄÄÄÄÄÄÄÄÅ¡…Ωô•±îπ•Õ}ë•ÕçΩŸï…Öâ±î(ÄÄÄÄÄÄÄÄÄÄÄÅ=HÅ¡’â±•åπÖ…ï}µ’—’Ö±}çΩππïç—•ΩπÃ†°M1PÅÖ’—†π’•ê†§§∞Å¡…Ωô•±îπ•ê§(ÄÄÄÄÄÄÄÄÄÄÄÅ=HÅa%MQLÄ†(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅM1PÄƒ(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅI=4Å¡’â±•åπµïÕÕÖùïÃÅLÅç°Ö–(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅ]!IÄ°ç°Ö–πÕïπëï…}•êÄÙÄ°M1PÅÖ’—†π’•ê†§§Å9Åç°Ö–π…ïçï•Ÿï…}•êÄÙÅ¡…Ωô•±îπ•ê§(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅ=HÄ°ç°Ö–π…ïçï•Ÿï…}•êÄÙÄ°M1PÅÖ’—†π’•ê†§§Å9Åç°Ö–πÕïπëï…}•êÄÙÅ¡…Ωô•±îπ•ê§(ÄÄÄÄÄÄÄÄÄÄÄÄ§(ÄÄÄÄÄÄÄÄÄÄ§(ÄÄÄÄÄÅ9Ä†(ÄÄÄÄÄÄÄÄÄÄÄÅ¡…Ωô•±îπ¡°Ωπï}ë•ù•—ÃÄÙÅ¡’â±•åππΩ…µÖ±•Èï}¡°Ωπï}ë•ù•—Ã°¡}¡°Ωπî§(ÄÄÄÄÄÄÄÄÄÄÄÅ=HÅI%!P°¡…Ωô•±îπ¡°Ωπï}ë•ù•—Ã∞Ä‰§ÄÙÅI%!P°¡’â±•åππΩ…µÖ±•Èï}¡°Ωπï}ë•ù•—Ã°¡}¡°Ωπî§∞Ä‰§(ÄÄÄÄÄÄÄÄÄÄ§(ÄÄÄÅ=IHÅ	dÄ°¡…Ωô•±îπ¡°Ωπï}ë•ù•—ÃÄÙÅ¡’â±•åππΩ…µÖ±•Èï}¡°Ωπï}ë•ù•—Ã°¡}¡°Ωπî§§ÅM∞(ÄÄÄÄÄÄÄÄÄÄÄÄÅ¡…Ωô•±îπ•ê(ÄÄÄÅ1%5%PÄ‘Ï(êêÏ()IY=-Å10Å=8ÅU9Q%=8Å¡’â±•åπô•πë}µïµâï…}âÂ}¡°Ωπî°QaP§ÅI=4ÅAU	1%∞ÅÖπΩ∏Ï)I9PÅaUQÅ=8ÅU9Q%=8Å¡’â±•åπô•πë}µïµâï…}âÂ}¡°Ωπî°QaP§ÅQ<ÅÖ’—°ïπ—•çÖ—ïêÏ(((¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥(¥¥Ä‹∏Å8Å=U9PÅ	=I8ÅI=4ÅÅ9U5	HÅ-ALÅ%P(¥¥ÅQ°îÅπ’µâï»Å•ÃÅç±Ö•µïêÅ›°•±îÅ—°îÅÖççΩ’π–Å•ÃÅÕ—•±∞Åâï•πúÅµÖëî∞ÅÕºÅÑÅ¡°Ωπî(¥¥Å—°Ö–Å±ΩÕïÃÅ•—ÃÅçΩππïç—•Ω∏Å°Ö±ô›Ö‰Å—°…Ω’ù†ÅÑÅÕ•ù∏µ’¿ÅπïŸï»Å±ïÖŸïÃÅÑÅµïµâï»(¥¥Å›•—†ÅÖ∏ÅÖëë…ïÕÃÅπΩâΩë‰ÅçÖ∏Åë•Ö∞∏ÅQ°îÅç°ïç¨Å…’πÃÅâïôΩ…îÅÖπÂ—°•πúÅ•Ã(¥¥Å›…•——ï∏∞ÅÕºÅÑÅ…ïô’ÕïêÅÕ•ù∏µ’¿Å±ïÖŸïÃÅπºÅ°Ö±òÅÑÅ¡…Ωô•±îÅâï°•πêÅï•—°ï»∏(¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥()IQÅ=HÅIA1ÅU9Q%=8Å¡’â±•åπ°Öπë±ï}πï›}Ö’—°}’Õï»†§)IQUI9LÅQI%H)19UÅ¡±¡ùÕ≈∞)MUI%QdÅ%9H)MPÅÕïÖ…ç°}¡Ö—†ÄÙÄúú)LÄêê)1I(ÄÄÄÅ’Õï…πÖµï}âÖÕîÅQaPÏ(ÄÄÄÅçÖπë•ëÖ—ï}’Õï…πÖµîÅQaPÏ(ÄÄÄÅÖ——ïµ¡–Å%9QHÏ(ÄÄÄÅµï—ÖëÖ—ÑÅ)M=9Ï(ÄÄÄÅÖççΩ’π—}≠•πêÅQaPÏ(ÄÄÄÅç±Ö•µïë}π’µâï»ÅQaPÏ(ÄÄÄÅç±Ö•µïë}çÖ…êÅQaPÏ(ÄÄÄÅç±Ö•µïë}’π•Ÿï…Õ•—‰ÅQaPÏ(ÄÄÄÅç±Ö•µïë}¡°ΩπîÅQaPÏ(ÄÄÄÅç±ÖÕ°}πÖµîÅQaPÏ)	%8(ÄÄÄÅµï—ÖëÖ—ÑÄËÙÅ=1M°9\π…Ö›}’Õï…}µï—Ö}ëÖ—Ñ∞ÄùÌÙúËÈ)M=9§Ï(ÄÄÄÅÖççΩ’π—}≠•πêÄËÙÅ1=]H°	QI%4°=1M°µï—ÖëÖ—Ñ¥¯¯ùÖççΩ’π—}≠•πêú∞Äúú§§§Ï(ÄÄÄÅç±Ö•µïë}π’µâï»ÄËÙÅ¡’â±•åππΩ…µÖ±•Èï}•ë}π’µâï»°µï—ÖëÖ—Ñ¥¯¯ù…ïù•Õ—…Ö—•Ωπ}π’µâï»ú§Ï(ÄÄÄÅç±Ö•µïë}çÖ…êÄËÙÅ¡’â±•åππΩ…µÖ±•Èï}•ë}π’µâï»°µï—ÖëÖ—Ñ¥¯¯ùÕ—Öôô}•ë}π’µâï»ú§Ï(ÄÄÄÅç±Ö•µïë}’π•Ÿï…Õ•—‰ÄËÙÅ1P°	QI%4°=1M°µï—ÖëÖ—Ñ¥¯¯ù’π•Ÿï…Õ•—‰ú∞Äúú§§∞Äƒ¿¿§Ï(ÄÄÄÅç±Ö•µïë}¡°ΩπîÄËÙÅ¡’â±•åππΩ…µÖ±•Èï}¡°Ωπï}ë•ù•—Ã°µï—ÖëÖ—Ñ¥¯¯ù¡°Ωπîú§Ï(ÄÄÄÅ%Åç±Ö•µïë}¡°ΩπîÅ¯Äùyl¿¥ÂuÏ‹∞ƒ’ÙêúÅ%LÅ9=PÅQIUÅQ!8(ÄÄÄÄÄÄÄÅç±Ö•µïë}¡°ΩπîÄËÙÄúúÏ(ÄÄÄÅ9Å%Ï((ÄÄÄÄ¥¥Å]°Ö—ïŸï»ÅÖ∏ÅΩ±ëï»ÅÖ¡¿ÅŸï…Õ•Ω∏ÅÕïπëÃ∞Å—°îÅπ’µâï»Å•ÃÅΩπ±‰ÅïŸï»(ÄÄÄÄ¥¥Åç±Ö•µïêÅΩπçî∞ÅÖπêÅÑÅµïµâï»ÅπïŸï»Å°ÖÃÅΩπî∏(ÄÄÄÅ%ÅÖççΩ’π—}≠•πêÄÙÄùµïµâï»úÅQ!8(ÄÄÄÄÄÄÄÅç±Ö•µïë}π’µâï»ÄËÙÄúúÏ(ÄÄÄÄÄÄÄÅç±Ö•µïë}çÖ…êÄËÙÄúúÏ(ÄÄÄÅ9Å%Ï((ÄÄÄÄ¥¥ÅÅçΩµ¡Öπ‰ÅÖπêÅÑÅ¡Ö…ïπ–Åâï±ΩπúÅ—ºÅπºÅçÖµ¡’Ã∞ÅÕºÅ—°ï‰ÅÖ…îÅπΩ–ÅÖÕ≠ïê∏(ÄÄÄÅ%ÅÖççΩ’π—}≠•πêÅ%8Ä†ùÕ—’ëïπ–ú∞Äù±ïç—’…ï»ú∞ÄùÕïç’…•—‰ú§Å9Åç±Ö•µïë}’π•Ÿï…Õ•—‰ÄÙÄúúÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8Äù9ÖµîÅ—°îÅ’π•Ÿï…Õ•—‰ÅΩ»ÅçΩ±±ïùîÅÂΩ‘Åâï±ΩπúÅ—ºÅâïôΩ…îÅ—°•ÃÅÖççΩ’π–ÅçÖ∏ÅâîÅç…ïÖ—ïê∏ú(ÄÄÄÄÄÄÄÄÄÄÄÅUM%9ÅII=ÄÙÄú»»¿»ÃúÏ(ÄÄÄÅ9Å%Ï((ÄÄÄÅ%Åç±Ö•µïë}¡°ΩπîÄ¯ÄúúÅ9Åa%MQLÄ†(ÄÄÄÄÄÄÄÅM1PÄƒÅI=4Å¡’â±•åπ¡…Ωô•±ïÃÅLÅ—Ö≠ï∏(ÄÄÄÄÄÄÄÅ]!IÅ—Ö≠ï∏π¡°Ωπï}ë•ù•—ÃÄÙÅç±Ö•µïë}¡°Ωπî(ÄÄÄÄ§ÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8ÄùQ°Ö–Å¡°ΩπîÅπ’µâï»ÅÖ±…ïÖë‰Å°ÖÃÅÑÅÖµ¡’ÃÅΩππïç–ÅÖççΩ’π–∏Å1ΩúÅ•∏Å›•—†Å•–∞ÅΩ»ÅÖÕ¨ÅÖ∏ÅÖëµ•∏∏ú(ÄÄÄÄÄÄÄÄÄÄÄÅUM%9ÅII=ÄÙÄú»Ã‘¿‘úÏ(ÄÄÄÅ9Å%Ï((ÄÄÄÅ’Õï…πÖµï}âÖÕîÄËÙÅ1=]H†(ÄÄÄÄÄÄÄÅIaA}IA1†(ÄÄÄÄÄÄÄÄÄÄÄÅ=1M†(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅµï—ÖëÖ—Ñ¥¯¯ù’Õï…πÖµîú∞(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅMA1%Q}AIP°=1M°9\πïµÖ•∞∞Å9\π¡°Ωπî∞ÄùÕ—’ëïπ–ú§∞Äù ú∞Äƒ§(ÄÄÄÄÄÄÄÄÄÄÄÄ§∞(ÄÄÄÄÄÄÄÄÄÄÄÄùmyÑµÈµh¿¥Â}tú∞(ÄÄÄÄÄÄÄÄÄÄÄÄúú∞(ÄÄÄÄÄÄÄÄÄÄÄÄùúú(ÄÄÄÄÄÄÄÄ§(ÄÄÄÄ§Ï(ÄÄÄÅ’Õï…πÖµï}âÖÕîÄËÙÅ1P°’Õï…πÖµï}âÖÕî∞Ä»¿§Ï(ÄÄÄÅ%Åç°Ö…}±ïπù—†°’Õï…πÖµï}âÖÕî§ÄÄÃÅQ!8(ÄÄÄÄÄÄÄÅ’Õï…πÖµï}âÖÕîÄËÙÄùÕ—’ëïπ–úÏ(ÄÄÄÅ9Å%Ï((ÄÄÄÅ=HÅÖ——ïµ¡–Å%8Ä¿∏∏‘Å1==@(ÄÄÄÄÄÄÄÅçÖπë•ëÖ—ï}’Õï…πÖµîÄËÙÅM(ÄÄÄÄÄÄÄÄÄÄÄÅ]!8ÅÖ——ïµ¡–ÄÙÄ¿ÅQ!8Å’Õï…πÖµï}âÖÕî(ÄÄÄÄÄÄÄÄÄÄÄÅ1MÅ1P°’Õï…πÖµï}âÖÕî∞Äƒ‰§ÅÒÄù|úÅÒÅ1P°9\π•êËÈQaP∞Ä‡§ÅÒ(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅMÅ]!8ÅÖ——ïµ¡–Ä¯ÄƒÅQ!8Äù|úÅÒÄ°Ö——ïµ¡–Ä¥Äƒ§ËÈQaPÅ1MÄúúÅ9(ÄÄÄÄÄÄÄÅ9Ï((ÄÄÄÄÄÄÄÅ	%8(ÄÄÄÄÄÄÄÄÄÄÄÅ%9MIPÅ%9Q<Å¡’â±•åπ¡…Ωô•±ïÃÄ†(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅ•ê∞(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅ’Õï…πÖµî∞(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅô’±±}πÖµî∞(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅçΩ’…Õî∞(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅ…Ω±î∞(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅÕ—Öôô}•ë}π’µâï»∞(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅ¡°Ωπï}ë•ù•—Ã(ÄÄÄÄÄÄÄÄÄÄÄÄ§(ÄÄÄÄÄÄÄÄÄÄÄÅY1ULÄ†(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅ9\π•ê∞(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅçÖπë•ëÖ—ï}’Õï…πÖµî∞(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅ1P°=1M°µï—ÖëÖ—Ñ¥¯¯ùô’±±}πÖµîú∞Äù5ïµâï»ú§∞Äƒ¿¿§∞(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅ1P°=1M°µï—ÖëÖ—Ñ¥¯¯ùçΩ’…Õîú∞Äúú§∞Äƒ»¿§∞(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅMÅ]!8ÅÖççΩ’π—}≠•πêÄÙÄùµïµâï»úÅQ!8Äùµïµâï»úÅ1MÄùÕ—’ëïπ–úÅ9∞(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅMÅ]!8ÅÖççΩ’π—}≠•πêÅ%8Ä†ù±ïç—’…ï»ú∞ÄùÕïç’…•—‰ú§ÅQ!8Åç±Ö•µïë}çÖ…êÅ1MÄúúÅ9∞(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅç±Ö•µïë}¡°Ωπî(ÄÄÄÄÄÄÄÄÄÄÄÄ§(ÄÄÄÄÄÄÄÄÄÄÄÅ=8Å=91%PÄ°•ê§Å<Å9=Q!%9Ï(ÄÄÄÄÄÄÄÄÄÄÄÅa%PÏ(ÄÄÄÄÄÄÄÅaAQ%=8Å]!8Å’π•≈’ï}Ÿ•Ω±Ö—•Ω∏ÅQ!8(ÄÄÄÄÄÄÄÄÄÄÄÅPÅMQ-Å%9=MQ%LÅç±ÖÕ°}πÖµîÄÙÅ=9MQI%9Q}95Ï(ÄÄÄÄÄÄÄÄÄÄÄÅ%Åç±ÖÕ°}πÖµîÄÙÄù¡…Ωô•±ïÕ}Õ—Öôô}•ë}≠ï‰úÅQ!8(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅI%MÅaAQ%=8ÄùQ°Ö–ÅÕ—ÖôòÅ%ÅçÖ…êÅÖ±…ïÖë‰Åâï±ΩπùÃÅ—ºÅÖπΩ—°ï»ÅÖççΩ’π–∏Å9ΩâΩë‰ÅçÖ∏Å…ïù•Õ—ï»Å—›•çîÅ›•—†ÅΩπîÅçÖ…ê∏ú(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅUM%9ÅII=ÄÙÄú»Ã‘¿‘úÏ(ÄÄÄÄÄÄÄÄÄÄÄÅ9Å%Ï(ÄÄÄÄÄÄÄÄÄÄÄÅ%Åç±ÖÕ°}πÖµîÄÙÄù¡…Ωô•±ïÕ}¡°Ωπï}ë•ù•—Õ}≠ï‰úÅQ!8(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅI%MÅaAQ%=8ÄùQ°Ö–Å¡°ΩπîÅπ’µâï»ÅÖ±…ïÖë‰Å°ÖÃÅÑÅÖµ¡’ÃÅΩππïç–ÅÖççΩ’π–∏Å1ΩúÅ•∏Å›•—†Å•–∞ÅΩ»ÅÖÕ¨ÅÖ∏ÅÖëµ•∏∏ú(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅUM%9ÅII=ÄÙÄú»Ã‘¿‘úÏ(ÄÄÄÄÄÄÄÄÄÄÄÅ9Å%Ï(ÄÄÄÄÄÄÄÄÄÄÄÅ%ÅÖ——ïµ¡–ÄÙÄ‘ÅQ!8(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅI%MÏ(ÄÄÄÄÄÄÄÄÄÄÄÅ9Å%Ï(ÄÄÄÄÄÄÄÅ9Ï(ÄÄÄÅ9Å1==@Ï((ÄÄÄÅ%ÅÖççΩ’π—}≠•πêÄÙÄùÕ—’ëïπ–úÅ=HÅÖççΩ’π—}≠•πêÄÙÄúúÅQ!8(ÄÄÄÄÄÄÄÅ%Åç±Ö•µïë}π’µâï»Ä¯ÄúúÅQ!8(ÄÄÄÄÄÄÄÄÄÄÄÅ	%8(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅ%9MIPÅ%9Q<Å¡’â±•åπÕ—’ëïπ—}…ïù•Õ—…Ö—•ΩπÃÄ°’Õï…}•ê∞Å…ïù•Õ—…Ö—•Ωπ}π’µâï»§(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅY1ULÄ°9\π•ê∞Åç±Ö•µïë}π’µâï»§Ï(ÄÄÄÄÄÄÄÄÄÄÄÅaAQ%=8Å]!8Å’π•≈’ï}Ÿ•Ω±Ö—•Ω∏ÅQ!8(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅI%MÅaAQ%=8ÄùQ°Ö–Å…ïù•Õ—…Ö—•Ω∏Åπ’µâï»Å•ÃÅÖ±…ïÖë‰Å≠πΩ›∏Å—ºÅ—°îÅ’π•Ÿï…Õ•—‰ÅÕÂÕ—ï¥∏Å°ïç¨Å•–∞ÅΩ»ÅÖÕ¨ÅÖ∏ÅÖëµ•∏∏ÅŸï∏Å—›ºÅ¡ïΩ¡±îÅ›•—†Å—°îÅÕÖµîÅπÖµîÅçÖππΩ–ÅÕ°Ö…îÅΩπîÅπ’µâï»∏ú(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅUM%9ÅII=ÄÙÄú»Ã‘¿‘úÏ(ÄÄÄÄÄÄÄÄÄÄÄÅ9Ï(ÄÄÄÄÄÄÄÅ9Å%Ï(ÄÄÄÅ9Å%Ï((ÄÄÄÅ%ÅÖççΩ’π—}≠•πêÄÙÄù±ïç—’…ï»úÅ9Åç±Ö•µïë}çÖ…êÄÙÄúúÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8ÄùÅ±ïç—’…ï»Å…ïù•Õ—ï…ÃÅ›•—†Å—°îÅπ’µâï»ÅΩ∏Å—°ï•»ÅÕ—ÖôòÅ%ÅçÖ…ê∏ú(ÄÄÄÄÄÄÄÄÄÄÄÅUM%9ÅII=ÄÙÄú»»¿»ÃúÏ(ÄÄÄÅ9Å%Ï((ÄÄÄÄ¥¥ÅQ°îÅÕç°ΩΩ∞Å—°îÅµïµâï»ÅπÖµïêÅ•ÃÅ›…•——ï∏Åπï·–Å—ºÅ—°îÅ¡…Ωô•±î∏ÅQ°î(ÄÄÄÄ¥¥ÅçΩ±’µ∏ÅçΩµïÃÅô…Ω¥Å—°îÅ…Ω±ïÃÅ¡Ö…–ÏÅÑÅëÖ—ÖâÖÕîÅ—°Ö–Å°ÖÃÅπΩ–Å…ïÖç°ïê(ÄÄÄÄ¥¥Å•–ÅÂï–Å≠ïï¡ÃÅ—°îÅÖπÕ›ï»ÅΩ∏Å—°îÅÖççΩ’π–Å•πÕ—ïÖêÅΩòÅ±ΩÕ•πúÅ—°îÅÕ•ùπ’¿∏(ÄÄÄÅ%Åç±Ö•µïë}’π•Ÿï…Õ•—‰Ä¯ÄúúÅQ!8(ÄÄÄÄÄÄÄÅ	%8(ÄÄÄÄÄÄÄÄÄÄÄÅUAQÅ¡’â±•åπ¡…Ωô•±ïÃ(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅMPÅ’π•Ÿï…Õ•—‰ÄÙÅç±Ö•µïë}’π•Ÿï…Õ•—‰(ÄÄÄÄÄÄÄÄÄÄÄÄÅ]!IÅ•êÄÙÅ9\π•êÏ(ÄÄÄÄÄÄÄÅaAQ%=8Å]!8Å’πëïô•πïë}çΩ±’µ∏ÅQ!8(ÄÄÄÄÄÄÄÄÄÄÄÅI%MÅ9=Q%Äù¡…Ωô•±ïÃπ’π•Ÿï…Õ•—‰Å•ÃÅπΩ–Å°ï…îÅÂï–∞ÅÕºÄîÅÕ—ÖÂÃÅΩ∏Å—°îÅÖççΩ’π–ÅÖ±Ωπî∏ú∞Åç±Ö•µïë}’π•Ÿï…Õ•—‰Ï(ÄÄÄÄÄÄÄÅ9Ï(ÄÄÄÅ9Å%Ï((ÄÄÄÅIQUI8Å9\Ï)9Ï(êêÏ()IY=-Å10Å=8ÅU9Q%=8Å¡’â±•åπ°Öπë±ï}πï›}Ö’—°}’Õï»†§ÅI=4ÅAU	1%∞ÅÖπΩ∏∞ÅÖ’—°ïπ—•çÖ—ïêÏ(((¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥(¥¥Ä‡∏ÅQ!ÅM5Å9M]HÅ=HÅÅ9U5	HÅÅQHÅQ!Å=U9P(¥¥ÅÅµïµâï»Å›°ºÅ©Ω•πÃÅ›•—†ÅÖ∏ÅïµÖ•∞ÅÖπêÅΩπ±‰Å±Ö—ï»Å›…•—ïÃÅ°•ÃÅπ’µâï»ÅΩ∏Å°•Ã(¥¥Å¡…Ωô•±îÅ•ÃÅôΩ’πêÅ—°îÅÕÖµîÅ›Ö‰ËÅ—°îÅ—…•ùùï»Å•∏ÅÕ—ï¿ÄÃÅçΩ¡•ïÃÅ—°îÅë•ù•—ÃÅΩ’–(¥¥ÅΩòÅ›°Ö—ïŸï»Å—°îÅÖ¡¿ÅÕÖŸïÃ∞ÅÕºÅ—°ï…îÅ•ÃÅπΩ—°•πúÅï±ÕîÅ—ºÅ…’∏∏ÅQ°îÅπ’µâï»(¥¥Å•—Õï±òÅÕ—ÖÂÃÅΩ∏Å—°îÅçÖ…êÅΩπ±‰ÅÖÃÅ±ΩπúÅÖÃÅ•—ÃÅΩ›πï»ÅÕ°Ω›ÃÅ•–∏(¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥()<Äêê)	%8(ÄÄÄÅ%Å9=PÅa%MQLÄ†(ÄÄÄÄÄÄÄÅM1PÄƒÅI=4Å¡ù}—…•ùùï»(ÄÄÄÄÄÄÄÅ]!IÅ—ùπÖµîÄÙÄù¡…Ωô•±ïÕ}ïπôΩ…çï}çΩπ—Öç—}Õ°Ö…•πúú(ÄÄÄÄÄÄÄÄÄÅ9Å—ù…ï±•êÄÙÄù¡’â±•åπ¡…Ωô•±ïÃúËÈI1ML(ÄÄÄÄÄÄÄÄÄÅ9Å9=PÅ—ù•Õ•π—ï…πÖ∞(ÄÄÄÄ§ÅQ!8(ÄÄÄÄÄÄÄÅIQÅQI%HÅ¡…Ωô•±ïÕ}ïπôΩ…çï}çΩπ—Öç—}Õ°Ö…•πú(ÄÄÄÄÄÄÄÄÄÄÄÅ	=IÅ%9MIPÅ=HÅUAQ(ÄÄÄÄÄÄÄÄÄÄÄÅ=8Å¡’â±•åπ¡…Ωô•±ïÃ(ÄÄÄÄÄÄÄÄÄÄÄÅ=HÅ ÅI=\(ÄÄÄÄÄÄÄÄÄÄÄÅaUQÅU9Q%=8Å¡’â±•åπïπôΩ…çï}¡…Ωô•±ï}çΩπ—Öç—}Õ°Ö…•πú†§Ï(ÄÄÄÅ9Å%Ï)9Ï(êêÏ(((¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥(¥¥Ä‰∏ÅQ10ÅA=MQIMPÅQ!ÅM!AÅ!9(¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥()9=Q%dÅ¡ù…Õ–∞Äù…ï±ΩÖêÅÕç°ïµÑúÏ(((¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥(¥¥Äƒ¿∏Å]!PÅM!=U1Å=5Å	,(¥¥Å·¡ïç—ïêËÅ—°…ïîÅ…Ω›Ã∞ÅÖ±∞Å…ïÕ’±–ÄÙÄùΩ¨ú∏(¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥()M1PÄùçΩ±’µ∏ËÅ¡…Ωô•±ïÃπ¡°Ωπï}ë•ù•—ÃúÅLÅç°ïç≠}πÖµî∞(ÄÄÄÄÄÄÅMÅ]!8Ä†(ÄÄÄÄÄÄÄÄÄÄÅM1PÅ=U9P†®§ÅI=4Å•πôΩ…µÖ—•Ωπ}Õç°ïµÑπçΩ±’µπÃ(ÄÄÄÄÄÄÄÄÄÄÅ]!IÅ—Öâ±ï}Õç°ïµÑÄÙÄù¡’â±•åú(ÄÄÄÄÄÄÄÄÄÄÄÄÅ9Å—Öâ±ï}πÖµîÄÙÄù¡…Ωô•±ïÃú(ÄÄÄÄÄÄÄÄÄÄÄÄÅ9ÅçΩ±’µπ}πÖµîÄÙÄù¡°Ωπï}ë•ù•—Ãú(ÄÄÄÄÄÄÄ§ÄÙÄƒÅQ!8ÄùΩ¨úÅ1MÄù%1Ä°ÑÅ¡°ΩπîÅπ’µâï»ÅçÖππΩ–ÅâîÅ±ΩΩ≠ïêÅ’¿§úÅ9ÅLÅ…ïÕ’±–)U9%=8Å10)M1PÄù¡°ΩπîÅô’πç—•Ω∏ËÄúÅÒÅ›Öπ—ïêππÖµî∞(ÄÄÄÄÄÄÅMÅ]!8Ä†(ÄÄÄÄÄÄÄÄÄÄÅM1PÅ=U9P†®§(ÄÄÄÄÄÄÄÄÄÄÅI=4Å¡ù}¡…ΩåÅLÅ¿(ÄÄÄÄÄÄÄÄÄÄÅ)=%8Å¡ù}πÖµïÕ¡ÖçîÅLÅ∏Å=8Å∏πΩ•êÄÙÅ¿π¡…ΩπÖµïÕ¡Öçî(ÄÄÄÄÄÄÄÄÄÄÅ]!IÅ∏ππÕ¡πÖµîÄÙÄù¡’â±•åúÅ9Å¿π¡…ΩπÖµîÄÙÅ›Öπ—ïêππÖµî(ÄÄÄÄÄÄÄ§ÄÙÄƒÅQ!8ÄùΩ¨úÅ1MÄù%1Ä°ë•Ö±±•πúÅÑÅπ’µâï»Åô…Ω¥Å—°îÅÖ¡¿Å›•±∞ÅπΩ–Å›Ω…¨§úÅ9)I=4Ä°Y1ULÄ†ùπΩ…µÖ±•Èï}¡°Ωπï}ë•ù•—Ãú§∞Ä†ùô•πë}µïµâï…}âÂ}¡°Ωπîú§§ÅLÅ›Öπ—ïê°πÖµî§)U9%=8Å10)M1PÄùΩπîÅπ’µâï»Å¡ï»ÅÖççΩ’π–ú∞(ÄÄÄÄÄÄÅMÅ]!8Ä†(ÄÄÄÄÄÄÄÄÄÄÅM1PÅ=U9P†®§ÅI=4Ä†(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅM1PÅ¡°Ωπï}ë•ù•—ÃÅI=4Å¡’â±•åπ¡…Ωô•±ïÃ(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅ]!IÅ¡°Ωπï}ë•ù•—ÃÄ¯Äúú(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅI=U@Å	dÅ¡°Ωπï}ë•ù•—ÃÅ!Y%9Å=U9P†®§Ä¯Äƒ(ÄÄÄÄÄÄÄÄÄÄÄ§ÅLÅç±ÖÕ°ïÃ(ÄÄÄÄÄÄÄ§ÄÙÄ¿ÅQ!8ÄùΩ¨úÅ1MÄù%1ËÅ—›ºÅÖççΩ’π—ÃÅÖ±…ïÖë‰ÅÕ°Ö…îÅΩπîÅπ’µâï»úÅ9Ï(((¥¥ÄÙÙÙÙÙÙÙÙÙÙÙÙÅAIPÄ»»º»–ËÅµ•ù…Ö—•ΩπÃº»¿»ÿƒ¿»¡}çÖµ¡’Õ}Õï…Ÿ•çïÃπÕ≈∞ÄÙÙÙÙÙÙÙÙÙÙÙÙ(¥¥ÄÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙ(¥¥Å5AULÅ=99PÉäPÅQ!Å5AULÅMIY%LÅAIQ59QL(¥¥ÅÅ’π•Ÿï…Õ•—‰Å•ÃÅµΩ…îÅ—°Ö∏ÅÑÅç°Ö–∏ÅÅÕ—’ëïπ–ÅÖ±ÕºÅπïïëÃÅÑÅâïê∞ÅÑÅµïÖ∞∞(¥¥ÅÑÅç°Ö¡ï∞ÅÖπêÅÑÅπÖµîÅΩ∏Å—°îÅç±ÖÕÃÅ±•Õ–∞ÅÖπêÅïÖç†ÅΩòÅ—°ΩÕîÅâï±ΩπùÃÅ—ºÅÑ(¥¥Åë•ôôï…ïπ–Åëï¡Ö…—µïπ–∏ÅQ°•ÃÅ¡Ö…–Å¡’—ÃÅÖ±∞ÅôΩ’»Å•∏Å—°îÅëÖ—ÖâÖÕî∞ÅΩπî(¥¥ÅÕ›•—ç†Å¡ï»ÅÕç°ΩΩ∞∞ÅÕºÅÑÅÕç°ΩΩ∞Å—°Ö–Å°ÖÃÅπºÅçÖ—ï…•πúÅÕ•µ¡±‰ÅπïŸï»(¥¥Å—’…πÃÅçÖ—ï…•πúÅΩ∏ÅÖπêÅπΩâΩë‰ÅÕïïÃÅÖ∏Åïµ¡—‰ÅÕç…ïï∏∏(¥¥ÄÄÄ®ÅçÖµ¡’Õ}Õï…Ÿ•çïÃËÅΩπîÅ…Ω‹Å¡ï»ÅÕç°ΩΩ∞Å›•—†ÅôΩ’»ÅÕ›•—ç°ïÃ(¥¥ÄÄÄÄÄ°ÖççΩµµΩëÖ—•Ω∏∞ÅçÖ—ï…•πú∞Åç°Ö¡±Ö•πç‰∞ÅÖ——ïπëÖπçî§∏ÅÅÕç°ΩΩ∞Å—°Ö–Å•Ã(¥¥ÄÄÄÄÅπΩ–Å•∏Å—°îÅ—Öâ±îÅ°ÖÃÅπΩ—°•πú∞Å›°•ç†Å•ÃÅ—°îÅ—…’—†Å’π—•∞ÅÕΩµïâΩë‰Å›°º(¥¥ÄÄÄÄÅ›Ω…≠ÃÅ—°ï…îÅÕÖÂÃÅΩ—°ï…›•Õî∏Å9Ω—°•πúÅ•ÃÅ•πŸïπ—ïêÅôΩ»ÅÖπΩ—°ï»(¥¥ÄÄÄÄÅ’π•Ÿï…Õ•—‰ËÅ•—ÃÅΩ›∏ÅÕ—ÖôòÅ—’…∏Å•—ÃÅΩ›∏ÅÕï…Ÿ•çïÃÅΩ∏∏(¥¥ÄÄÄ®Å°ΩÕ—ï±ÃÄ¨Å°ΩÕ—ï±}…ΩΩµÃÄ¨Å°ΩÕ—ï±}âΩΩ≠•πùÃËÅÑÅÕ—’ëïπ–ÅÖÕ≠ÃÅôΩ»ÅÑÅâïê(¥¥ÄÄÄÄÅ•∏ÅÑÅπÖµïêÅ°ΩÕ—ï∞ÅôΩ»ÅΩπîÅÕïµïÕ—ï»∞ÅÖπêÅ—°îÅ°Ω’Õ•πúÅΩôô•çîÅëïç•ëïÃ∏(¥¥ÄÄÄÄÅQ°îÅôΩ’»Å-ÖâÖ…Ö¨Åµï∏ùÃÅ°ΩÕ—ï±ÃÅÖ…îÅÕïïëïêÅâïçÖ’ÕîÅ—°îÅÕç°ΩΩ∞ùÃÅΩ›∏(¥¥ÄÄÄÄÅµïµâï»ÅπÖµïêÅ—°ï¥ÏÅπºÅ°ΩÕ—ï∞Åï·•Õ—ÃÅ°ï…îÅ—°Ö–ÅπΩâΩë‰ÅπÖµïê∏(¥¥ÄÄÄ®ÅµïÖ±}¡±ÖπÃËÅ—°îÅçÖ—ï…•πúÅëï¡Ö…—µïπ–Å¡ΩÕ—ÃÅ›°Ö–Å•–ÅÕï…ŸïÃÅÖπêÅçΩÕ—Ã∏(¥¥ÄÄÄ®Åç°Ö¡±Ö•πçÂ}ïŸïπ—ÃÄ¨Å¡…ÖÂï…}…ï≈’ïÕ—ÃËÅÑÅç°Ö¡±Ö•∏Å¡’â±•Õ°ïÃÅ—°î(¥¥ÄÄÄÄÅÂïÖ»ùÃÅç°’…ç†Å¡…Ωù…ÖµµîÅôΩ»Å—°ï•»ÅΩ›∏ÅÕç°ΩΩ∞ÅÖπêÅÖπÕ›ï…ÃÅ—°î(¥¥ÄÄÄÄÅ…ï≈’ïÕ—ÃÅÕ—’ëïπ—ÃÅÕïπêÅ•∏∏ÅÅ¡…ÖÂï»Å…ï≈’ïÕ–Å•ÃÅπïŸï»Å¡’â±•å∏(¥¥ÄÄÄ®Åç±ÖÕÕ}ç°ïç≠•πÃËÅÑÅ±ïç—’…ï»ÅΩ¡ïπÃÅÑÅÕ°Ω…–Å›•πëΩ‹Å›•—†ÅÑÅçΩëîÅÖπêÅ—°î(¥¥ÄÄÄÄÅÕ—’ëïπ—ÃÅ•∏Å—°îÅ…ΩΩ¥Ä°Ω»ÅΩ∏Å—°îÅΩπ±•πîÅ±•π¨§Åç°ïç¨Å•∏∏ÅQ°îÅ…Ω±∞Å•Ã(¥¥ÄÄÄÄÅâ’•±–Åô…Ω¥Å—°ΩÕîÅ…Ω›Ã∞ÅÕºÅÖ∏ÅÖ——ïπëÖπçîÅ±•Õ–Å•ÃÅÕΩµï—°•πúÅÑÅÕ—’ëïπ–(¥¥ÄÄÄÄÅçÖππΩ–Å—Â¡î∏(¥¥ÄÄÄ®Å—°îÅ…Ω±îÄùç°Ö¡±Ö•∏úÅ•ÃÅÖëëïê∞ÅÖ±ΩπùÕ•ëîÅ—°îÅôΩ’»Å…Ω±ïÃÅ—°Ö–ÅÖ±…ïÖë‰(¥¥ÄÄÄÄÅï·•Õ–∏Å=π±‰ÅÖ∏ÅÖëµ•∏Åù…Öπ—ÃÅ•–∞Åï·Öç—±‰Å—°îÅ›Ö‰ÅïŸï…‰ÅΩ—°ï»Å…Ω±îÅ•Ã(¥¥ÄÄÄÄÅù…Öπ—ïê∏(¥¥ÅŸï…Â—°•πúÅ°ï…îÅ•ÃÅÕçΩ¡ïêÅâ‰ÅÕç°ΩΩ∞ÅπÖµî∞Å—°îÅÕÖµîÅ›Ö‰Å¡…Ωô•±ïÃπ’π•Ÿï…Õ•—‰(¥¥Å•ÃËÅ—°îÅπÖµîÅ•ÃÅ—°îÅ≠ï‰ÅâïçÖ’ÕîÅÑÅ¡ï…ÕΩ∏Åµ’Õ–ÅâîÅÖâ±îÅ—ºÅâï±ΩπúÅ—ºÅÑ(¥¥ÅÕç°ΩΩ∞ÅâïôΩ…îÅ—°Ö–ÅÕç°ΩΩ∞Å°ÖÃÅâïï∏ÅÕï–Å’¿∏(¥¥Å%ëïµ¡Ω—ïπ–ËÅÕÖôîÅ—ºÅ…’∏ÅµΩ…îÅ—°Ö∏ÅΩπçî∏(¥¥ÄÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙ(((¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥(¥¥Äƒ∏ÅÅ!A1%8Å%LÅÅI=1∞Å9=PÅÅ!,(¥¥Äùç°Ö¡±Ö•∏úÅ©Ω•πÃÅ—°îÅ…Ω±ïÃÅ—°Ö–ÅÖ±…ïÖë‰Åï·•Õ–∞Å•∏Å—°îÅç°ïç¨ÅΩ∏Å—°î(¥¥ÅçΩ±’µ∏ÅÖπêÅ•∏Å—°îÅç°ïç¨ÅΩ∏Å›°Ö–ÅÑÅµïµâï»Å•ÃÅÖ±±Ω›ïêÅ—ºÅÖÕ¨ÅôΩ»∏(¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥()<Äêê)	%8(ÄÄÄÅ%Åa%MQLÄ†(ÄÄÄÄÄÄÄÅM1PÄƒÅI=4Å¡ù}çΩπÕ—…Ö•π–(ÄÄÄÄÄÄÄÅ]!IÅçΩππÖµîÄÙÄù¡…Ωô•±ïÕ}…Ω±ï}ç°ïç¨úÅ9ÅçΩπ…ï±•êÄÙÄù¡’â±•åπ¡…Ωô•±ïÃúËÈ…ïùç±ÖÕÃ(ÄÄÄÄ§ÅQ!8(ÄÄÄÄÄÄÄÅ1QHÅQ	1Å¡’â±•åπ¡…Ωô•±ïÃÅI=@Å=9MQI%9PÅ¡…Ωô•±ïÕ}…Ω±ï}ç°ïç¨Ï(ÄÄÄÅ9Å%Ï(ÄÄÄÅ1QHÅQ	1Å¡’â±•åπ¡…Ωô•±ïÃ(ÄÄÄÄÄÄÄÅÅ=9MQI%9PÅ¡…Ωô•±ïÕ}…Ω±ï}ç°ïç¨(ÄÄÄÄÄÄÄÅ!,Ä°…Ω±îÅ%8Ä†ùÕ—’ëïπ–ú∞Äù±ïç—’…ï»ú∞ÄùÕïç’…•—‰ú∞ÄùÖëµ•∏ú∞Äùµïµâï»ú∞Äùç°Ö¡±Ö•∏ú§§Ï)9(êêÏ()<Äêê)	%8(ÄÄÄÅ%Åa%MQLÄ†(ÄÄÄÄÄÄÄÅM1PÄƒÅI=4Å¡ù}çΩπÕ—…Ö•π–(ÄÄÄÄÄÄÄÅ]!IÅçΩππÖµîÄÙÄù¡…Ωô•±ïÕ}…ï≈’ïÕ—ïë}…Ω±ï}ç°ïç¨ú(ÄÄÄÄÄÄÄÄÄÅ9ÅçΩπ…ï±•êÄÙÄù¡’â±•åπ¡…Ωô•±ïÃúËÈ…ïùç±ÖÕÃ(ÄÄÄÄ§ÅQ!8(ÄÄÄÄÄÄÄÅ1QHÅQ	1Å¡’â±•åπ¡…Ωô•±ïÃÅI=@Å=9MQI%9PÅ¡…Ωô•±ïÕ}…ï≈’ïÕ—ïë}…Ω±ï}ç°ïç¨Ï(ÄÄÄÅ9Å%Ï(ÄÄÄÅ1QHÅQ	1Å¡’â±•åπ¡…Ωô•±ïÃ(ÄÄÄÄÄÄÄÅÅ=9MQI%9PÅ¡…Ωô•±ïÕ}…ï≈’ïÕ—ïë}…Ω±ï}ç°ïç¨(ÄÄÄÄÄÄÄÅ!,Ä°…ï≈’ïÕ—ïë}…Ω±îÅ%8Ä†úú∞ÄùÕ—’ëïπ–ú∞Äù±ïç—’…ï»ú∞ÄùÕïç’…•—‰ú∞Äùç°Ö¡±Ö•∏ú§§Ï)9(êêÏ(((¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥(¥¥Ä»∏ÅQ!Å=UHÅM]%Q!LÅAHÅM!==0(¥¥Å=πîÅ…Ω‹ÅÕÖÂÃÅ›°•ç†Åëï¡Ö…—µïπ—ÃÅΩòÅ—°•ÃÅÖ¡¿Å—°Ö–ÅÕç°ΩΩ∞ÅÖç—’Ö±±‰Å…’πÃ∏(¥¥ÅÅµïµâï»ÅΩòÅ—°Ö–ÅÕç°ΩΩ∞ùÃÅÕ—ÖôòÄ°Ω»ÅÖπ‰ÅÖëµ•∏§Åô±•¡ÃÅ—°ï¥∏(¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥()IQÅQ	1Å%Å9=PÅa%MQLÅ¡’â±•åπçÖµ¡’Õ}Õï…Ÿ•çïÃÄ†(ÄÄÄÅÕç°ΩΩ∞ÅQaPÅ9=PÅ9U10∞(ÄÄÄÅÕç°ΩΩ±}≠ï‰ÅQaPÅ9IQÅ1]eLÅLÄ°1=]H°	QI%4°Õç°ΩΩ∞§§§ÅMQ=I∞(ÄÄÄÅÖççΩµµΩëÖ—•Ω∏Å	==18Å9=PÅ9U10ÅU1PÅ1M∞(ÄÄÄÅçÖ—ï…•πúÅ	==18Å9=PÅ9U10ÅU1PÅ1M∞(ÄÄÄÅç°Ö¡±Ö•πç‰Å	==18Å9=PÅ9U10ÅU1PÅ1M∞(ÄÄÄÅÖ——ïπëÖπçîÅ	==18Å9=PÅ9U10ÅU1PÅ1M∞(ÄÄÄÅπΩ—îÅQaPÅ9=PÅ9U10ÅU1PÄúúÅ!,Ä°ç°Ö…}±ïπù—†°πΩ—î§ÄÙÄ–¿¿§∞(ÄÄÄÅ’¡ëÖ—ïë}â‰ÅUU%ÅII9LÅ¡’â±•åπ¡…Ωô•±ïÃ°•ê§Å=8Å1QÅMPÅ9U10∞(ÄÄÄÅç…ïÖ—ïë}Ö–ÅQ%5MQ5AQhÅ9=PÅ9U10ÅU1PÅ9=\†§∞(ÄÄÄÅ’¡ëÖ—ïë}Ö–ÅQ%5MQ5AQhÅ9=PÅ9U10ÅU1PÅ9=\†§∞(ÄÄÄÅ=9MQI%9PÅçÖµ¡’Õ}Õï…Ÿ•çïÕ}Õç°ΩΩ±}’π•≈’îÅU9%EUÄ°Õç°ΩΩ±}≠ï‰§(§Ï(((¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥(¥¥ÄÃ∏Å]!<ÅIU9LÅÅAIQ59P(¥¥Å•Õ}Öëµ•∏†§ÅçΩŸï…ÃÅ—°îÅΩ›πï»ÅΩòÅ—°îÅÖ¡¿∏Å	ï±Ω‹Å•–∞ÅÑÅÕç°ΩΩ∞ùÃÅΩ›∏ÅÕ—Öôò(¥¥Å…’∏Å—°ï•»ÅΩ›∏ÅÕç°ΩΩ∞ÅÖπêÅπΩ—°•πúÅï±ÕîËÅÑÅ±ïç—’…ï»ÅÖ–ÅΩπîÅçÖµ¡’ÃÅçÖππΩ–(¥¥ÅΩ¡ï∏ÅÑÅ°ΩÕ—ï∞ÅâΩΩ≠•πúÅÖ–ÅÖπΩ—°ï»∏(¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥()IQÅ=HÅIA1ÅU9Q%=8Å¡’â±•åπµÂ}Õç°ΩΩ±}≠ï‰†§)IQUI9LÅQaP)19UÅÕ≈∞)MQ	1)MUI%QdÅ%9H)MPÅÕïÖ…ç°}¡Ö—†ÄÙÄúú)LÄêê(ÄÄÄÅM1PÅ1=]H°	QI%4°=1M†(ÄÄÄÄÄÄÄÄ°M1PÅ¿π’π•Ÿï…Õ•—‰ÅI=4Å¡’â±•åπ¡…Ωô•±ïÃÅLÅ¿Å]!IÅ¿π•êÄÙÅÖ’—†π’•ê†§§∞(ÄÄÄÄÄÄÄÄúú(ÄÄÄÄ§§§Ï(êêÏ()IQÅ=HÅIA1ÅU9Q%=8Å¡’â±•åπ•Õ}Õç°ΩΩ±}Õ—Öôò°¡}Õç°ΩΩ±}≠ï‰ÅQaP§)IQUI9LÅ	==18)19UÅÕ≈∞)MQ	1)MUI%QdÅ%9H)MPÅÕïÖ…ç°}¡Ö—†ÄÙÄúú)LÄêê(ÄÄÄÅM1PÅ=1M††(ÄÄÄÄÄÄÄÅM1PÅ¿π…Ω±îÄÙÄùÖëµ•∏ú(ÄÄÄÄÄÄÄÄÄÄÄÅ=HÄ°¿π…Ω±îÅ%8Ä†ù±ïç—’…ï»ú∞ÄùÕïç’…•—‰ú§(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅ9Å¿πïµ¡±ΩÂµïπ—}Õ—Ö—’ÃÄÙÄùÖç—•Ÿîú(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅ9Å1=]H°	QI%4°¿π’π•Ÿï…Õ•—‰§§ÄÙÅ1=]H°	QI%4°=1M°¡}Õç°ΩΩ±}≠ï‰∞Äúú§§§§(ÄÄÄÄÄÄÄÅI=4Å¡’â±•åπ¡…Ωô•±ïÃÅLÅ¿(ÄÄÄÄÄÄÄÅ]!IÅ¿π•êÄÙÅÖ’—†π’•ê†§(ÄÄÄÄ§∞Å1M§Ï(êêÏ()IQÅ=HÅIA1ÅU9Q%=8Å¡’â±•åπµÖÂ}±ïÖë}ç°Ö¡±Ö•πç‰°¡}Õç°ΩΩ±}≠ï‰ÅQaP§)IQUI9LÅ	==18)19UÅÕ≈∞)MQ	1)MUI%QdÅ%9H)MPÅÕïÖ…ç°}¡Ö—†ÄÙÄúú)LÄêê(ÄÄÄÅM1PÅ=1M††(ÄÄÄÄÄÄÄÅM1PÅ¿π…Ω±îÄÙÄùÖëµ•∏ú(ÄÄÄÄÄÄÄÄÄÄÄÅ=HÄ°¿π…Ω±îÄÙÄùç°Ö¡±Ö•∏ú(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅ9Å1=]H°	QI%4°¿π’π•Ÿï…Õ•—‰§§ÄÙÅ1=]H°	QI%4°=1M°¡}Õç°ΩΩ±}≠ï‰∞Äúú§§§§(ÄÄÄÄÄÄÄÅI=4Å¡’â±•åπ¡…Ωô•±ïÃÅLÅ¿(ÄÄÄÄÄÄÄÅ]!IÅ¿π•êÄÙÅÖ’—†π’•ê†§(ÄÄÄÄ§∞Å1M§Ï(êêÏ()IY=-Å10Å=8ÅU9Q%=8Å¡’â±•åπµÂ}Õç°ΩΩ±}≠ï‰†§ÅI=4ÅAU	1%∞ÅÖπΩ∏Ï)IY=-Å10Å=8ÅU9Q%=8Å¡’â±•åπ•Õ}Õç°ΩΩ±}Õ—Öôò°QaP§ÅI=4ÅAU	1%∞ÅÖπΩ∏Ï)IY=-Å10Å=8ÅU9Q%=8Å¡’â±•åπµÖÂ}±ïÖë}ç°Ö¡±Ö•πç‰°QaP§ÅI=4ÅAU	1%∞ÅÖπΩ∏Ï)I9PÅaUQÅ=8ÅU9Q%=8Å¡’â±•åπµÂ}Õç°ΩΩ±}≠ï‰†§ÅQ<ÅÖ’—°ïπ—•çÖ—ïêÏ)I9PÅaUQÅ=8ÅU9Q%=8Å¡’â±•åπ•Õ}Õç°ΩΩ±}Õ—Öôò°QaP§ÅQ<ÅÖ’—°ïπ—•çÖ—ïêÏ)I9PÅaUQÅ=8ÅU9Q%=8Å¡’â±•åπµÖÂ}±ïÖë}ç°Ö¡±Ö•πç‰°QaP§ÅQ<ÅÖ’—°ïπ—•çÖ—ïêÏ()1QHÅQ	1Å¡’â±•åπçÖµ¡’Õ}Õï…Ÿ•çïÃÅ9	1ÅI=\Å1Y0ÅMUI%QdÏ()I=@ÅA=1%dÅ%Åa%MQLÅçÖµ¡’Õ}Õï…Ÿ•çïÕ}…ïÖëÖâ±îÅ=8Å¡’â±•åπçÖµ¡’Õ}Õï…Ÿ•çïÃÏ)IQÅA=1%dÅçÖµ¡’Õ}Õï…Ÿ•çïÕ}…ïÖëÖâ±îÅ=8Å¡’â±•åπçÖµ¡’Õ}Õï…Ÿ•çïÃ(ÄÄÄÅ=HÅM1PÅQ<ÅÖ’—°ïπ—•çÖ—ïê(ÄÄÄÅUM%9Ä°QIU§Ï()I=@ÅA=1%dÅ%Åa%MQLÅçÖµ¡’Õ}Õï…Ÿ•çïÕ}Õ—Öôô}›…•—îÅ=8Å¡’â±•åπçÖµ¡’Õ}Õï…Ÿ•çïÃÏ)IQÅA=1%dÅçÖµ¡’Õ}Õï…Ÿ•çïÕ}Õ—Öôô}›…•—îÅ=8Å¡’â±•åπçÖµ¡’Õ}Õï…Ÿ•çïÃ(ÄÄÄÅ=HÅ%9MIPÅQ<ÅÖ’—°ïπ—•çÖ—ïê(ÄÄÄÅ]%Q Å!,Ä°’¡ëÖ—ïë}â‰ÄÙÅÖ’—†π’•ê†§Å9Å¡’â±•åπ•Õ}Õç°ΩΩ±}Õ—Öôò°Õç°ΩΩ±}≠ï‰§§Ï()I=@ÅA=1%dÅ%Åa%MQLÅçÖµ¡’Õ}Õï…Ÿ•çïÕ}Õ—Öôô}ïë•–Å=8Å¡’â±•åπçÖµ¡’Õ}Õï…Ÿ•çïÃÏ)IQÅA=1%dÅçÖµ¡’Õ}Õï…Ÿ•çïÕ}Õ—Öôô}ïë•–Å=8Å¡’â±•åπçÖµ¡’Õ}Õï…Ÿ•çïÃ(ÄÄÄÅ=HÅUAQÅQ<ÅÖ’—°ïπ—•çÖ—ïê(ÄÄÄÅUM%9Ä°¡’â±•åπ•Õ}Õç°ΩΩ±}Õ—Öôò°Õç°ΩΩ±}≠ï‰§§(ÄÄÄÅ]%Q Å!,Ä°¡’â±•åπ•Õ}Õç°ΩΩ±}Õ—Öôò°Õç°ΩΩ±}≠ï‰§§Ï()I9PÅM1P∞Å%9MIP∞ÅUAQÅ=8Å¡’â±•åπçÖµ¡’Õ}Õï…Ÿ•çïÃÅQ<ÅÖ’—°ïπ—•çÖ—ïêÏ)IY=-Å10Å=8Å¡’â±•åπçÖµ¡’Õ}Õï…Ÿ•çïÃÅI=4ÅÖπΩ∏∞Å¡’â±•åÏ(((¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥(¥¥Ä–∏ÅQ!Å!=MQ1L(¥¥ÅÅ°ΩÕ—ï∞Å•ÃÅÑÅπÖµîÅÖ——Öç°ïêÅ—ºÅÑÅÕç°ΩΩ∞∞ÅπΩ–ÅÑÅù±ΩâÖ∞Å…Ω‹ËÅ—›ºÅÕç°ΩΩ±Ã(¥¥ÅçÖ∏ÅâΩ—†Å°ÖŸîÅÑÄâ	Ö…•πùºàÅÖπêÅµïÖ∏Åë•ôôï…ïπ–Åâ’•±ë•πùÃÅâ‰Å•–∏(¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥()IQÅQ	1Å%Å9=PÅa%MQLÅ¡’â±•åπ°ΩÕ—ï±ÃÄ†(ÄÄÄÅ•êÅUU%ÅAI%5IdÅ-dÅU1PÅùïπ}…ÖπëΩµ}’’•ê†§∞(ÄÄÄÅÕç°ΩΩ∞ÅQaPÅ9=PÅ9U10∞(ÄÄÄÅÕç°ΩΩ±}≠ï‰ÅQaPÅ9IQÅ1]eLÅLÄ°1=]H°	QI%4°Õç°ΩΩ∞§§§ÅMQ=I∞(ÄÄÄÅπÖµîÅQaPÅ9=PÅ9U10Å!,Ä°ç°Ö…}±ïπù—†°	QI%4°πÖµî§§Å	Q]8Ä»Å9Ä‡¿§∞(ÄÄÄÅπÖµï}≠ï‰ÅQaPÅ9IQÅ1]eLÅLÄ°1=]H°	QI%4°πÖµî§§§ÅMQ=I∞(ÄÄÄÅùïπëï»ÅQaPÅ9=PÅ9U10ÅU1PÄùµ•·ïêú(ÄÄÄÄÄÄÄÅ!,Ä°ùïπëï»Å%8Ä†ùµï∏ú∞Äù›Ωµï∏ú∞Äùµ•·ïêú§§∞(ÄÄÄÅÖëë…ïÕÃÅQaPÅ9=PÅ9U10ÅU1PÄúúÅ!,Ä°ç°Ö…}±ïπù—†°Öëë…ïÕÃ§ÄÙÄƒÿ¿§∞(ÄÄÄÅπΩ—îÅQaPÅ9=PÅ9U10ÅU1PÄúúÅ!,Ä°ç°Ö…}±ïπù—†°πΩ—î§ÄÙÄ–¿¿§∞(ÄÄÄÅŸï…•ô•ïêÅ	==18Å9=PÅ9U10ÅU1PÅ1M∞(ÄÄÄÅÖëëïë}â‰ÅUU%ÅII9LÅ¡’â±•åπ¡…Ωô•±ïÃ°•ê§Å=8Å1QÅMPÅ9U10∞(ÄÄÄÅç…ïÖ—ïë}Ö–ÅQ%5MQ5AQhÅ9=PÅ9U10ÅU1PÅ9=\†§∞(ÄÄÄÅ’¡ëÖ—ïë}Ö–ÅQ%5MQ5AQhÅ9=PÅ9U10ÅU1PÅ9=\†§∞(ÄÄÄÅ=9MQI%9PÅ°ΩÕ—ï±Õ}Õç°ΩΩ±}πÖµï}’π•≈’îÅU9%EUÄ°Õç°ΩΩ±}≠ï‰∞ÅπÖµï}≠ï‰§(§Ï()IQÅQ	1Å%Å9=PÅa%MQLÅ¡’â±•åπ°ΩÕ—ï±}…ΩΩµÃÄ†(ÄÄÄÅ•êÅUU%ÅAI%5IdÅ-dÅU1PÅùïπ}…ÖπëΩµ}’’•ê†§∞(ÄÄÄÅ°ΩÕ—ï±}•êÅUU%Å9=PÅ9U10ÅII9LÅ¡’â±•åπ°ΩÕ—ï±Ã°•ê§Å=8Å1QÅM∞(ÄÄÄÅ±Öâï∞ÅQaPÅ9=PÅ9U10Å!,Ä°ç°Ö…}±ïπù—†°	QI%4°±Öâï∞§§Å	Q]8ÄƒÅ9Ä–¿§∞(ÄÄÄÅÕ°Ö…•πúÅQaPÅ9=PÅ9U10ÅU1PÄùΩ—°ï»ú(ÄÄÄÄÄÄÄÅ!,Ä°Õ°Ö…•πúÅ%8Ä†ùÕ•πù±îú∞Äù—›•∏ú∞ÄùëΩ’â±îú∞ÄùôΩ’»ú∞ÄùΩ—°ï»ú§§∞(ÄÄÄÅçÖ¡Öç•—‰Å%9PÅ9=PÅ9U10ÅU1PÄƒÅ!,Ä°çÖ¡Öç•—‰Å	Q]8ÄƒÅ9Äƒ»§∞(ÄÄÄÅôïï}ÕïµïÕ—ï»Å9U5I%†ƒ¿∞Ä»§Å!,Ä°ôïï}ÕïµïÕ—ï»Å%LÅ9U10Å=HÅôïï}ÕïµïÕ—ï»Ä¯ÙÄ¿§∞(ÄÄÄÅµïÖ±}•πç±’ëïêÅ	==18Å9=PÅ9U10ÅU1PÅ1M∞(ÄÄÄÅπΩ—îÅQaPÅ9=PÅ9U10ÅU1PÄúúÅ!,Ä°ç°Ö…}±ïπù—†°πΩ—î§ÄÙÄ»¿¿§∞(ÄÄÄÅç…ïÖ—ïë}Ö–ÅQ%5MQ5AQhÅ9=PÅ9U10ÅU1PÅ9=\†§∞(ÄÄÄÅ’¡ëÖ—ïë}Ö–ÅQ%5MQ5AQhÅ9=PÅ9U10ÅU1PÅ9=\†§∞(ÄÄÄÅ=9MQI%9PÅ°ΩÕ—ï±}…ΩΩµÕ}±Öâï±}’π•≈’îÅU9%EUÄ°°ΩÕ—ï±}•ê∞Å±Öâï∞§(§Ï()IQÅQ	1Å%Å9=PÅa%MQLÅ¡’â±•åπ°ΩÕ—ï±}âΩΩ≠•πùÃÄ†(ÄÄÄÅ•êÅUU%ÅAI%5IdÅ-dÅU1PÅùïπ}…ÖπëΩµ}’’•ê†§∞(ÄÄÄÅ…ΩΩµ}•êÅUU%Å9=PÅ9U10ÅII9LÅ¡’â±•åπ°ΩÕ—ï±}…ΩΩµÃ°•ê§Å=8Å1QÅM∞(ÄÄÄÅÕ—’ëïπ—}•êÅUU%Å9=PÅ9U10ÅII9LÅ¡’â±•åπ¡…Ωô•±ïÃ°•ê§Å=8Å1QÅM∞(ÄÄÄÅÕïµïÕ—ï»ÅQaPÅ9=PÅ9U10Å!,Ä°ç°Ö…}±ïπù—†°	QI%4°ÕïµïÕ—ï»§§Å	Q]8ÄÃÅ9Ä–¿§∞(ÄÄÄÅÕ—Ö—’ÃÅQaPÅ9=PÅ9U10ÅU1PÄù¡ïπë•πúú(ÄÄÄÄÄÄÄÅ!,Ä°Õ—Ö—’ÃÅ%8Ä†ù¡ïπë•πúú∞ÄùÖ¡¡…ΩŸïêú∞Äù…ï©ïç—ïêú∞ÄùçÖπçï±±ïêú§§∞(ÄÄÄÅ…ï≈’ïÕ—}πΩ—îÅQaPÅ9=PÅ9U10ÅU1PÄúúÅ!,Ä°ç°Ö…}±ïπù—†°…ï≈’ïÕ—}πΩ—î§ÄÙÄ–¿¿§∞(ÄÄÄÅëïç•Õ•Ωπ}πΩ—îÅQaPÅ9=PÅ9U10ÅU1PÄúúÅ!,Ä°ç°Ö…}±ïπù—†°ëïç•Õ•Ωπ}πΩ—î§ÄÙÄ–¿¿§∞(ÄÄÄÅëïç•ëïë}â‰ÅUU%ÅII9LÅ¡’â±•åπ¡…Ωô•±ïÃ°•ê§Å=8Å1QÅMPÅ9U10∞(ÄÄÄÅëïç•ëïë}Ö–ÅQ%5MQ5AQh∞(ÄÄÄÅç…ïÖ—ïë}Ö–ÅQ%5MQ5AQhÅ9=PÅ9U10ÅU1PÅ9=\†§∞(ÄÄÄÅ’¡ëÖ—ïë}Ö–ÅQ%5MQ5AQhÅ9=PÅ9U10ÅU1PÅ9=\†§(§Ï((¥¥Å=πîÅ±•ŸîÅ…ï≈’ïÕ–Å¡ï»ÅÕ—’ëïπ–Å¡ï»ÅÕïµïÕ—ï»∏ÅÅçÖπçï±±ïêÅΩ»Å…ï©ïç—ïêÅΩπî(¥¥Åô…ïïÃÅ—°îÅ¡±Öçî∞ÅÕºÅÑÅÕ—’ëïπ–Å›°ºÅ›ÖÃÅ…ïô’ÕïêÅçÖ∏ÅÖÕ¨ÅôΩ»ÅÖπΩ—°ï»Å…ΩΩ¥(¥¥Å›•—°Ω’–ÅÖ∏ÅÖëµ•∏Å—Ω’ç°•πúÅ—°îÅëÖ—ÖâÖÕî∏)IQÅU9%EUÅ%9`Å%Å9=PÅa%MQLÅ°ΩÕ—ï±}âΩΩ≠•πùÕ}Ωπï}±•Ÿï}¡ï…}ÕïµïÕ—ï»(ÄÄÄÅ=8Å¡’â±•åπ°ΩÕ—ï±}âΩΩ≠•πùÃÄ°Õ—’ëïπ—}•ê∞Å1=]H°	QI%4°ÕïµïÕ—ï»§§§(ÄÄÄÅ]!IÅÕ—Ö—’ÃÅ%8Ä†ù¡ïπë•πúú∞ÄùÖ¡¡…ΩŸïêú§Ï()IQÅ%9`Å%Å9=PÅa%MQLÅ°ΩÕ—ï±Õ}Õç°ΩΩ±}•ë‡Å=8Å¡’â±•åπ°ΩÕ—ï±ÃÄ°Õç°ΩΩ±}≠ï‰§Ï)IQÅ%9`Å%Å9=PÅa%MQLÅ°ΩÕ—ï±}âΩΩ≠•πùÕ}…ΩΩµ}•ë‡(ÄÄÄÅ=8Å¡’â±•åπ°ΩÕ—ï±}âΩΩ≠•πùÃÄ°…ΩΩµ}•ê∞ÅÕ—Ö—’Ã§Ï)IQÅ%9`Å%Å9=PÅa%MQLÅ°ΩÕ—ï±}âΩΩ≠•πùÕ}Õ—’ëïπ—}•ë‡(ÄÄÄÅ=8Å¡’â±•åπ°ΩÕ—ï±}âΩΩ≠•πùÃÄ°Õ—’ëïπ—}•ê§Ï()1QHÅQ	1Å¡’â±•åπ°ΩÕ—ï±ÃÅ9	1ÅI=\Å1Y0ÅMUI%QdÏ)1QHÅQ	1Å¡’â±•åπ°ΩÕ—ï±}…ΩΩµÃÅ9	1ÅI=\Å1Y0ÅMUI%QdÏ)1QHÅQ	1Å¡’â±•åπ°ΩÕ—ï±}âΩΩ≠•πùÃÅ9	1ÅI=\Å1Y0ÅMUI%QdÏ((¥¥Å]°•ç†ÅâïëÃÅ—°•ÃÅÖççΩ’π–ÅÖ±…ïÖë‰Å°Ω±ëÃ∏ÅÅ¡Ω±•ç‰ÅçÖππΩ–Å…ïÖêÅ•—ÃÅΩ›∏Å—Öâ±î(¥¥Ä°AΩÕ—ù…ïÃÅÖπÕ›ï…ÃÅ›•—†ÅÑÅ…ïç’…Õ•Ω∏Åï……Ω»§∞ÅÕºÅ—°îÅÖπÕ›ï»ÅçΩµïÃÅô…Ω¥ÅÑ(¥¥Åëïô•πï»Åô’πç—•Ω∏Å—°Ö–Å…ïÖëÃÅ•–ÅΩπçîÅÖπêÅ°ÖπëÃÅâÖç¨Å¡Ö•…Ã∏)IQÅ=HÅIA1ÅU9Q%=8Å¡’â±•åπµÂ}Ö¡¡…ΩŸïë}âïëÃ†§)IQUI9LÅQ	1Ä°…ΩΩµ}•êÅUU%∞ÅÕïµïÕ—ï…}≠ï‰ÅQaP§)19UÅÕ≈∞)MQ	1)MUI%QdÅ%9H)MPÅÕïÖ…ç°}¡Ö—†ÄÙÄúú)LÄêê(ÄÄÄÅM1PÅàπ…ΩΩµ}•ê∞Å1=]H°	QI%4°àπÕïµïÕ—ï»§§(ÄÄÄÅI=4Å¡’â±•åπ°ΩÕ—ï±}âΩΩ≠•πùÃÅLÅà(ÄÄÄÅ]!IÅàπÕ—’ëïπ—}•êÄÙÅÖ’—†π’•ê†§(ÄÄÄÄÄÅ9ÅàπÕ—Ö—’ÃÄÙÄùÖ¡¡…ΩŸïêúÏ(êêÏ()IY=-Å10Å=8ÅU9Q%=8Å¡’â±•åπµÂ}Ö¡¡…ΩŸïë}âïëÃ†§ÅI=4ÅAU	1%∞ÅÖπΩ∏Ï)I9PÅaUQÅ=8ÅU9Q%=8Å¡’â±•åπµÂ}Ö¡¡…ΩŸïë}âïëÃ†§ÅQ<ÅÖ’—°ïπ—•çÖ—ïêÏ((¥¥ÅÅ±•Õ–ÅΩòÅ°ΩÕ—ï±ÃÅ•ÃÅΩ∏ÅïŸï…‰Å¡…ΩÕ¡ïç—’ÃËÅ…ïÖë•πúÅ•ÃÅΩ¡ï∏∞Å›…•—•πúÅ•ÃÅπΩ–∏)I=@ÅA=1%dÅ%Åa%MQLÅ°ΩÕ—ï±Õ}…ïÖëÖâ±îÅ=8Å¡’â±•åπ°ΩÕ—ï±ÃÏ)IQÅA=1%dÅ°ΩÕ—ï±Õ}…ïÖëÖâ±îÅ=8Å¡’â±•åπ°ΩÕ—ï±Ã(ÄÄÄÅ=HÅM1PÅQ<ÅÖ’—°ïπ—•çÖ—ïê(ÄÄÄÅUM%9Ä°QIU§Ï()I=@ÅA=1%dÅ%Åa%MQLÅ°ΩÕ—ï±Õ}Õ—Öôô}›…•—îÅ=8Å¡’â±•åπ°ΩÕ—ï±ÃÏ)IQÅA=1%dÅ°ΩÕ—ï±Õ}Õ—Öôô}›…•—îÅ=8Å¡’â±•åπ°ΩÕ—ï±Ã(ÄÄÄÅ=HÅ%9MIPÅQ<ÅÖ’—°ïπ—•çÖ—ïê(ÄÄÄÅ]%Q Å!,Ä°Öëëïë}â‰ÄÙÅÖ’—†π’•ê†§Å9Å¡’â±•åπ•Õ}Õç°ΩΩ±}Õ—Öôò°Õç°ΩΩ±}≠ï‰§§Ï()I=@ÅA=1%dÅ%Åa%MQLÅ°ΩÕ—ï±Õ}Õ—Öôô}ïë•–Å=8Å¡’â±•åπ°ΩÕ—ï±ÃÏ)IQÅA=1%dÅ°ΩÕ—ï±Õ}Õ—Öôô}ïë•–Å=8Å¡’â±•åπ°ΩÕ—ï±Ã(ÄÄÄÅ=HÅUAQÅQ<ÅÖ’—°ïπ—•çÖ—ïê(ÄÄÄÅUM%9Ä°¡’â±•åπ•Õ}Õç°ΩΩ±}Õ—Öôò°Õç°ΩΩ±}≠ï‰§§(ÄÄÄÅ]%Q Å!,Ä°¡’â±•åπ•Õ}Õç°ΩΩ±}Õ—Öôò°Õç°ΩΩ±}≠ï‰§§Ï()I=@ÅA=1%dÅ%Åa%MQLÅ°ΩÕ—ï±Õ}Õ—Öôô}…ïµΩŸîÅ=8Å¡’â±•åπ°ΩÕ—ï±ÃÏ)IQÅA=1%dÅ°ΩÕ—ï±Õ}Õ—Öôô}…ïµΩŸîÅ=8Å¡’â±•åπ°ΩÕ—ï±Ã(ÄÄÄÅ=HÅ1QÅQ<ÅÖ’—°ïπ—•çÖ—ïê(ÄÄÄÅUM%9Ä°¡’â±•åπ•Õ}Õç°ΩΩ±}Õ—Öôò°Õç°ΩΩ±}≠ï‰§§Ï()I=@ÅA=1%dÅ%Åa%MQLÅ°ΩÕ—ï±}…ΩΩµÕ}…ïÖëÖâ±îÅ=8Å¡’â±•åπ°ΩÕ—ï±}…ΩΩµÃÏ)IQÅA=1%dÅ°ΩÕ—ï±}…ΩΩµÕ}…ïÖëÖâ±îÅ=8Å¡’â±•åπ°ΩÕ—ï±}…ΩΩµÃ(ÄÄÄÅ=HÅM1PÅQ<ÅÖ’—°ïπ—•çÖ—ïê(ÄÄÄÅUM%9Ä°QIU§Ï()I=@ÅA=1%dÅ%Åa%MQLÅ°ΩÕ—ï±}…ΩΩµÕ}Õ—Öôô}›…•—îÅ=8Å¡’â±•åπ°ΩÕ—ï±}…ΩΩµÃÏ)IQÅA=1%dÅ°ΩÕ—ï±}…ΩΩµÕ}Õ—Öôô}›…•—îÅ=8Å¡’â±•åπ°ΩÕ—ï±}…ΩΩµÃ(ÄÄÄÅ=HÅ%9MIPÅQ<ÅÖ’—°ïπ—•çÖ—ïê(ÄÄÄÅ]%Q Å!,Ä°a%MQLÄ†(ÄÄÄÄÄÄÄÅM1PÄƒÅI=4Å¡’â±•åπ°ΩÕ—ï±ÃÅLÅ†(ÄÄÄÄÄÄÄÅ]!IÅ†π•êÄÙÅ°ΩÕ—ï±}…ΩΩµÃπ°ΩÕ—ï±}•ê(ÄÄÄÄÄÄÄÄÄÅ9Å¡’â±•åπ•Õ}Õç°ΩΩ±}Õ—Öôò°†πÕç°ΩΩ±}≠ï‰§(ÄÄÄÄ§§Ï()I=@ÅA=1%dÅ%Åa%MQLÅ°ΩÕ—ï±}…ΩΩµÕ}Õ—Öôô}ïë•–Å=8Å¡’â±•åπ°ΩÕ—ï±}…ΩΩµÃÏ)IQÅA=1%dÅ°ΩÕ—ï±}…ΩΩµÕ}Õ—Öôô}ïë•–Å=8Å¡’â±•åπ°ΩÕ—ï±}…ΩΩµÃ(ÄÄÄÅ=HÅUAQÅQ<ÅÖ’—°ïπ—•çÖ—ïê(ÄÄÄÅUM%9Ä°a%MQLÄ†(ÄÄÄÄÄÄÄÅM1PÄƒÅI=4Å¡’â±•åπ°ΩÕ—ï±ÃÅLÅ†(ÄÄÄÄÄÄÄÅ]!IÅ†π•êÄÙÅ°ΩÕ—ï±}…ΩΩµÃπ°ΩÕ—ï±}•ê(ÄÄÄÄÄÄÄÄÄÅ9Å¡’â±•åπ•Õ}Õç°ΩΩ±}Õ—Öôò°†πÕç°ΩΩ±}≠ï‰§(ÄÄÄÄ§§(ÄÄÄÅ]%Q Å!,Ä°a%MQLÄ†(ÄÄÄÄÄÄÄÅM1PÄƒÅI=4Å¡’â±•åπ°ΩÕ—ï±ÃÅLÅ†(ÄÄÄÄÄÄÄÅ]!IÅ†π•êÄÙÅ°ΩÕ—ï±}…ΩΩµÃπ°ΩÕ—ï±}•ê(ÄÄÄÄÄÄÄÄÄÅ9Å¡’â±•åπ•Õ}Õç°ΩΩ±}Õ—Öôò°†πÕç°ΩΩ±}≠ï‰§(ÄÄÄÄ§§Ï()I=@ÅA=1%dÅ%Åa%MQLÅ°ΩÕ—ï±}…ΩΩµÕ}Õ—Öôô}…ïµΩŸîÅ=8Å¡’â±•åπ°ΩÕ—ï±}…ΩΩµÃÏ)IQÅA=1%dÅ°ΩÕ—ï±}…ΩΩµÕ}Õ—Öôô}…ïµΩŸîÅ=8Å¡’â±•åπ°ΩÕ—ï±}…ΩΩµÃ(ÄÄÄÅ=HÅ1QÅQ<ÅÖ’—°ïπ—•çÖ—ïê(ÄÄÄÅUM%9Ä°a%MQLÄ†(ÄÄÄÄÄÄÄÅM1PÄƒÅI=4Å¡’â±•åπ°ΩÕ—ï±ÃÅLÅ†(ÄÄÄÄÄÄÄÅ]!IÅ†π•êÄÙÅ°ΩÕ—ï±}…ΩΩµÃπ°ΩÕ—ï±}•ê(ÄÄÄÄÄÄÄÄÄÅ9Å¡’â±•åπ•Õ}Õç°ΩΩ±}Õ—Öôò°†πÕç°ΩΩ±}≠ï‰§(ÄÄÄÄ§§Ï((¥¥ÅÅÕ—’ëïπ–ÅÕïïÃÅ—°ï•»ÅΩ›∏Å…ï≈’ïÕ—ÃÏÅ—°îÅ°Ω’Õ•πúÅΩôô•çîÅΩòÅ—°Ö–ÅÕç°ΩΩ∞(¥¥ÅÕïïÃÅïŸï…‰Å…ï≈’ïÕ–ÅôΩ»Å•—ÃÅΩ›∏ÅâïëÃÏÅÖπêÅÑÅÕ—’ëïπ–Å›°ºÅ°ÖÃÅâïï∏Åù•Ÿï∏ÅÑ(¥¥ÅâïêÅÕïïÃÅ—°îÅΩ—°ï…ÃÅÖ¡¡…ΩŸïêÅ•π—ºÅ—°îÅÕÖµîÅ…ΩΩ¥ÅôΩ»Å—°îÅÕÖµîÅÕïµïÕ—ï»∞(¥¥ÅâïçÖ’ÕîÅÑÅ…ΩΩµµÖ—îÅ•ÃÅ—°îÅô•…Õ–Å¡ï…ÕΩ∏ÅÑÅπï‹ÅÕ—’ëïπ–Å›Öπ—ÃÅ—ºÅ≠πΩ‹∏)I=@ÅA=1%dÅ%Åa%MQLÅ°ΩÕ—ï±}âΩΩ≠•πùÕ}Ω›∏Å=8Å¡’â±•åπ°ΩÕ—ï±}âΩΩ≠•πùÃÏ)IQÅA=1%dÅ°ΩÕ—ï±}âΩΩ≠•πùÕ}Ω›∏Å=8Å¡’â±•åπ°ΩÕ—ï±}âΩΩ≠•πùÃ(ÄÄÄÅ=HÅM1PÅQ<ÅÖ’—°ïπ—•çÖ—ïê(ÄÄÄÅUM%9Ä†(ÄÄÄÄÄÄÄÅÕ—’ëïπ—}•êÄÙÅÖ’—†π’•ê†§(ÄÄÄÄÄÄÄÅ=HÅ¡’â±•åπ•Õ}Öëµ•∏†§(ÄÄÄÄÄÄÄÅ=HÅa%MQLÄ†(ÄÄÄÄÄÄÄÄÄÄÄÅM1PÄƒÅI=4Å¡’â±•åπ°ΩÕ—ï±}…ΩΩµÃÅLÅ»(ÄÄÄÄÄÄÄÄÄÄÄÅ)=%8Å¡’â±•åπ°ΩÕ—ï±ÃÅLÅ†Å=8Å†π•êÄÙÅ»π°ΩÕ—ï±}•ê(ÄÄÄÄÄÄÄÄÄÄÄÅ]!IÅ»π•êÄÙÅ°ΩÕ—ï±}âΩΩ≠•πùÃπ…ΩΩµ}•ê(ÄÄÄÄÄÄÄÄÄÄÄÄÄÅ9Å¡’â±•åπ•Õ}Õç°ΩΩ±}Õ—Öôò°†πÕç°ΩΩ±}≠ï‰§(ÄÄÄÄÄÄÄÄ§(ÄÄÄÄÄÄÄÅ=HÅa%MQLÄ†(ÄÄÄÄÄÄÄÄÄÄÄÅM1PÄƒÅI=4Å¡’â±•åπµÂ}Ö¡¡…ΩŸïë}âïëÃ†§ÅLÅµ•πî(ÄÄÄÄÄÄÄÄÄÄÄÅ]!IÅµ•πîπ…ΩΩµ}•êÄÙÅ°ΩÕ—ï±}âΩΩ≠•πùÃπ…ΩΩµ}•ê(ÄÄÄÄÄÄÄÄÄÄÄÄÄÅ9Åµ•πîπÕïµïÕ—ï…}≠ï‰ÄÙÅ1=]H°	QI%4°°ΩÕ—ï±}âΩΩ≠•πùÃπÕïµïÕ—ï»§§(ÄÄÄÄÄÄÄÄ§(ÄÄÄÄ§Ï()I=@ÅA=1%dÅ%Åa%MQLÅ°ΩÕ—ï±}âΩΩ≠•πùÕ}Õ—’ëïπ—}ÖÕ¨Å=8Å¡’â±•åπ°ΩÕ—ï±}âΩΩ≠•πùÃÏ)IQÅA=1%dÅ°ΩÕ—ï±}âΩΩ≠•πùÕ}Õ—’ëïπ—}ÖÕ¨Å=8Å¡’â±•åπ°ΩÕ—ï±}âΩΩ≠•πùÃ(ÄÄÄÅ=HÅ%9MIPÅQ<ÅÖ’—°ïπ—•çÖ—ïê(ÄÄÄÅ]%Q Å!,Ä°Õ—’ëïπ—}•êÄÙÅÖ’—†π’•ê†§§Ï()I=@ÅA=1%dÅ%Åa%MQLÅ°ΩÕ—ï±}âΩΩ≠•πùÕ}Õ—’ëïπ—}çÖπçï∞Å=8Å¡’â±•åπ°ΩÕ—ï±}âΩΩ≠•πùÃÏ)IQÅA=1%dÅ°ΩÕ—ï±}âΩΩ≠•πùÕ}Õ—’ëïπ—}çÖπçï∞Å=8Å¡’â±•åπ°ΩÕ—ï±}âΩΩ≠•πùÃ(ÄÄÄÅ=HÅUAQÅQ<ÅÖ’—°ïπ—•çÖ—ïê(ÄÄÄÅUM%9Ä°Õ—’ëïπ—}•êÄÙÅÖ’—†π’•ê†§Å9ÅÕ—Ö—’ÃÄÙÄù¡ïπë•πúú§(ÄÄÄÅ]%Q Å!,Ä°Õ—’ëïπ—}•êÄÙÅÖ’—†π’•ê†§Å9ÅÕ—Ö—’ÃÄÙÄùçÖπçï±±ïêú§Ï((¥¥ÅQ›ºÅ¡Ω±•ç•ïÃÅçΩŸï»Å—°•ÃÅ—Öâ±îËÅ—°îÅΩπîÅÑÅÕ—’ëïπ–Å’ÕïÃÅ—ºÅçÖπçï∞Å—°ï•»ÅΩ›∏(¥¥Å›Ö•—•πúÅ…ï≈’ïÕ–∞ÅÖπêÅ—°•ÃÅΩπîÅôΩ»Å—°îÅΩôô•çî∏ÅÖç†Å•ÃÅç°ïç≠ïêÅΩ∏Å•—ÃÅΩ›∏(¥¥Å—ï…µÃ∞ÅÕºÅÑÅÕ—’ëïπ–ÅçÖπçï±±•πúÅçÖ∏ÅπïŸï»Å…ïÖç†Å—°îÅëïç•Õ•Ω∏ÅçΩ±’µπÃ∏)I=@ÅA=1%dÅ%Åa%MQLÅ°ΩÕ—ï±}âΩΩ≠•πùÕ}Ωôô•çï}ïë•–Å=8Å¡’â±•åπ°ΩÕ—ï±}âΩΩ≠•πùÃÏ)IQÅA=1%dÅ°ΩÕ—ï±}âΩΩ≠•πùÕ}Ωôô•çï}ïë•–Å=8Å¡’â±•åπ°ΩÕ—ï±}âΩΩ≠•πùÃ(ÄÄÄÅ=HÅUAQÅQ<ÅÖ’—°ïπ—•çÖ—ïê(ÄÄÄÅUM%9Ä°a%MQLÄ†(ÄÄÄÄÄÄÄÅM1PÄƒÅI=4Å¡’â±•åπ°ΩÕ—ï±}…ΩΩµÃÅLÅ»(ÄÄÄÄÄÄÄÅ)=%8Å¡’â±•åπ°ΩÕ—ï±ÃÅLÅ†Å=8Å†π•êÄÙÅ»π°ΩÕ—ï±}•ê(ÄÄÄÄÄÄÄÅ]!IÅ»π•êÄÙÅ°ΩÕ—ï±}âΩΩ≠•πùÃπ…ΩΩµ}•ê(ÄÄÄÄÄÄÄÄÄÅ9Å¡’â±•åπ•Õ}Õç°ΩΩ±}Õ—Öôò°†πÕç°ΩΩ±}≠ï‰§(ÄÄÄÄ§§(ÄÄÄÅ]%Q Å!,Ä°Õ—Ö—’ÃÅ%8Ä†ùÖ¡¡…ΩŸïêú∞Äù…ï©ïç—ïêú∞ÄùçÖπçï±±ïêú§§Ï()I9PÅM1P∞Å%9MIP∞ÅUAQ∞Å1QÅ=8Å¡’â±•åπ°ΩÕ—ï±ÃÅQ<ÅÖ’—°ïπ—•çÖ—ïêÏ)I9PÅM1P∞Å%9MIP∞ÅUAQ∞Å1QÅ=8Å¡’â±•åπ°ΩÕ—ï±}…ΩΩµÃÅQ<ÅÖ’—°ïπ—•çÖ—ïêÏ)I9PÅM1P∞Å%9MIP∞ÅUAQÅ=8Å¡’â±•åπ°ΩÕ—ï±}âΩΩ≠•πùÃÅQ<ÅÖ’—°ïπ—•çÖ—ïêÏ)IY=-Å10Å=8Å¡’â±•åπ°ΩÕ—ï±ÃÅI=4ÅÖπΩ∏∞Å¡’â±•åÏ)IY=-Å10Å=8Å¡’â±•åπ°ΩÕ—ï±}…ΩΩµÃÅI=4ÅÖπΩ∏∞Å¡’â±•åÏ)IY=-Å10Å=8Å¡’â±•åπ°ΩÕ—ï±}âΩΩ≠•πùÃÅI=4ÅÖπΩ∏∞Å¡’â±•åÏ(((¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥(¥¥Ä‘∏ÅÅ	Å%LÅAAI=YÅ	dÅ8Å=%∞Å9=PÅ	dÅÅMQU9P(¥¥ÅÖ¡¡…ΩŸîÅ•ÃÅ—°îÅΩπîÅ›…•—îÅÑÅÕ—’ëïπ–ÅçÖππΩ–ÅµÖ≠îÅôΩ»Å—°ïµÕï±ŸïÃ∞ÅÖπêÅÑ(¥¥Å…ΩΩ¥ÅçÖππΩ–Åô•±∞Å¡ÖÕ–Å—°îÅâïëÃÅ•–Å°ÖÃ∏Å	Ω—†Åâï±ΩπúÅ•∏ÅÑÅëïô•πï»∞ÅÖπê(¥¥Å—°îÅçΩ’π–ÅΩòÅÖ¡¡…ΩŸïêÅâΩΩ≠•πùÃÅ•ÃÅ—°îÅΩπ±‰Åπ’µâï»Å—°Ö–ÅµÖ——ï…Ã∏(¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥()IQÅ=HÅIA1ÅU9Q%=8Å¡’â±•åπëïç•ëï}°ΩÕ—ï±}âΩΩ≠•πú†(ÄÄÄÅ¡}âΩΩ≠•πù}•êÅUU%∞(ÄÄÄÅ¡}ëïç•Õ•Ω∏ÅQaP∞(ÄÄÄÅ¡}πΩ—îÅQaPÅU1PÄúú(§)IQUI9LÅQaP)19UÅ¡±¡ùÕ≈∞)MUI%QdÅ%9H)MPÅÕïÖ…ç°}¡Ö—†ÄÙÄúú)LÄêê)1I(ÄÄÄÅŸ}…ΩΩ¥ÅUU%Ï(ÄÄÄÅŸ}Õç°ΩΩ∞ÅQaPÏ(ÄÄÄÅŸ}ÕïµïÕ—ï»ÅQaPÏ(ÄÄÄÅŸ}—Ö≠ï∏Å%9PÏ(ÄÄÄÅŸ}çÖ¡Öç•—‰Å%9PÏ)	%8(ÄÄÄÅ%Å¡}ëïç•Õ•Ω∏Å9=PÅ%8Ä†ùÖ¡¡…ΩŸïêú∞Äù…ï©ïç—ïêú∞ÄùçÖπçï±±ïêú§ÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8ÄùQ°Ö–Åëïç•Õ•Ω∏Å•ÃÅπΩ–ÅΩπîÅ—°îÅ°Ω’Õ•πúÅΩôô•çîÅçÖ∏ÅµÖ≠î∏ú(ÄÄÄÄÄÄÄÄÄÄÄÅUM%9ÅII=ÄÙÄú»»¿»ÃúÏ(ÄÄÄÅ9Å%Ï((ÄÄÄÅM1PÅ»π•ê∞Å†πÕç°ΩΩ±}≠ï‰∞ÅàπÕïµïÕ—ï»(ÄÄÄÄÄÅ%9Q<ÅŸ}…ΩΩ¥∞ÅŸ}Õç°ΩΩ∞∞ÅŸ}ÕïµïÕ—ï»(ÄÄÄÅI=4Å¡’â±•åπ°ΩÕ—ï±}âΩΩ≠•πùÃÅLÅà(ÄÄÄÅ)=%8Å¡’â±•åπ°ΩÕ—ï±}…ΩΩµÃÅLÅ»Å=8Å»π•êÄÙÅàπ…ΩΩµ}•ê(ÄÄÄÅ)=%8Å¡’â±•åπ°ΩÕ—ï±ÃÅLÅ†Å=8Å†π•êÄÙÅ»π°ΩÕ—ï±}•ê(ÄÄÄÅ]!IÅàπ•êÄÙÅ¡}âΩΩ≠•πù}•êÏ((ÄÄÄÅ%ÅŸ}…ΩΩ¥Å%LÅ9U10ÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8Äù9ºÅÕ’ç†ÅâΩΩ≠•πú∏úÅUM%9ÅII=ÄÙÄù@¿¿¿»úÏ(ÄÄÄÅ9Å%Ï((ÄÄÄÅ%Å9=PÅ¡’â±•åπ•Õ}Õç°ΩΩ±}Õ—Öôò°Ÿ}Õç°ΩΩ∞§ÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8Äù=π±‰Å—°îÅ°Ω’Õ•πúÅΩôô•çîÅΩòÅ—°Ö–ÅÕç°ΩΩ∞ÅçÖ∏Åëïç•ëîÅÑÅâïê∏ú(ÄÄÄÄÄÄÄÄÄÄÄÅUM%9ÅII=ÄÙÄú–»‘¿ƒúÏ(ÄÄÄÅ9Å%Ï((ÄÄÄÅ%Å¡}ëïç•Õ•Ω∏ÄÙÄùÖ¡¡…ΩŸïêúÅQ!8(ÄÄÄÄÄÄÄÅM1PÅçÖ¡Öç•—‰Å%9Q<ÅŸ}çÖ¡Öç•—‰ÅI=4Å¡’â±•åπ°ΩÕ—ï±}…ΩΩµÃÅ]!IÅ•êÄÙÅŸ}…ΩΩ¥Ï(ÄÄÄÄÄÄÄÅM1PÅ=U9P†®§Å%9Q<ÅŸ}—Ö≠ï∏(ÄÄÄÄÄÄÄÅI=4Å¡’â±•åπ°ΩÕ—ï±}âΩΩ≠•πùÃ(ÄÄÄÄÄÄÄÅ]!IÅ…ΩΩµ}•êÄÙÅŸ}…ΩΩ¥(ÄÄÄÄÄÄÄÄÄÅ9Å1=]H°	QI%4°ÕïµïÕ—ï»§§ÄÙÅ1=]H°	QI%4°Ÿ}ÕïµïÕ—ï»§§(ÄÄÄÄÄÄÄÄÄÅ9ÅÕ—Ö—’ÃÄÙÄùÖ¡¡…ΩŸïêú(ÄÄÄÄÄÄÄÄÄÅ9Å•êÄ¯Å¡}âΩΩ≠•πù}•êÏ(ÄÄÄÄÄÄÄÅ%ÅŸ}—Ö≠ï∏Ä¯ÙÅŸ}çÖ¡Öç•—‰ÅQ!8(ÄÄÄÄÄÄÄÄÄÄÄÅI%MÅaAQ%=8ÄùQ°Ö–Å…ΩΩ¥Å•ÃÅô’±∞ÅôΩ»ÄîÄ¥ÄîÅΩòÄîÅâïëÃÅÖ…îÅÖ±…ïÖë‰ÅÖ¡¡…ΩŸïê∏ú∞(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅŸ}ÕïµïÕ—ï»∞ÅŸ}—Ö≠ï∏∞ÅŸ}çÖ¡Öç•—‰(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅUM%9ÅII=ÄÙÄù@¿¿¿ƒúÏ(ÄÄÄÄÄÄÄÅ9Å%Ï(ÄÄÄÅ9Å%Ï((ÄÄÄÅUAQÅ¡’â±•åπ°ΩÕ—ï±}âΩΩ≠•πùÃ(ÄÄÄÄÄÄÄÅMPÅÕ—Ö—’ÃÄÙÅ¡}ëïç•Õ•Ω∏∞(ÄÄÄÄÄÄÄÄÄÄÄÅëïç•Õ•Ωπ}πΩ—îÄÙÅ1P°	QI%4°=1M°¡}πΩ—î∞Äúú§§∞Ä–¿¿§∞(ÄÄÄÄÄÄÄÄÄÄÄÅëïç•ëïë}â‰ÄÙÅÖ’—†π’•ê†§∞(ÄÄÄÄÄÄÄÄÄÄÄÅëïç•ëïë}Ö–ÄÙÅ9=\†§(ÄÄÄÄÄÄÄÅ]!IÅ•êÄÙÅ¡}âΩΩ≠•πù}•êÏ((ÄÄÄÅIQUI8Å¡}ëïç•Õ•Ω∏Ï)9Ï(êêÏ()IQÅ=HÅIA1ÅU9Q%=8Å¡’â±•åπÖÕ≠}ôΩ…}°ΩÕ—ï±}âïê†(ÄÄÄÅ¡}…ΩΩµ}•êÅUU%∞(ÄÄÄÅ¡}ÕïµïÕ—ï»ÅQaP∞(ÄÄÄÅ¡}πΩ—îÅQaPÅU1PÄúú(§)IQUI9LÅUU%)19UÅ¡±¡ùÕ≈∞)MUI%QdÅ%9H)MPÅÕïÖ…ç°}¡Ö—†ÄÙÄúú)LÄêê)1I(ÄÄÄÅŸ}•êÅUU%Ï(ÄÄÄÅŸ}Õç°ΩΩ∞ÅQaPÏ(ÄÄÄÅŸ}ÖççΩµµΩëÖ—•Ω∏Å	==18Ï)	%8(ÄÄÄÅ%Å9=PÅ¡’â±•åπµÖÂ}’Õï}ç±ÖÕÕïÃ†§ÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8ÄùÅâïêÅ•ÃÅΩπ±‰ÅÖÕ≠ïêÅôΩ»ÅΩπçîÅÂΩ’»Å…ïù•Õ—…Ö—•Ω∏Åπ’µâï»Å•ÃÅΩ∏Åô•±î∏ú(ÄÄÄÄÄÄÄÄÄÄÄÅUM%9ÅII=ÄÙÄú–»‘¿ƒúÏ(ÄÄÄÅ9Å%Ï((ÄÄÄÅM1PÅ†πÕç°ΩΩ±}≠ï‰Å%9Q<ÅŸ}Õç°ΩΩ∞(ÄÄÄÅI=4Å¡’â±•åπ°ΩÕ—ï±}…ΩΩµÃÅLÅ»(ÄÄÄÅ)=%8Å¡’â±•åπ°ΩÕ—ï±ÃÅLÅ†Å=8Å†π•êÄÙÅ»π°ΩÕ—ï±}•ê(ÄÄÄÅ]!IÅ»π•êÄÙÅ¡}…ΩΩµ}•êÏ((ÄÄÄÅ%ÅŸ}Õç°ΩΩ∞Å%LÅ9U10ÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8Äù9ºÅÕ’ç†Å…ΩΩ¥∏úÅUM%9ÅII=ÄÙÄù@¿¿¿»úÏ(ÄÄÄÅ9Å%Ï((ÄÄÄÅM1PÅÖççΩµµΩëÖ—•Ω∏Å%9Q<ÅŸ}ÖççΩµµΩëÖ—•Ω∏(ÄÄÄÅI=4Å¡’â±•åπçÖµ¡’Õ}Õï…Ÿ•çïÃÅ]!IÅÕç°ΩΩ±}≠ï‰ÄÙÅŸ}Õç°ΩΩ∞Ï((ÄÄÄÅ%ÅŸ}ÖççΩµµΩëÖ—•Ω∏Å%LÅ%MQ%9PÅI=4ÅQIUÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8ÄùQ°Ö–ÅÕç°ΩΩ∞ÅëΩïÃÅπΩ–Å—Ö≠îÅ°ΩÕ—ï∞Å…ï≈’ïÕ—ÃÅ°ï…î∏ú(ÄÄÄÄÄÄÄÄÄÄÄÅUM%9ÅII=ÄÙÄù@¿¿¿ƒúÏ(ÄÄÄÅ9Å%Ï((ÄÄÄÅ%9MIPÅ%9Q<Å¡’â±•åπ°ΩÕ—ï±}âΩΩ≠•πùÃÄ°…ΩΩµ}•ê∞ÅÕ—’ëïπ—}•ê∞ÅÕïµïÕ—ï»∞Å…ï≈’ïÕ—}πΩ—î§(ÄÄÄÄÄÄÄÅY1ULÄ†(ÄÄÄÄÄÄÄÄÄÄÄÅ¡}…ΩΩµ}•ê∞(ÄÄÄÄÄÄÄÄÄÄÄÅÖ’—†π’•ê†§∞(ÄÄÄÄÄÄÄÄÄÄÄÅ1P°	QI%4°¡}ÕïµïÕ—ï»§∞Ä–¿§∞(ÄÄÄÄÄÄÄÄÄÄÄÅ1P°	QI%4°=1M°¡}πΩ—î∞Äúú§§∞Ä–¿¿§(ÄÄÄÄÄÄÄÄ§(ÄÄÄÄÄÄÄÅIQUI9%9Å•êÅ%9Q<ÅŸ}•êÏ((ÄÄÄÅIQUI8ÅŸ}•êÏ)9Ï(êêÏ()IY=-Å10Å=8ÅU9Q%=8Å¡’â±•åπëïç•ëï}°ΩÕ—ï±}âΩΩ≠•πú°UU%∞ÅQaP∞ÅQaP§ÅI=4ÅAU	1%∞ÅÖπΩ∏Ï)IY=-Å10Å=8ÅU9Q%=8Å¡’â±•åπÖÕ≠}ôΩ…}°ΩÕ—ï±}âïê°UU%∞ÅQaP∞ÅQaP§ÅI=4ÅAU	1%∞ÅÖπΩ∏Ï)I9PÅaUQÅ=8ÅU9Q%=8Å¡’â±•åπëïç•ëï}°ΩÕ—ï±}âΩΩ≠•πú°UU%∞ÅQaP∞ÅQaP§ÅQ<ÅÖ’—°ïπ—•çÖ—ïêÏ)I9PÅaUQÅ=8ÅU9Q%=8Å¡’â±•åπÖÕ≠}ôΩ…}°ΩÕ—ï±}âïê°UU%∞ÅQaP∞ÅQaP§ÅQ<ÅÖ’—°ïπ—•çÖ—ïêÏ(((¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥(¥¥Ä’à∏ÅQ!ÅQ]<Å1%MQLÅÅ	==-%9ÅAAILÅ%8(¥¥ÅÅâΩΩ≠•πúÅ©Ω•πÃÅ—°…ïîÅ—Öâ±ïÃÅâïôΩ…îÅ•–ÅµïÖπÃÅÖπÂ—°•πúÅ—ºÅÑÅ¡ï…ÕΩ∏ËÅ—°î(¥¥Å…ΩΩ¥∞Å—°îÅ°ΩÕ—ï∞∞ÅÖπêÅôΩ»Å—°îÅΩôô•çîÅ—°îÅÕ—’ëïπ–Å›°ºÅÖÕ≠ïê∏ÅQ°Ö–Å©Ω•∏Å•Ã(¥¥Å›…•——ï∏ÅΩπçî∞Å°ï…î∞ÅÕºÅπºÅ¡ÖùîÅ°ÖÃÅ—ºÅù’ïÕÃÅ°Ω‹ÅAΩÕ—ùIMPÅÕ¡ï±±ÃÅ•–ÅÖπêÅÑ(¥¥Å°Ω’Õ•πúÅΩôô•çîÅ•ÃÅπΩ–Å°ÖπëïêÅÑÅ—Öâ±îÅΩòÅÕ—…Öπùï…ÃúÅ¡…Ωô•±ïÃ∏(¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥()IQÅ=HÅIA1ÅU9Q%=8Å¡’â±•åπµÂ}âïë}…ï≈’ïÕ—Ã†§)IQUI9LÅQ	1Ä†(ÄÄÄÅâΩΩ≠•πù}•êÅUU%∞(ÄÄÄÅ°ΩÕ—ï±}πÖµîÅQaP∞(ÄÄÄÅ…ΩΩµ}±Öâï∞ÅQaP∞(ÄÄÄÅ…ΩΩµ}çÖ¡Öç•—‰Å%9P∞(ÄÄÄÅÕç°ΩΩ∞ÅQaP∞(ÄÄÄÅÕïµïÕ—ï»ÅQaP∞(ÄÄÄÅÕ—Ö—’ÃÅQaP∞(ÄÄÄÅ…ï≈’ïÕ—}πΩ—îÅQaP∞(ÄÄÄÅëïç•Õ•Ωπ}πΩ—îÅQaP∞(ÄÄÄÅëïç•ëïë}Ö–ÅQ%5MQ5AQh∞(ÄÄÄÅç…ïÖ—ïë}Ö–ÅQ%5MQ5AQh(§)19UÅÕ≈∞)MQ	1)MUI%QdÅ%9H)MPÅÕïÖ…ç°}¡Ö—†ÄÙÄúú)LÄêê(ÄÄÄÅM1PÅàπ•ê∞Å†ππÖµî∞Å»π±Öâï∞∞Å»πçÖ¡Öç•—‰∞Å†πÕç°ΩΩ∞∞ÅàπÕïµïÕ—ï»∞ÅàπÕ—Ö—’Ã∞(ÄÄÄÄÄÄÄÄÄÄÅàπ…ï≈’ïÕ—}πΩ—î∞Åàπëïç•Õ•Ωπ}πΩ—î∞Åàπëïç•ëïë}Ö–∞Åàπç…ïÖ—ïë}Ö–(ÄÄÄÅI=4Å¡’â±•åπ°ΩÕ—ï±}âΩΩ≠•πùÃÅLÅà(ÄÄÄÅ)=%8Å¡’â±•åπ°ΩÕ—ï±}…ΩΩµÃÅLÅ»Å=8Å»π•êÄÙÅàπ…ΩΩµ}•ê(ÄÄÄÅ)=%8Å¡’â±•åπ°ΩÕ—ï±ÃÅLÅ†Å=8Å†π•êÄÙÅ»π°ΩÕ—ï±}•ê(ÄÄÄÅ]!IÅàπÕ—’ëïπ—}•êÄÙÅÖ’—†π’•ê†§(ÄÄÄÅ=IHÅ	dÅàπç…ïÖ—ïë}Ö–ÅM(ÄÄÄÅ1%5%PÄ–¿Ï(êêÏ()IQÅ=HÅIA1ÅU9Q%=8Å¡’â±•åπÕç°ΩΩ±}âïë}…ï≈’ïÕ—Ã°¡}Õç°ΩΩ±}≠ï‰ÅQaP§)IQUI9LÅQ	1Ä†(ÄÄÄÅâΩΩ≠•πù}•êÅUU%∞(ÄÄÄÅÕ—’ëïπ—}•êÅUU%∞(ÄÄÄÅÕ—’ëïπ—}πÖµîÅQaP∞(ÄÄÄÅ…ïù•Õ—…Ö—•Ωπ}π’µâï»ÅQaP∞(ÄÄÄÅ°ΩÕ—ï±}πÖµîÅQaP∞(ÄÄÄÅ…ΩΩµ}±Öâï∞ÅQaP∞(ÄÄÄÅ…ΩΩµ}çÖ¡Öç•—‰Å%9P∞(ÄÄÄÅâïëÕ}Ö¡¡…ΩŸïêÅ%9P∞(ÄÄÄÅÕïµïÕ—ï»ÅQaP∞(ÄÄÄÅÕ—Ö—’ÃÅQaP∞(ÄÄÄÅ…ï≈’ïÕ—}πΩ—îÅQaP∞(ÄÄÄÅëïç•ëïë}Ö–ÅQ%5MQ5AQh∞(ÄÄÄÅç…ïÖ—ïë}Ö–ÅQ%5MQ5AQh(§)19UÅ¡±¡ùÕ≈∞)MQ	1)MUI%QdÅ%9H)MPÅÕïÖ…ç°}¡Ö—†ÄÙÄúú)LÄêê)	%8(ÄÄÄÅ%Å9=PÅ¡’â±•åπ•Õ}Õç°ΩΩ±}Õ—Öôò°¡}Õç°ΩΩ±}≠ï‰§ÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8Äù=π±‰Å—°îÅ°Ω’Õ•πúÅΩôô•çîÅΩòÅ—°Ö–ÅÕç°ΩΩ∞ÅÕïïÃÅ•—ÃÅ…ï≈’ïÕ—Ã∏ú(ÄÄÄÄÄÄÄÄÄÄÄÅUM%9ÅII=ÄÙÄú–»‘¿ƒúÏ(ÄÄÄÅ9Å%Ï((ÄÄÄÅIQUI8ÅEUId(ÄÄÄÅM1PÅàπ•ê∞(ÄÄÄÄÄÄÄÄÄÄÅàπÕ—’ëïπ—}•ê∞(ÄÄÄÄÄÄÄÄÄÄÅ¿πô’±±}πÖµî∞(ÄÄÄÄÄÄÄÄÄÄÅ»¿π…ïù•Õ—…Ö—•Ωπ}π’µâï»∞(ÄÄÄÄÄÄÄÄÄÄÅ†ππÖµî∞(ÄÄÄÄÄÄÄÄÄÄÅ»π±Öâï∞∞(ÄÄÄÄÄÄÄÄÄÄÅ»πçÖ¡Öç•—‰∞(ÄÄÄÄÄÄÄÄÄÄÄ°M1PÅ=U9P†®§ËÈ%9P(ÄÄÄÄÄÄÄÄÄÄÄÄÄÅI=4Å¡’â±•åπ°ΩÕ—ï±}âΩΩ≠•πùÃÅLÅ‡(ÄÄÄÄÄÄÄÄÄÄÄÄÅ]!IÅ‡π…ΩΩµ}•êÄÙÅàπ…ΩΩµ}•ê(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅ9Å‡πÕ—Ö—’ÃÄÙÄùÖ¡¡…ΩŸïêú(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅ9Å1=]H°	QI%4°‡πÕïµïÕ—ï»§§ÄÙÅ1=]H°	QI%4°àπÕïµïÕ—ï»§§§∞(ÄÄÄÄÄÄÄÄÄÄÅàπÕïµïÕ—ï»∞(ÄÄÄÄÄÄÄÄÄÄÅàπÕ—Ö—’Ã∞(ÄÄÄÄÄÄÄÄÄÄÅàπ…ï≈’ïÕ—}πΩ—î∞(ÄÄÄÄÄÄÄÄÄÄÅàπëïç•ëïë}Ö–∞(ÄÄÄÄÄÄÄÄÄÄÅàπç…ïÖ—ïë}Ö–(ÄÄÄÅI=4Å¡’â±•åπ°ΩÕ—ï±}âΩΩ≠•πùÃÅLÅà(ÄÄÄÅ)=%8Å¡’â±•åπ°ΩÕ—ï±}…ΩΩµÃÅLÅ»Å=8Å»π•êÄÙÅàπ…ΩΩµ}•ê(ÄÄÄÅ)=%8Å¡’â±•åπ°ΩÕ—ï±ÃÅLÅ†Å=8Å†π•êÄÙÅ»π°ΩÕ—ï±}•ê(ÄÄÄÅ)=%8Å¡’â±•åπ¡…Ωô•±ïÃÅLÅ¿Å=8Å¿π•êÄÙÅàπÕ—’ëïπ—}•ê(ÄÄÄÅ1PÅ)=%8Å¡’â±•åπÕ—’ëïπ—}…ïù•Õ—…Ö—•ΩπÃÅLÅ»¿Å=8Å»¿π’Õï…}•êÄÙÅàπÕ—’ëïπ—}•ê(ÄÄÄÅ]!IÅ†πÕç°ΩΩ±}≠ï‰ÄÙÅ1=]H°	QI%4°=1M°¡}Õç°ΩΩ±}≠ï‰∞Äúú§§§(ÄÄÄÅ=IHÅ	dÅàπç…ïÖ—ïë}Ö–ÅM(ÄÄÄÅ1%5%PÄ»¿¿Ï)9Ï(êêÏ()IY=-Å10Å=8ÅU9Q%=8Å¡’â±•åπµÂ}âïë}…ï≈’ïÕ—Ã†§ÅI=4ÅAU	1%∞ÅÖπΩ∏Ï)IY=-Å10Å=8ÅU9Q%=8Å¡’â±•åπÕç°ΩΩ±}âïë}…ï≈’ïÕ—Ã°QaP§ÅI=4ÅAU	1%∞ÅÖπΩ∏Ï)I9PÅaUQÅ=8ÅU9Q%=8Å¡’â±•åπµÂ}âïë}…ï≈’ïÕ—Ã†§ÅQ<ÅÖ’—°ïπ—•çÖ—ïêÏ)I9PÅaUQÅ=8ÅU9Q%=8Å¡’â±•åπÕç°ΩΩ±}âïë}…ï≈’ïÕ—Ã°QaP§ÅQ<ÅÖ’—°ïπ—•çÖ—ïêÏ()I=@ÅQI%HÅ%Åa%MQLÅ°ΩÕ—ï±Õ}Õï—}’¡ëÖ—ïë}Ö–Å=8Å¡’â±•åπ°ΩÕ—ï±ÃÏ)IQÅQI%HÅ°ΩÕ—ï±Õ}Õï—}’¡ëÖ—ïë}Ö–(ÄÄÄÅ	=IÅUAQÅ=8Å¡’â±•åπ°ΩÕ—ï±Ã(ÄÄÄÅ=HÅ ÅI=\(ÄÄÄÅaUQÅU9Q%=8Å¡’â±•åπÕï—}’¡ëÖ—ïë}Ö–†§Ï()I=@ÅQI%HÅ%Åa%MQLÅ°ΩÕ—ï±}…ΩΩµÕ}Õï—}’¡ëÖ—ïë}Ö–Å=8Å¡’â±•åπ°ΩÕ—ï±}…ΩΩµÃÏ)IQÅQI%HÅ°ΩÕ—ï±}…ΩΩµÕ}Õï—}’¡ëÖ—ïë}Ö–(ÄÄÄÅ	=IÅUAQÅ=8Å¡’â±•åπ°ΩÕ—ï±}…ΩΩµÃ(ÄÄÄÅ=HÅ ÅI=\(ÄÄÄÅaUQÅU9Q%=8Å¡’â±•åπÕï—}’¡ëÖ—ïë}Ö–†§Ï()I=@ÅQI%HÅ%Åa%MQLÅ°ΩÕ—ï±}âΩΩ≠•πùÕ}Õï—}’¡ëÖ—ïë}Ö–Å=8Å¡’â±•åπ°ΩÕ—ï±}âΩΩ≠•πùÃÏ)IQÅQI%HÅ°ΩÕ—ï±}âΩΩ≠•πùÕ}Õï—}’¡ëÖ—ïë}Ö–(ÄÄÄÅ	=IÅUAQÅ=8Å¡’â±•åπ°ΩÕ—ï±}âΩΩ≠•πùÃ(ÄÄÄÅ=HÅ ÅI=\(ÄÄÄÅaUQÅU9Q%=8Å¡’â±•åπÕï—}’¡ëÖ—ïë}Ö–†§Ï(((¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥(¥¥Äÿ∏ÅQI%9(¥¥Å=πîÅ…Ω‹Å•ÃÅΩπîÅ¡±Ö∏ËÅ›°Ö–Å•–Å•πç±’ëïÃ∞Å›°Ö–Å•–ÅçΩÕ—ÃÅÖπêÅΩŸï»Å›°•ç†(¥¥ÅëÖ—ïÃ∏ÅÅ¡±Ö∏ÅµÖ‰Åâï±ΩπúÅ—ºÅÑÅ°ΩÕ—ï∞Ä°—°îÅ°Ö±∞Å—°Ö–ÅçΩΩ≠ÃÅ•–§ÅΩ»Å—ºÅ—°î(¥¥ÅÕç°ΩΩ∞ÅÖÃÅÑÅ›°Ω±î∏(¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥()IQÅQ	1Å%Å9=PÅa%MQLÅ¡’â±•åπµïÖ±}¡±ÖπÃÄ†(ÄÄÄÅ•êÅUU%ÅAI%5IdÅ-dÅU1PÅùïπ}…ÖπëΩµ}’’•ê†§∞(ÄÄÄÅÕç°ΩΩ∞ÅQaPÅ9=PÅ9U10∞(ÄÄÄÅÕç°ΩΩ±}≠ï‰ÅQaPÅ9IQÅ1]eLÅLÄ°1=]H°	QI%4°Õç°ΩΩ∞§§§ÅMQ=I∞(ÄÄÄÅ°ΩÕ—ï±}•êÅUU%ÅII9LÅ¡’â±•åπ°ΩÕ—ï±Ã°•ê§Å=8Å1QÅMPÅ9U10∞(ÄÄÄÅπÖµîÅQaPÅ9=PÅ9U10Å!,Ä°ç°Ö…}±ïπù—†°	QI%4°πÖµî§§Å	Q]8Ä»Å9Ä‡¿§∞(ÄÄÄÅ≠•πêÅQaPÅ9=PÅ9U10ÅU1PÄùô’±∞ú(ÄÄÄÄÄÄÄÅ!,Ä°≠•πêÅ%8Ä†ùô’±∞ú∞Äù°Ö±òú∞Äù±•ù°–ú∞ÄùÕï±ô}çÖ—ï…•πúú∞ÄùΩ—°ï»ú§§∞(ÄÄÄÅ¡…•çï}›ïï≠±‰Å9U5I%†ƒ¿∞Ä»§Å!,Ä°¡…•çï}›ïï≠±‰Å%LÅ9U10Å=HÅ¡…•çï}›ïï≠±‰Ä¯ÙÄ¿§∞(ÄÄÄÅ¡…•çï}ÕïµïÕ—ï»Å9U5I%†ƒ¿∞Ä»§Å!,Ä°¡…•çï}ÕïµïÕ—ï»Å%LÅ9U10Å=HÅ¡…•çï}ÕïµïÕ—ï»Ä¯ÙÄ¿§∞(ÄÄÄÅµïπ‘ÅQaPÅ9=PÅ9U10ÅU1PÄúúÅ!,Ä°ç°Ö…}±ïπù—†°µïπ‘§ÄÙÄ»¿¿¿§∞(ÄÄÄÅπΩ—îÅQaPÅ9=PÅ9U10ÅU1PÄúúÅ!,Ä°ç°Ö…}±ïπù—†°πΩ—î§ÄÙÄ–¿¿§∞(ÄÄÄÅÕ—Ö…—Õ}Ω∏ÅQ∞(ÄÄÄÅïπëÕ}Ω∏ÅQ∞(ÄÄÄÅç…ïÖ—ïë}â‰ÅUU%ÅII9LÅ¡’â±•åπ¡…Ωô•±ïÃ°•ê§Å=8Å1QÅMPÅ9U10∞(ÄÄÄÅç…ïÖ—ïë}Ö–ÅQ%5MQ5AQhÅ9=PÅ9U10ÅU1PÅ9=\†§∞(ÄÄÄÅ’¡ëÖ—ïë}Ö–ÅQ%5MQ5AQhÅ9=PÅ9U10ÅU1PÅ9=\†§(§Ï()IQÅ%9`Å%Å9=PÅa%MQLÅµïÖ±}¡±ÖπÕ}Õç°ΩΩ±}•ë‡Å=8Å¡’â±•åπµïÖ±}¡±ÖπÃÄ°Õç°ΩΩ±}≠ï‰∞Åç…ïÖ—ïë}Ö–ÅM§Ï()1QHÅQ	1Å¡’â±•åπµïÖ±}¡±ÖπÃÅ9	1ÅI=\Å1Y0ÅMUI%QdÏ()I=@ÅA=1%dÅ%Åa%MQLÅµïÖ±}¡±ÖπÕ}…ïÖëÖâ±îÅ=8Å¡’â±•åπµïÖ±}¡±ÖπÃÏ)IQÅA=1%dÅµïÖ±}¡±ÖπÕ}…ïÖëÖâ±îÅ=8Å¡’â±•åπµïÖ±}¡±ÖπÃ(ÄÄÄÅ=HÅM1PÅQ<ÅÖ’—°ïπ—•çÖ—ïê(ÄÄÄÅUM%9Ä°QIU§Ï()I=@ÅA=1%dÅ%Åa%MQLÅµïÖ±}¡±ÖπÕ}Õ—Öôô}›…•—îÅ=8Å¡’â±•åπµïÖ±}¡±ÖπÃÏ)IQÅA=1%dÅµïÖ±}¡±ÖπÕ}Õ—Öôô}›…•—îÅ=8Å¡’â±•åπµïÖ±}¡±ÖπÃ(ÄÄÄÅ=HÅ%9MIPÅQ<ÅÖ’—°ïπ—•çÖ—ïê(ÄÄÄÅ]%Q Å!,Ä°ç…ïÖ—ïë}â‰ÄÙÅÖ’—†π’•ê†§Å9Å¡’â±•åπ•Õ}Õç°ΩΩ±}Õ—Öôò°Õç°ΩΩ±}≠ï‰§§Ï()I=@ÅA=1%dÅ%Åa%MQLÅµïÖ±}¡±ÖπÕ}Õ—Öôô}ïë•–Å=8Å¡’â±•åπµïÖ±}¡±ÖπÃÏ)IQÅA=1%dÅµïÖ±}¡±ÖπÕ}Õ—Öôô}ïë•–Å=8Å¡’â±•åπµïÖ±}¡±ÖπÃ(ÄÄÄÅ=HÅUAQÅQ<ÅÖ’—°ïπ—•çÖ—ïê(ÄÄÄÅUM%9Ä°¡’â±•åπ•Õ}Õç°ΩΩ±}Õ—Öôò°Õç°ΩΩ±}≠ï‰§§(ÄÄÄÅ]%Q Å!,Ä°¡’â±•åπ•Õ}Õç°ΩΩ±}Õ—Öôò°Õç°ΩΩ±}≠ï‰§§Ï()I=@ÅA=1%dÅ%Åa%MQLÅµïÖ±}¡±ÖπÕ}Õ—Öôô}…ïµΩŸîÅ=8Å¡’â±•åπµïÖ±}¡±ÖπÃÏ)IQÅA=1%dÅµïÖ±}¡±ÖπÕ}Õ—Öôô}…ïµΩŸîÅ=8Å¡’â±•åπµïÖ±}¡±ÖπÃ(ÄÄÄÅ=HÅ1QÅQ<ÅÖ’—°ïπ—•çÖ—ïê(ÄÄÄÅUM%9Ä°¡’â±•åπ•Õ}Õç°ΩΩ±}Õ—Öôò°Õç°ΩΩ±}≠ï‰§§Ï()I9PÅM1P∞Å%9MIP∞ÅUAQ∞Å1QÅ=8Å¡’â±•åπµïÖ±}¡±ÖπÃÅQ<ÅÖ’—°ïπ—•çÖ—ïêÏ)IY=-Å10Å=8Å¡’â±•åπµïÖ±}¡±ÖπÃÅI=4ÅÖπΩ∏∞Å¡’â±•åÏ()I=@ÅQI%HÅ%Åa%MQLÅµïÖ±}¡±ÖπÕ}Õï—}’¡ëÖ—ïë}Ö–Å=8Å¡’â±•åπµïÖ±}¡±ÖπÃÏ)IQÅQI%HÅµïÖ±}¡±ÖπÕ}Õï—}’¡ëÖ—ïë}Ö–(ÄÄÄÅ	=IÅUAQÅ=8Å¡’â±•åπµïÖ±}¡±ÖπÃ(ÄÄÄÅ=HÅ ÅI=\(ÄÄÄÅaUQÅU9Q%=8Å¡’â±•åπÕï—}’¡ëÖ—ïë}Ö–†§Ï(((¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥(¥¥Ä‹∏ÅQ!Å!A1%9d(¥¥ÅQ°îÅç°Ö¡±Ö•∏Å¡’â±•Õ°ïÃÅ—°îÅÂïÖ»ùÃÅ¡…Ωù…ÖµµîËÅç°Ö¡ï∞ÅΩ∏Å]ïëπïÕëÖ‰∞Å—°î(¥¥Åç…’ÕÖëîÅ•∏Å5Ö…ç†∞ÅÑÅ…ï—…ïÖ–Å•∏Å’ù’Õ–∏ÅÅëÖ—ïêÅïŸïπ–ÅÖπêÅÑÅ…ï¡ïÖ—•πú(¥¥ÅÕï…•ïÃÅÖ…îÅ—°îÅÕÖµîÅ…Ω‹∞ÅâïçÖ’ÕîÅÑÅÕç°ΩΩ∞ùÃÅçÖ±ïπëÖ»Å•ÃÅ°Ö±òÅΩòÅïÖç†∏(¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥()IQÅQ	1Å%Å9=PÅa%MQLÅ¡’â±•åπç°Ö¡±Ö•πçÂ}ïŸïπ—ÃÄ†(ÄÄÄÅ•êÅUU%ÅAI%5IdÅ-dÅU1PÅùïπ}…ÖπëΩµ}’’•ê†§∞(ÄÄÄÅÕç°ΩΩ∞ÅQaPÅ9=PÅ9U10∞(ÄÄÄÅÕç°ΩΩ±}≠ï‰ÅQaPÅ9IQÅ1]eLÅLÄ°1=]H°	QI%4°Õç°ΩΩ∞§§§ÅMQ=I∞(ÄÄÄÅ—•—±îÅQaPÅ9=PÅ9U10Å!,Ä°ç°Ö…}±ïπù—†°	QI%4°—•—±î§§Å	Q]8ÄÃÅ9Äƒ»¿§∞(ÄÄÄÅ≠•πêÅQaPÅ9=PÅ9U10ÅU1PÄùç°Ö¡ï∞ú(ÄÄÄÄÄÄÄÅ!,Ä°≠•πêÅ%8Ä†ùç°Ö¡ï∞ú∞Äùç…’ÕÖëîú∞Äù¡…ÖÂï»ú∞Äùôï±±Ω›Õ°•¿ú∞ÄùÕï…Ÿ•çîú∞Äù…ï—…ïÖ–ú∞ÄùΩ—°ï»ú§§∞(ÄÄÄÅ—ï…¥ÅQaPÅ9=PÅ9U10ÅU1PÄúúÅ!,Ä°ç°Ö…}±ïπù—†°—ï…¥§ÄÙÄÿ¿§∞(ÄÄÄÅÕ—Ö…—Õ}Ö–ÅQ%5MQ5AQh∞(ÄÄÄÅïπëÕ}Ö–ÅQ%5MQ5AQh∞(ÄÄÄÅŸïπ’îÅQaPÅ9=PÅ9U10ÅU1PÄúúÅ!,Ä°ç°Ö…}±ïπù—†°Ÿïπ’î§ÄÙÄƒÿ¿§∞(ÄÄÄÅëïÕç…•¡—•Ω∏ÅQaPÅ9=PÅ9U10ÅU1PÄúúÅ!,Ä°ç°Ö…}±ïπù—†°ëïÕç…•¡—•Ω∏§ÄÙÄ»¿¿¿§∞(ÄÄÄÅ…ï¡ïÖ–ÅQaPÅ9=PÅ9U10ÅU1PÄùπΩπîúÅ!,Ä°…ï¡ïÖ–Å%8Ä†ùπΩπîú∞Äù›ïï≠±‰ú∞ÄùµΩπ—°±‰ú§§∞(ÄÄÄÅ›ïï≠ëÖ‰Å%9PÅ!,Ä°›ïï≠ëÖ‰Å%LÅ9U10Å=HÅ›ïï≠ëÖ‰Å	Q]8ÄƒÅ9Ä‹§∞(ÄÄÄÅÕ—Ö…—}—•µîÅQ%5∞(ÄÄÄÅçΩπ—Öç–ÅQaPÅ9=PÅ9U10ÅU1PÄúúÅ!,Ä°ç°Ö…}±ïπù—†°çΩπ—Öç–§ÄÙÄƒ»¿§∞(ÄÄÄÅç…ïÖ—ïë}â‰ÅUU%ÅII9LÅ¡’â±•åπ¡…Ωô•±ïÃ°•ê§Å=8Å1QÅMPÅ9U10∞(ÄÄÄÅç…ïÖ—ïë}Ö–ÅQ%5MQ5AQhÅ9=PÅ9U10ÅU1PÅ9=\†§∞(ÄÄÄÅ’¡ëÖ—ïë}Ö–ÅQ%5MQ5AQhÅ9=PÅ9U10ÅU1PÅ9=\†§∞(ÄÄÄÅ=9MQI%9PÅç°Ö¡±Ö•πçÂ}ïŸïπ—Õ}›°ïπ}ç°ïç¨Å!,Ä†(ÄÄÄÄÄÄÄÅÕ—Ö…—Õ}Ö–Å%LÅ9=PÅ9U10(ÄÄÄÄÄÄÄÅ=HÄ°…ï¡ïÖ–Ä¯ÄùπΩπîúÅ9Å›ïï≠ëÖ‰Å%LÅ9=PÅ9U10Å9ÅÕ—Ö…—}—•µîÅ%LÅ9=PÅ9U10§(ÄÄÄÄ§∞(ÄÄÄÅ=9MQI%9PÅç°Ö¡±Ö•πçÂ}ïŸïπ—Õ}Õ¡Öπ}ç°ïç¨Å!,Ä°ïπëÕ}Ö–Å%LÅ9U10Å=HÅÕ—Ö…—Õ}Ö–Å%LÅ9U10Å=HÅïπëÕ}Ö–Ä¯ÅÕ—Ö…—Õ}Ö–§(§Ï()IQÅ%9`Å%Å9=PÅa%MQLÅç°Ö¡±Ö•πçÂ}ïŸïπ—Õ}Õç°ΩΩ±}•ë‡(ÄÄÄÅ=8Å¡’â±•åπç°Ö¡±Ö•πçÂ}ïŸïπ—ÃÄ°Õç°ΩΩ±}≠ï‰∞ÅÕ—Ö…—Õ}Ö–ÅMÅ9U11LÅ1MP∞Åç…ïÖ—ïë}Ö–ÅM§Ï()1QHÅQ	1Å¡’â±•åπç°Ö¡±Ö•πçÂ}ïŸïπ—ÃÅ9	1ÅI=\Å1Y0ÅMUI%QdÏ()I=@ÅA=1%dÅ%Åa%MQLÅç°Ö¡±Ö•πçÂ}ïŸïπ—Õ}…ïÖëÖâ±îÅ=8Å¡’â±•åπç°Ö¡±Ö•πçÂ}ïŸïπ—ÃÏ)IQÅA=1%dÅç°Ö¡±Ö•πçÂ}ïŸïπ—Õ}…ïÖëÖâ±îÅ=8Å¡’â±•åπç°Ö¡±Ö•πçÂ}ïŸïπ—Ã(ÄÄÄÅ=HÅM1PÅQ<ÅÖ’—°ïπ—•çÖ—ïê(ÄÄÄÅUM%9Ä°QIU§Ï()I=@ÅA=1%dÅ%Åa%MQLÅç°Ö¡±Ö•πçÂ}ç°Ö¡±Ö•π}›…•—îÅ=8Å¡’â±•åπç°Ö¡±Ö•πçÂ}ïŸïπ—ÃÏ)IQÅA=1%dÅç°Ö¡±Ö•πçÂ}ç°Ö¡±Ö•π}›…•—îÅ=8Å¡’â±•åπç°Ö¡±Ö•πçÂ}ïŸïπ—Ã(ÄÄÄÅ=HÅ%9MIPÅQ<ÅÖ’—°ïπ—•çÖ—ïê(ÄÄÄÅ]%Q Å!,Ä°ç…ïÖ—ïë}â‰ÄÙÅÖ’—†π’•ê†§Å9Å¡’â±•åπµÖÂ}±ïÖë}ç°Ö¡±Ö•πç‰°Õç°ΩΩ±}≠ï‰§§Ï()I=@ÅA=1%dÅ%Åa%MQLÅç°Ö¡±Ö•πçÂ}ç°Ö¡±Ö•π}ïë•–Å=8Å¡’â±•åπç°Ö¡±Ö•πçÂ}ïŸïπ—ÃÏ)IQÅA=1%dÅç°Ö¡±Ö•πçÂ}ç°Ö¡±Ö•π}ïë•–Å=8Å¡’â±•åπç°Ö¡±Ö•πçÂ}ïŸïπ—Ã(ÄÄÄÅ=HÅUAQÅQ<ÅÖ’—°ïπ—•çÖ—ïê(ÄÄÄÅUM%9Ä°¡’â±•åπµÖÂ}±ïÖë}ç°Ö¡±Ö•πç‰°Õç°ΩΩ±}≠ï‰§§(ÄÄÄÅ]%Q Å!,Ä°¡’â±•åπµÖÂ}±ïÖë}ç°Ö¡±Ö•πç‰°Õç°ΩΩ±}≠ï‰§§Ï()I=@ÅA=1%dÅ%Åa%MQLÅç°Ö¡±Ö•πçÂ}ç°Ö¡±Ö•π}…ïµΩŸîÅ=8Å¡’â±•åπç°Ö¡±Ö•πçÂ}ïŸïπ—ÃÏ)IQÅA=1%dÅç°Ö¡±Ö•πçÂ}ç°Ö¡±Ö•π}…ïµΩŸîÅ=8Å¡’â±•åπç°Ö¡±Ö•πçÂ}ïŸïπ—Ã(ÄÄÄÅ=HÅ1QÅQ<ÅÖ’—°ïπ—•çÖ—ïê(ÄÄÄÅUM%9Ä°¡’â±•åπµÖÂ}±ïÖë}ç°Ö¡±Ö•πç‰°Õç°ΩΩ±}≠ï‰§§Ï()I9PÅM1P∞Å%9MIP∞ÅUAQ∞Å1QÅ=8Å¡’â±•åπç°Ö¡±Ö•πçÂ}ïŸïπ—ÃÅQ<ÅÖ’—°ïπ—•çÖ—ïêÏ)IY=-Å10Å=8Å¡’â±•åπç°Ö¡±Ö•πçÂ}ïŸïπ—ÃÅI=4ÅÖπΩ∏∞Å¡’â±•åÏ()I=@ÅQI%HÅ%Åa%MQLÅç°Ö¡±Ö•πçÂ}ïŸïπ—Õ}Õï—}’¡ëÖ—ïë}Ö–Å=8Å¡’â±•åπç°Ö¡±Ö•πçÂ}ïŸïπ—ÃÏ)IQÅQI%HÅç°Ö¡±Ö•πçÂ}ïŸïπ—Õ}Õï—}’¡ëÖ—ïë}Ö–(ÄÄÄÅ	=IÅUAQÅ=8Å¡’â±•åπç°Ö¡±Ö•πçÂ}ïŸïπ—Ã(ÄÄÄÅ=HÅ ÅI=\(ÄÄÄÅaUQÅU9Q%=8Å¡’â±•åπÕï—}’¡ëÖ—ïë}Ö–†§Ï(((¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥(¥¥Ä‡∏ÅAIeHÅIEUMQL(¥¥ÅUπ±•≠îÅïŸï…‰ÅΩ—°ï»Å—Öâ±îÅ°ï…î∞ÅÑÅ…ï≈’ïÕ–Å•ÃÅπΩ–ÅÑÅçÖ—Ö±Ωù’î∏ÅQ°î(¥¥ÅÕ—’ëïπ–Å›°ºÅ›…Ω—îÅ•–ÅÖπêÅ—°îÅç°Ö¡±Ö•πç‰ÅΩòÅ—°ï•»ÅÕç°ΩΩ∞ÅÖ…îÅ—°îÅΩπ±‰(¥¥ÅÖççΩ’π—ÃÅ—°Ö–ÅïŸï»ÅÕïîÅ•–∏(¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥()IQÅQ	1Å%Å9=PÅa%MQLÅ¡’â±•åπ¡…ÖÂï…}…ï≈’ïÕ—ÃÄ†(ÄÄÄÅ•êÅUU%ÅAI%5IdÅ-dÅU1PÅùïπ}…ÖπëΩµ}’’•ê†§∞(ÄÄÄÅÕç°ΩΩ∞ÅQaPÅ9=PÅ9U10ÅU1PÄúú∞(ÄÄÄÅÕç°ΩΩ±}≠ï‰ÅQaPÅ9IQÅ1]eLÅLÄ°1=]H°	QI%4°Õç°ΩΩ∞§§§ÅMQ=I∞(ÄÄÄÅÕ—’ëïπ—}•êÅUU%Å9=PÅ9U10ÅII9LÅ¡’â±•åπ¡…Ωô•±ïÃ°•ê§Å=8Å1QÅM∞(ÄÄÄÅ…ï≈’ïÕ–ÅQaPÅ9=PÅ9U10Å!,Ä°ç°Ö…}±ïπù—†°	QI%4°…ï≈’ïÕ–§§Å	Q]8ÄƒÅ9Äƒ¿¿¿§∞(ÄÄÄÅ≠•πêÅQaPÅ9=PÅ9U10ÅU1PÄù¡…ÖÂï»ú(ÄÄÄÄÄÄÄÅ!,Ä°≠•πêÅ%8Ä†ù¡…ÖÂï»ú∞ÄùçΩ’πÕï∞ú∞Äù—°Öπ≠Õù•Ÿ•πúú∞ÄùΩ—°ï»ú§§∞(ÄÄÄÅÖπÕ›ï…Öâ±îÅ	==18Å9=PÅ9U10ÅU1PÅQIU∞(ÄÄÄÅÕ—Ö—’ÃÅQaPÅ9=PÅ9U10ÅU1PÄùΩ¡ï∏úÅ!,Ä°Õ—Ö—’ÃÅ%8Ä†ùΩ¡ï∏ú∞ÄùÖπÕ›ï…ïêú§§∞(ÄÄÄÅ…ï¡±‰ÅQaPÅ9=PÅ9U10ÅU1PÄúúÅ!,Ä°ç°Ö…}±ïπù—†°…ï¡±‰§ÄÙÄƒ¿¿¿§∞(ÄÄÄÅÖπÕ›ï…ïë}â‰ÅUU%ÅII9LÅ¡’â±•åπ¡…Ωô•±ïÃ°•ê§Å=8Å1QÅMPÅ9U10∞(ÄÄÄÅÖπÕ›ï…ïë}Ö–ÅQ%5MQ5AQh∞(ÄÄÄÅç…ïÖ—ïë}Ö–ÅQ%5MQ5AQhÅ9=PÅ9U10ÅU1PÅ9=\†§∞(ÄÄÄÅ’¡ëÖ—ïë}Ö–ÅQ%5MQ5AQhÅ9=PÅ9U10ÅU1PÅ9=\†§(§Ï()IQÅ%9`Å%Å9=PÅa%MQLÅ¡…ÖÂï…}…ï≈’ïÕ—Õ}Õç°ΩΩ±}Õ—Ö—’Õ}•ë‡(ÄÄÄÅ=8Å¡’â±•åπ¡…ÖÂï…}…ï≈’ïÕ—ÃÄ°Õç°ΩΩ±}≠ï‰∞ÅÕ—Ö—’Ã∞Åç…ïÖ—ïë}Ö–ÅM§Ï()1QHÅQ	1Å¡’â±•åπ¡…ÖÂï…}…ï≈’ïÕ—ÃÅ9	1ÅI=\Å1Y0ÅMUI%QdÏ()I=@ÅA=1%dÅ%Åa%MQLÅ¡…ÖÂï…}…ï≈’ïÕ—Õ}Ω›π}Ω…}ç°Ö¡±Ö•πç‰Å=8Å¡’â±•åπ¡…ÖÂï…}…ï≈’ïÕ—ÃÏ)IQÅA=1%dÅ¡…ÖÂï…}…ï≈’ïÕ—Õ}Ω›π}Ω…}ç°Ö¡±Ö•πç‰Å=8Å¡’â±•åπ¡…ÖÂï…}…ï≈’ïÕ—Ã(ÄÄÄÅ=HÅM1PÅQ<ÅÖ’—°ïπ—•çÖ—ïê(ÄÄÄÅUM%9Ä°Õ—’ëïπ—}•êÄÙÅÖ’—†π’•ê†§Å=HÅ¡’â±•åπµÖÂ}±ïÖë}ç°Ö¡±Ö•πç‰°Õç°ΩΩ±}≠ï‰§§Ï()I=@ÅA=1%dÅ%Åa%MQLÅ¡…ÖÂï…}…ï≈’ïÕ—Õ}Õ—’ëïπ—}›…•—îÅ=8Å¡’â±•åπ¡…ÖÂï…}…ï≈’ïÕ—ÃÏ)IQÅA=1%dÅ¡…ÖÂï…}…ï≈’ïÕ—Õ}Õ—’ëïπ—}›…•—îÅ=8Å¡’â±•åπ¡…ÖÂï…}…ï≈’ïÕ—Ã(ÄÄÄÅ=HÅ%9MIPÅQ<ÅÖ’—°ïπ—•çÖ—ïê(ÄÄÄÅ]%Q Å!,Ä°Õ—’ëïπ—}•êÄÙÅÖ’—†π’•ê†§Å9ÅÖπÕ›ï…Öâ±î§Ï()I=@ÅA=1%dÅ%Åa%MQLÅ¡…ÖÂï…}…ï≈’ïÕ—Õ}ç°Ö¡±Ö•πçÂ}ÖπÕ›ï»Å=8Å¡’â±•åπ¡…ÖÂï…}…ï≈’ïÕ—ÃÏ)IQÅA=1%dÅ¡…ÖÂï…}…ï≈’ïÕ—Õ}ç°Ö¡±Ö•πçÂ}ÖπÕ›ï»Å=8Å¡’â±•åπ¡…ÖÂï…}…ï≈’ïÕ—Ã(ÄÄÄÅ=HÅUAQÅQ<ÅÖ’—°ïπ—•çÖ—ïê(ÄÄÄÅUM%9Ä°¡’â±•åπµÖÂ}±ïÖë}ç°Ö¡±Ö•πç‰°Õç°ΩΩ±}≠ï‰§§(ÄÄÄÅ]%Q Å!,Ä°¡’â±•åπµÖÂ}±ïÖë}ç°Ö¡±Ö•πç‰°Õç°ΩΩ±}≠ï‰§Å9ÅÕ—’ëïπ—}•êÄÙÅ=1πÕ—’ëïπ—}•ê§Ï()I=@ÅA=1%dÅ%Åa%MQLÅ¡…ÖÂï…}…ï≈’ïÕ—Õ}Õ—’ëïπ—}…ïµΩŸîÅ=8Å¡’â±•åπ¡…ÖÂï…}…ï≈’ïÕ—ÃÏ)IQÅA=1%dÅ¡…ÖÂï…}…ï≈’ïÕ—Õ}Õ—’ëïπ—}…ïµΩŸîÅ=8Å¡’â±•åπ¡…ÖÂï…}…ï≈’ïÕ—Ã(ÄÄÄÅ=HÅ1QÅQ<ÅÖ’—°ïπ—•çÖ—ïê(ÄÄÄÅUM%9Ä°Õ—’ëïπ—}•êÄÙÅÖ’—†π’•ê†§Å9ÅÕ—Ö—’ÃÄÙÄùΩ¡ï∏ú§Ï()I9PÅM1P∞Å%9MIP∞ÅUAQ∞Å1QÅ=8Å¡’â±•åπ¡…ÖÂï…}…ï≈’ïÕ—ÃÅQ<ÅÖ’—°ïπ—•çÖ—ïêÏ)IY=-Å10Å=8Å¡’â±•åπ¡…ÖÂï…}…ï≈’ïÕ—ÃÅI=4ÅÖπΩ∏∞Å¡’â±•åÏ()I=@ÅQI%HÅ%Åa%MQLÅ¡…ÖÂï…}…ï≈’ïÕ—Õ}Õï—}’¡ëÖ—ïë}Ö–Å=8Å¡’â±•åπ¡…ÖÂï…}…ï≈’ïÕ—ÃÏ)IQÅQI%HÅ¡…ÖÂï…}…ï≈’ïÕ—Õ}Õï—}’¡ëÖ—ïë}Ö–(ÄÄÄÅ	=IÅUAQÅ=8Å¡’â±•åπ¡…ÖÂï…}…ï≈’ïÕ—Ã(ÄÄÄÅ=HÅ ÅI=\(ÄÄÄÅaUQÅU9Q%=8Å¡’â±•åπÕï—}’¡ëÖ—ïë}Ö–†§Ï(((¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥(¥¥Ä‰∏ÅQ!Å1MLÅ1%MPÅQ!PÅ]I%QLÅ%QM1(¥¥ÅÅ±ïç—’…ï»ÅΩ¡ïπÃÅÑÅ›•πëΩ‹∞Å…ïÖëÃÅΩ’–ÅÑÅçΩëî∞ÅÖπêÅïŸï…‰ÅÕ—’ëïπ–Å›°ºÅ•Ã(¥¥ÅÖç—’Ö±±‰Å•∏Å—°îÅç±ÖÕÃÅ¡…ïÕÕïÃÅΩπçî∏ÅQ°îÅπÖµïÃÅçΩµîÅΩ’–ÅΩòÅ—°îÅ…Ω›Ã(¥¥Åâï±Ω‹∞ÅÕºÅÖ∏ÅÖ——ïπëÖπçîÅ±•Õ–Å•ÃÅπïŸï»ÅÕΩµï—°•πúÅÑÅÕ—’ëïπ–Å—Â¡ïê∏(¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥()IQÅ=HÅIA1ÅU9Q%=8Å¡’â±•åπç±ÖÕÕ}Ωçç’……ïπçï}ëÖ—î°¡}›ïï≠ëÖ‰Å%9P§)IQUI9LÅQ)19UÅÕ≈∞)MQ	1)MPÅÕïÖ…ç°}¡Ö—†ÄÙÄúú)LÄêê(ÄÄÄÅM1PÅUII9Q}QÄ¥Ä°aQIP°%M==\ÅI=4ÅUII9Q}Q§ËÈ%9PÄ¥Å¡}›ïï≠ëÖ‰§(êêÏ()IY=-Å10Å=8ÅU9Q%=8Å¡’â±•åπç±ÖÕÕ}Ωçç’……ïπçï}ëÖ—î°%9P§ÅI=4ÅAU	1%∞ÅÖπΩ∏Ï)I9PÅaUQÅ=8ÅU9Q%=8Å¡’â±•åπç±ÖÕÕ}Ωçç’……ïπçï}ëÖ—î°%9P§ÅQ<ÅÖ’—°ïπ—•çÖ—ïêÏ()1QHÅQ	1Å¡’â±•åπç±ÖÕÕ}ÕïÕÕ•ΩπÃ(ÄÄÄÅÅ=1U58Å%Å9=PÅa%MQLÅç°ïç≠•π}çΩëîÅQaPÅ9=PÅ9U10ÅU1PÄúú∞(ÄÄÄÅÅ=1U58Å%Å9=PÅa%MQLÅç°ïç≠•π}Ω¡ïπÕ}Ö–ÅQ%5MQ5AQh∞(ÄÄÄÅÅ=1U58Å%Å9=PÅa%MQLÅç°ïç≠•π}ï·¡•…ïÕ}Ö–ÅQ%5MQ5AQh∞(ÄÄÄÅÅ=1U58Å%Å9=PÅa%MQLÅç°ïç≠•π}Ωçç’……ïπçîÅQÏ()IQÅQ	1Å%Å9=PÅa%MQLÅ¡’â±•åπç±ÖÕÕ}ç°ïç≠•πÃÄ†(ÄÄÄÅ•êÅUU%ÅAI%5IdÅ-dÅU1PÅùïπ}…ÖπëΩµ}’’•ê†§∞(ÄÄÄÅç±ÖÕÕ}•êÅUU%Å9=PÅ9U10ÅII9LÅ¡’â±•åπç±ÖÕÕ}ÕïÕÕ•ΩπÃ°•ê§Å=8Å1QÅM∞(ÄÄÄÅÕ—’ëïπ—}•êÅUU%Å9=PÅ9U10ÅII9LÅ¡’â±•åπ¡…Ωô•±ïÃ°•ê§Å=8Å1QÅM∞(ÄÄÄÅΩçç’……ïπçï}ëÖ—îÅQÅ9=PÅ9U10∞(ÄÄÄÅµï—°ΩêÅQaPÅ9=PÅ9U10ÅU1PÄùçΩëîúÅ!,Ä°µï—°ΩêÅ%8Ä†ùçΩëîú∞ÄùçΩ……ïç—ïêú§§∞(ÄÄÄÅç°ïç≠ïë}Ö–ÅQ%5MQ5AQhÅ9=PÅ9U10ÅU1PÅ9=\†§∞(ÄÄÄÅ=9MQI%9PÅç±ÖÕÕ}ç°ïç≠•πÕ}Ωπçï}¡ï…}ç±ÖÕÃÅU9%EUÄ°ç±ÖÕÕ}•ê∞ÅÕ—’ëïπ—}•ê∞ÅΩçç’……ïπçï}ëÖ—î§(§Ï()IQÅ%9`Å%Å9=PÅa%MQLÅç±ÖÕÕ}ç°ïç≠•πÕ}…Ω±±}•ë‡(ÄÄÄÅ=8Å¡’â±•åπç±ÖÕÕ}ç°ïç≠•πÃÄ°ç±ÖÕÕ}•ê∞ÅΩçç’……ïπçï}ëÖ—î∞Åç°ïç≠ïë}Ö–§Ï()1QHÅQ	1Å¡’â±•åπç±ÖÕÕ}ç°ïç≠•πÃÅ9	1ÅI=\Å1Y0ÅMUI%QdÏ((¥¥ÅÅÕ—’ëïπ–ÅÕïïÃÅ—°ï•»ÅΩ›∏ÅµÖ…¨∏ÅQ°îÅ±ïç—’…ï»Å›°ºÅΩ›πÃÅ—°îÅç±ÖÕÃÅÕïïÃÅ—°î(¥¥Å›°Ω±îÅ±•Õ–ÏÅπΩâΩë‰Åï±ÕîÅùï—ÃÅÖπÂ—°•πú∏)I=@ÅA=1%dÅ%Åa%MQLÅç±ÖÕÕ}ç°ïç≠•πÕ}Ω›π}Ω…}Ω›πï»Å=8Å¡’â±•åπç±ÖÕÕ}ç°ïç≠•πÃÏ)IQÅA=1%dÅç±ÖÕÕ}ç°ïç≠•πÕ}Ω›π}Ω…}Ω›πï»Å=8Å¡’â±•åπç±ÖÕÕ}ç°ïç≠•πÃ(ÄÄÄÅ=HÅM1PÅQ<ÅÖ’—°ïπ—•çÖ—ïê(ÄÄÄÅUM%9Ä†(ÄÄÄÄÄÄÄÅÕ—’ëïπ—}•êÄÙÅÖ’—†π’•ê†§(ÄÄÄÄÄÄÄÅ=HÅ¡’â±•åπ•Õ}Öëµ•∏†§(ÄÄÄÄÄÄÄÅ=HÅa%MQLÄ†(ÄÄÄÄÄÄÄÄÄÄÄÅM1PÄƒÅI=4Å¡’â±•åπç±ÖÕÕ}ÕïÕÕ•ΩπÃÅLÅÃ(ÄÄÄÄÄÄÄÄÄÄÄÅ]!IÅÃπ•êÄÙÅç±ÖÕÕ}ç°ïç≠•πÃπç±ÖÕÕ}•ê(ÄÄÄÄÄÄÄÄÄÄÄÄÄÅ9ÅÃπ±ïç—’…ï…}•êÄÙÅÖ’—†π’•ê†§(ÄÄÄÄÄÄÄÄ§(ÄÄÄÄ§Ï()I9PÅM1PÅ=8Å¡’â±•åπç±ÖÕÕ}ç°ïç≠•πÃÅQ<ÅÖ’—°ïπ—•çÖ—ïêÏ)IY=-Å10Å=8Å¡’â±•åπç±ÖÕÕ}ç°ïç≠•πÃÅI=4ÅÖπΩ∏∞Å¡’â±•åÏ()IQÅ=HÅIA1ÅU9Q%=8Å¡’â±•åπΩ¡ïπ}ç±ÖÕÕ}ç°ïç≠•∏°¡}ç±ÖÕÕ}•êÅUU%∞Å¡}µ•π’—ïÃÅ%9PÅU1PÄ»¿§)IQUI9LÅQaP)19UÅ¡±¡ùÕ≈∞)MUI%QdÅ%9H)MPÅÕïÖ…ç°}¡Ö—†ÄÙÄúú)LÄêê)1I(ÄÄÄÅŸ}±ïç—’…ï»ÅUU%Ï(ÄÄÄÅŸ}›ïï≠ëÖ‰Å%9PÏ(ÄÄÄÅŸ}çΩëîÅQaPÏ(ÄÄÄÅŸ}›•πëΩ‹Å%9PÏ)	%8(ÄÄÄÅM1PÅÃπ±ïç—’…ï…}•ê∞ÅÃπ›ïï≠ëÖ‰Å%9Q<ÅŸ}±ïç—’…ï»∞ÅŸ}›ïï≠ëÖ‰(ÄÄÄÅI=4Å¡’â±•åπç±ÖÕÕ}ÕïÕÕ•ΩπÃÅLÅÃ(ÄÄÄÅ]!IÅÃπ•êÄÙÅ¡}ç±ÖÕÕ}•êÏ((ÄÄÄÅ%ÅŸ}±ïç—’…ï»Å%LÅ9U10ÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8Äù9ºÅÕ’ç†Åç±ÖÕÃ∏úÅUM%9ÅII=ÄÙÄù@¿¿¿»úÏ(ÄÄÄÅ9Å%Ï((ÄÄÄÅ%ÅŸ}±ïç—’…ï»Ä¯ÅÖ’—†π’•ê†§Å9Å9=PÅ¡’â±•åπ•Õ}Öëµ•∏†§ÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8Äù=π±‰Å—°îÅ±ïç—’…ï»Å—Ö≠•πúÅ—°Ö–Åç±ÖÕÃÅçÖ∏ÅΩ¡ï∏Å•—ÃÅ…ïù•Õ—ï»∏ú(ÄÄÄÄÄÄÄÄÄÄÄÅUM%9ÅII=ÄÙÄú–»‘¿ƒúÏ(ÄÄÄÅ9Å%Ï((ÄÄÄÅŸ}›•πëΩ‹ÄËÙÅ1MP°IQMP°=1M°¡}µ•π’—ïÃ∞Ä»¿§∞Äƒ§∞Äƒ»¿§Ï(ÄÄÄÅM1PÅUAAH°MU	MQH°5‘°I9=4†§ËÈQaPÅÒÅ1=-}Q%5MQ5@†§ËÈQaP§∞Äƒ∞Äÿ§§Å%9Q<ÅŸ}çΩëîÏ((ÄÄÄÅUAQÅ¡’â±•åπç±ÖÕÕ}ÕïÕÕ•ΩπÃ(ÄÄÄÄÄÄÄÅMPÅç°ïç≠•π}çΩëîÄÙÅŸ}çΩëî∞(ÄÄÄÄÄÄÄÄÄÄÄÅç°ïç≠•π}Ω¡ïπÕ}Ö–ÄÙÅ9=\†§∞(ÄÄÄÄÄÄÄÄÄÄÄÅç°ïç≠•π}ï·¡•…ïÕ}Ö–ÄÙÅ9=\†§Ä¨Å5-}%9QIY0°µ•πÃÄÙ¯ÅŸ}›•πëΩ‹§∞(ÄÄÄÄÄÄÄÄÄÄÄÅç°ïç≠•π}Ωçç’……ïπçîÄÙÅ¡’â±•åπç±ÖÕÕ}Ωçç’……ïπçï}ëÖ—î°Ÿ}›ïï≠ëÖ‰§(ÄÄÄÄÄÄÄÅ]!IÅ•êÄÙÅ¡}ç±ÖÕÕ}•êÏ((ÄÄÄÅIQUI8ÅŸ}çΩëîÏ)9Ï(êêÏ()IQÅ=HÅIA1ÅU9Q%=8Å¡’â±•åπç°ïç≠}•π—Ω}ç±ÖÕÃ°¡}ç±ÖÕÕ}•êÅUU%∞Å¡}çΩëîÅQaP§)IQUI9LÅ%9P)19UÅ¡±¡ùÕ≈∞)MUI%QdÅ%9H)MPÅÕïÖ…ç°}¡Ö—†ÄÙÄúú)LÄêê)1I(ÄÄÄÅŸ}ï·¡ïç—ïêÅQaPÏ(ÄÄÄÅŸ}ï·¡•…ïÃÅQ%5MQ5AQhÏ(ÄÄÄÅŸ}Ω∏ÅQÏ(ÄÄÄÅŸ}›ïï≠ëÖ‰Å%9PÏ)	%8(ÄÄÄÅM1PÅÃπç°ïç≠•π}çΩëî∞ÅÃπç°ïç≠•π}ï·¡•…ïÕ}Ö–∞ÅÃπç°ïç≠•π}Ωçç’……ïπçî∞ÅÃπ›ïï≠ëÖ‰(ÄÄÄÄÄÅ%9Q<ÅŸ}ï·¡ïç—ïê∞ÅŸ}ï·¡•…ïÃ∞ÅŸ}Ω∏∞ÅŸ}›ïï≠ëÖ‰(ÄÄÄÅI=4Å¡’â±•åπç±ÖÕÕ}ÕïÕÕ•ΩπÃÅLÅÃ(ÄÄÄÅ]!IÅÃπ•êÄÙÅ¡}ç±ÖÕÕ}•êÏ((ÄÄÄÅ%ÅŸ}ï·¡ïç—ïêÅ%LÅ9U10ÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8Äù9ºÅÕ’ç†Åç±ÖÕÃ∏úÅUM%9ÅII=ÄÙÄù@¿¿¿»úÏ(ÄÄÄÅ9Å%Ï((ÄÄÄÄ¥¥ÅQ°îÅ…ïù•Õ—ï»Å•ÃÅΩ¡ïπïêÅâ‰Å—°îÅ±ïç—’…ï»∞ÅπïŸï»Åâ‰Å—°îÅÖ¡¿ÅÖ±Ωπî∏ÅQ°•Ã(ÄÄÄÄ¥¥Å•ÃÅ—°îÅ›°Ω±îÅë•ôôï…ïπçîÅâï—›ïï∏ÅÖ∏ÅÖ——ïπëÖπçîÅ±•Õ–ÅÖπêÅÑÅ›•Õ†Å±•Õ–∏(ÄÄÄÅ%ÅŸ}ï·¡ïç—ïêÄÙÄúúÅ=HÅŸ}ï·¡•…ïÃÅ%LÅ9U10Å=HÅŸ}ï·¡•…ïÃÄÅ9=\†§ÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8ÄùQ°Ö–Å…ïù•Õ—ï»Å•ÃÅç±ΩÕïê∏ÅÕ¨Å—°îÅ±ïç—’…ï»Å—ºÅΩ¡ï∏Å•–ÅÖùÖ•∏∏ú(ÄÄÄÄÄÄÄÄÄÄÄÅUM%9ÅII=ÄÙÄù@¿¿¿ƒúÏ(ÄÄÄÅ9Å%Ï((ÄÄÄÅ%ÅUAAH°	QI%4°=1M°¡}çΩëî∞Äúú§§§Ä¯ÅŸ}ï·¡ïç—ïêÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8ÄùQ°Ö–ÅçΩëîÅ•ÃÅπΩ–Å—°îÅΩπîÅΩ∏Å—°îÅâΩÖ…ê∏ú(ÄÄÄÄÄÄÄÄÄÄÄÅUM%9ÅII=ÄÙÄú»»¿»ÃúÏ(ÄÄÄÅ9Å%Ï((ÄÄÄÅ%Å9=PÅ¡’â±•åπµÖÂ}’Õï}ç±ÖÕÕïÃ†§ÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8ÄùÅç±ÖÕÃÅ±•Õ–ÅπïïëÃÅÂΩ’»Å…ïù•Õ—…Ö—•Ω∏Åπ’µâï»ÅΩ∏Åô•±î∏ú(ÄÄÄÄÄÄÄÄÄÄÄÅUM%9ÅII=ÄÙÄú–»‘¿ƒúÏ(ÄÄÄÅ9Å%Ï((ÄÄÄÅ%ÅŸ}Ω∏Å%LÅ9U10ÅQ!8(ÄÄÄÄÄÄÄÅŸ}Ω∏ÄËÙÅ¡’â±•åπç±ÖÕÕ}Ωçç’……ïπçï}ëÖ—î°Ÿ}›ïï≠ëÖ‰§Ï(ÄÄÄÅ9Å%Ï((ÄÄÄÅ%9MIPÅ%9Q<Å¡’â±•åπç±ÖÕÕ}ç°ïç≠•πÃÄ°ç±ÖÕÕ}•ê∞ÅÕ—’ëïπ—}•ê∞ÅΩçç’……ïπçï}ëÖ—î§(ÄÄÄÄÄÄÄÅY1ULÄ°¡}ç±ÖÕÕ}•ê∞ÅÖ’—†π’•ê†§∞ÅŸ}Ω∏§(ÄÄÄÅ=8Å=91%PÄ°ç±ÖÕÕ}•ê∞ÅÕ—’ëïπ—}•ê∞ÅΩçç’……ïπçï}ëÖ—î§Å<Å9=Q!%9Ï((ÄÄÄÅIQUI8Å=U9ËÈ%9PÏ)9Ï(êêÏ()IQÅ=HÅIA1ÅU9Q%=8Å¡’â±•åπç±ÖÕÕ}Ö——ïπëÖπçî†(ÄÄÄÅ¡}ç±ÖÕÕ}•êÅUU%∞(ÄÄÄÅ¡}Ωçç’……ïπçîÅQÅU1PÅ9U10(§)IQUI9LÅQ	1Ä†(ÄÄÄÅµïµâï…}•êÅUU%∞(ÄÄÄÅô’±±}πÖµîÅQaP∞(ÄÄÄÅ’Õï…πÖµîÅQaP∞(ÄÄÄÅ…ïù•Õ—…Ö—•Ωπ}π’µâï»ÅQaP∞(ÄÄÄÅ¡…Ωù…ÖµµîÅQaP∞(ÄÄÄÅÕ—’ëÂ}ÂïÖ»Å%9P∞(ÄÄÄÅÕïµïÕ—ï»Å%9P∞(ÄÄÄÅç°ïç≠ïë}Ö–ÅQ%5MQ5AQh(§)19UÅ¡±¡ùÕ≈∞)MQ	1)MUI%QdÅ%9H)MPÅÕïÖ…ç°}¡Ö—†ÄÙÄúú)LÄêê)1I(ÄÄÄÅŸ}±ïç—’…ï»ÅUU%Ï)	%8(ÄÄÄÅM1PÅÃπ±ïç—’…ï…}•êÅ%9Q<ÅŸ}±ïç—’…ï»(ÄÄÄÅI=4Å¡’â±•åπç±ÖÕÕ}ÕïÕÕ•ΩπÃÅLÅÃ(ÄÄÄÅ]!IÅÃπ•êÄÙÅ¡}ç±ÖÕÕ}•êÏ((ÄÄÄÅ%ÅŸ}±ïç—’…ï»Å%LÅ9U10ÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8Äù9ºÅÕ’ç†Åç±ÖÕÃ∏úÅUM%9ÅII=ÄÙÄù@¿¿¿»úÏ(ÄÄÄÅ9Å%Ï((ÄÄÄÅ%ÅŸ}±ïç—’…ï»Ä¯ÅÖ’—†π’•ê†§Å9Å9=PÅ¡’â±•åπ•Õ}Öëµ•∏†§ÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8Äù=π±‰Å—°îÅ±ïç—’…ï»Å—Ö≠•πúÅ—°Ö–Åç±ÖÕÃÅ…ïÖëÃÅ•—ÃÅÖ——ïπëÖπçî∏ú(ÄÄÄÄÄÄÄÄÄÄÄÅUM%9ÅII=ÄÙÄú–»‘¿ƒúÏ(ÄÄÄÅ9Å%Ï((ÄÄÄÅIQUI8ÅEUId(ÄÄÄÅM1PÅåπÕ—’ëïπ—}•ê∞(ÄÄÄÄÄÄÄÄÄÄÅ¿πô’±±}πÖµî∞(ÄÄÄÄÄÄÄÄÄÄÅ¿π’Õï…πÖµî∞(ÄÄÄÄÄÄÄÄÄÄÅ»π…ïù•Õ—…Ö—•Ωπ}π’µâï»∞(ÄÄÄÄÄÄÄÄÄÄÅúππÖµî∞(ÄÄÄÄÄÄÄÄÄÄÅ¿πÕ—’ëÂ}ÂïÖ»∞(ÄÄÄÄÄÄÄÄÄÄÅ¿πÕïµïÕ—ï»∞(ÄÄÄÄÄÄÄÄÄÄÅåπç°ïç≠ïë}Ö–(ÄÄÄÅI=4Å¡’â±•åπç±ÖÕÕ}ç°ïç≠•πÃÅLÅå(ÄÄÄÅ)=%8Å¡’â±•åπ¡…Ωô•±ïÃÅLÅ¿Å=8Å¿π•êÄÙÅåπÕ—’ëïπ—}•ê(ÄÄÄÅ1PÅ)=%8Å¡’â±•åπÕ—’ëïπ—}…ïù•Õ—…Ö—•ΩπÃÅLÅ»Å=8Å»π’Õï…}•êÄÙÅ¿π•ê(ÄÄÄÅ1PÅ)=%8Å¡’â±•åπ¡…Ωù…ÖµµïÃÅLÅúÅ=8Åúπ•êÄÙÅ¿π¡…Ωù…Öµµï}•ê(ÄÄÄÅ]!IÅåπç±ÖÕÕ}•êÄÙÅ¡}ç±ÖÕÕ}•ê(ÄÄÄÄÄÅ9Ä°¡}Ωçç’……ïπçîÅ%LÅ9U10Å=HÅåπΩçç’……ïπçï}ëÖ—îÄÙÅ¡}Ωçç’……ïπçî§(ÄÄÄÅ=IHÅ	dÅ¿πô’±±}πÖµîÏ)9Ï(êêÏ()IY=-Å10Å=8ÅU9Q%=8Å¡’â±•åπΩ¡ïπ}ç±ÖÕÕ}ç°ïç≠•∏°UU%∞Å%9P§ÅI=4ÅAU	1%∞ÅÖπΩ∏Ï)IY=-Å10Å=8ÅU9Q%=8Å¡’â±•åπç°ïç≠}•π—Ω}ç±ÖÕÃ°UU%∞ÅQaP§ÅI=4ÅAU	1%∞ÅÖπΩ∏Ï)IY=-Å10Å=8ÅU9Q%=8Å¡’â±•åπç±ÖÕÕ}Ö——ïπëÖπçî°UU%∞ÅQ§ÅI=4ÅAU	1%∞ÅÖπΩ∏Ï)I9PÅaUQÅ=8ÅU9Q%=8Å¡’â±•åπΩ¡ïπ}ç±ÖÕÕ}ç°ïç≠•∏°UU%∞Å%9P§ÅQ<ÅÖ’—°ïπ—•çÖ—ïêÏ)I9PÅaUQÅ=8ÅU9Q%=8Å¡’â±•åπç°ïç≠}•π—Ω}ç±ÖÕÃ°UU%∞ÅQaP§ÅQ<ÅÖ’—°ïπ—•çÖ—ïêÏ)I9PÅaUQÅ=8ÅU9Q%=8Å¡’â±•åπç±ÖÕÕ}Ö——ïπëÖπçî°UU%∞ÅQ§ÅQ<ÅÖ’—°ïπ—•çÖ—ïêÏ()I=@ÅQI%HÅ%Åa%MQLÅçÖµ¡’Õ}Õï…Ÿ•çïÕ}Õï—}’¡ëÖ—ïë}Ö–Å=8Å¡’â±•åπçÖµ¡’Õ}Õï…Ÿ•çïÃÏ)IQÅQI%HÅçÖµ¡’Õ}Õï…Ÿ•çïÕ}Õï—}’¡ëÖ—ïë}Ö–(ÄÄÄÅ	=IÅUAQÅ=8Å¡’â±•åπçÖµ¡’Õ}Õï…Ÿ•çïÃ(ÄÄÄÅ=HÅ ÅI=\(ÄÄÄÅaUQÅU9Q%=8Å¡’â±•åπÕï—}’¡ëÖ—ïë}Ö–†§Ï(((¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥(¥¥Äƒ¿∏ÅQ!ÅAAI=Y0ÅAQ Å9=\Å-9=]LÅQ!Å%Q ÅI=1(¥¥ÅÅ¡ï…ÕΩ∏ÅÖÕ≠ÃÅôΩ»Å—°îÅ…Ω±î∞ÅÖ∏ÅÖëµ•∏Åù…Öπ—ÃÅ•–∏ÅQ°ïÕîÅÖ…îÅ—°îÅÕÖµîÅ—›º(¥¥Åô’πç—•ΩπÃÅ—°Ö–ÅÖ±…ïÖë‰ÅëºÅ—°Ö–ÅôΩ»ÅÑÅ±ïç—’…ï»ÅΩ»ÅÑÅÕïç’…•—‰Åµïµâï»∞(¥¥Å›•—†Äùç°Ö¡±Ö•∏úÅÖëëïêÅ—ºÅ—°îÅ±•Õ—ÃÅ—°ï‰Åç°ïç¨∏(¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥()IQÅ=HÅIA1ÅU9Q%=8Å¡’â±•åπÖ¡¡…ΩŸï}µïµâï…Õ°•¿°¡}’Õï…}•êÅUU%§)IQUI9LÅY=%)19UÅ¡±¡ùÕ≈∞)MUI%QdÅ%9H)MPÅÕïÖ…ç°}¡Ö—†ÄÙÄúú)LÄêê)	%8(ÄÄÄÅ%Å9=PÅ¡’â±•åπ•Õ}Öëµ•∏†§ÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8Äù=π±‰ÅÖ∏ÅÖëµ•∏ÅçÖ∏ÅÖ¡¡…ΩŸîÅÑÅ…Ω±îÅ…ï≈’ïÕ–∏ú(ÄÄÄÄÄÄÄÄÄÄÄÅUM%9ÅII=ÄÙÄú–»‘¿ƒúÏ(ÄÄÄÅ9Å%Ï((ÄÄÄÅUAQÅ¡’â±•åπ¡…Ωô•±ïÃ(ÄÄÄÄÄÄÄÅMPÅŸï…•ô•çÖ—•Ωπ}Õ—Ö—’ÃÄÙÄùÖ¡¡…ΩŸïêú∞(ÄÄÄÄÄÄÄÄÄÄÄÅ…Ω±îÄÙÅMÅ]!8Å…ï≈’ïÕ—ïë}…Ω±îÅ%8Ä†ù±ïç—’…ï»ú∞ÄùÕïç’…•—‰ú∞Äùç°Ö¡±Ö•∏ú§(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅQ!8Å…ï≈’ïÕ—ïë}…Ω±îÅ1MÅ…Ω±îÅ9(ÄÄÄÄÄÄÄÅ]!IÅ•êÄÙÅ¡}’Õï…}•êÏ((ÄÄÄÅ%Å9=PÅ=U9ÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8Äù9ºÅÕ’ç†Åµïµâï»∏úÅUM%9ÅII=ÄÙÄù@¿¿¿»úÏ(ÄÄÄÅ9Å%Ï((ÄÄÄÅ%9MIPÅ%9Q<Å¡’â±•åπÖëµ•π}Öç—•Ωπ}±ΩúÄ°Öç—Ω…}•ê∞Å—Ö…ùï—}’Õï…}•ê∞ÅÖç—•Ω∏§(ÄÄÄÄÄÄÄÅY1ULÄ°Ö’—†π’•ê†§∞Å¡}’Õï…}•ê∞ÄùÖ¡¡…ΩŸîú§Ï)9Ï(êêÏ()IQÅ=HÅIA1ÅU9Q%=8Å¡’â±•åπÕï—}’Õï…}…Ω±î°¡}’Õï…}•êÅUU%∞Å¡}…Ω±îÅQaP§)IQUI9LÅY=%)19UÅ¡±¡ùÕ≈∞)MUI%QdÅ%9H)MPÅÕïÖ…ç°}¡Ö—†ÄÙÄúú)LÄêê)	%8(ÄÄÄÅ%Å9=PÅ¡’â±•åπ•Õ}Öëµ•∏†§ÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8Äù=π±‰ÅÖ∏ÅÖëµ•∏ÅçÖ∏Åç°ÖπùîÅÑÅ…Ω±î∏ú(ÄÄÄÄÄÄÄÄÄÄÄÅUM%9ÅII=ÄÙÄú–»‘¿ƒúÏ(ÄÄÄÅ9Å%Ï((ÄÄÄÅ%Å¡}…Ω±îÅ9=PÅ%8Ä†ùÕ—’ëïπ–ú∞Äù±ïç—’…ï»ú∞ÄùÕïç’…•—‰ú∞ÄùÖëµ•∏ú∞Äùµïµâï»ú∞Äùç°Ö¡±Ö•∏ú§ÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8ÄùUπ≠πΩ›∏Å…Ω±î∏úÅUM%9ÅII=ÄÙÄú»»¿»ÃúÏ(ÄÄÄÅ9Å%Ï((ÄÄÄÄ¥¥ÅIïô’ÕîÅ—ºÅ±Ωç¨ÅïŸï…ÂâΩë‰ÅΩ’–ÅΩòÅ—°îÅÖëµ•∏ÅÕç…ïï∏∏(ÄÄÄÅ%Å¡}…Ω±îÄ¯ÄùÖëµ•∏ú(ÄÄÄÄÄÄÅ9Ä°M1PÅ…Ω±îÅI=4Å¡’â±•åπ¡…Ωô•±ïÃÅ]!IÅ•êÄÙÅ¡}’Õï…}•ê§ÄÙÄùÖëµ•∏ú(ÄÄÄÄÄÄÅ9Ä°M1PÅ=U9P†®§ÅI=4Å¡’â±•åπ¡…Ωô•±ïÃÅ]!IÅ…Ω±îÄÙÄùÖëµ•∏ú§ÄÙÄƒÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8ÄùQ°Ö–Å•ÃÅ—°îÅ±ÖÕ–ÅÖëµ•∏∏Å¡¡Ω•π–ÅÖπΩ—°ï»ÅÖëµ•∏Åô•…Õ–∏ú(ÄÄÄÄÄÄÄÄÄÄÄÅUM%9ÅII=ÄÙÄù@¿¿¿ƒúÏ(ÄÄÄÅ9Å%Ï((ÄÄÄÅUAQÅ¡’â±•åπ¡…Ωô•±ïÃ(ÄÄÄÄÄÄÄÅMPÅ…Ω±îÄÙÅ¡}…Ω±î∞(ÄÄÄÄÄÄÄÄÄÄÄÅŸï…•ô•çÖ—•Ωπ}Õ—Ö—’ÃÄÙÄùÖ¡¡…ΩŸïêú∞(ÄÄÄÄÄÄÄÄÄÄÄÅ…ï≈’ïÕ—ïë}…Ω±îÄÙÄúú(ÄÄÄÄÄÄÄÅ]!IÅ•êÄÙÅ¡}’Õï…}•êÏ((ÄÄÄÅ%Å9=PÅ=U9ÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8Äù9ºÅÕ’ç†Åµïµâï»∏úÅUM%9ÅII=ÄÙÄù@¿¿¿»úÏ(ÄÄÄÅ9Å%Ï((ÄÄÄÅ%9MIPÅ%9Q<Å¡’â±•åπÖëµ•π}Öç—•Ωπ}±ΩúÄ°Öç—Ω…}•ê∞Å—Ö…ùï—}’Õï…}•ê∞ÅÖç—•Ω∏∞Åëï—Ö•∞§(ÄÄÄÄÄÄÄÅY1ULÄ°Ö’—†π’•ê†§∞Å¡}’Õï…}•ê∞ÄùÕï—}…Ω±îú∞Å¡}…Ω±î§Ï)9Ï(êêÏ()IQÅ=HÅIA1ÅU9Q%=8Å¡’â±•åπïπôΩ…çï}¡…Ωô•±ï}…Ω±ï}•π—ïù…•—‰†§)IQUI9LÅQI%H)19UÅ¡±¡ùÕ≈∞)MUI%QdÅ%9H)MPÅÕïÖ…ç°}¡Ö—†ÄÙÄúú)LÄêê)	%8(ÄÄÄÅ%ÅÖ’—†π’•ê†§Å%LÅ9U10ÅQ!8(ÄÄÄÄÄÄÄÅIQUI8Å9\Ï(ÄÄÄÅ9Å%Ï((ÄÄÄÅ%ÅQ}=@ÄÙÄù%9MIPúÅQ!8(ÄÄÄÄÄÄÄÅ%Å¡’â±•åπ•Õ}Öëµ•∏†§Å9Å9\π…Ω±îÅ%LÅ9=PÅ9U10ÅQ!8(ÄÄÄÄÄÄÄÄÄÄÄÅIQUI8Å9\Ï(ÄÄÄÄÄÄÄÅ9Å%Ï(ÄÄÄÄÄÄÄÄ¥¥ÅM•ù∏µ’¿ÅçÖ∏ÅçÖ……‰ÅÑÅ…ï≈’ïÕ–∞ÅπïŸï»ÅÑÅ…Ω±î∏(ÄÄÄÄÄÄÄÅ9\π…Ω±îÄËÙÄùÕ—’ëïπ–úÏ(ÄÄÄÄÄÄÄÅ%Å9\π…ï≈’ïÕ—ïë}…Ω±îÅ%8Ä†ù±ïç—’…ï»ú∞ÄùÕïç’…•—‰ú∞Äùç°Ö¡±Ö•∏ú§ÅQ!8(ÄÄÄÄÄÄÄÄÄÄÄÅ9\πŸï…•ô•çÖ—•Ωπ}Õ—Ö—’ÃÄËÙÄù¡ïπë•πúúÏ(ÄÄÄÄÄÄÄÅ1M(ÄÄÄÄÄÄÄÄÄÄÄÅ9\πŸï…•ô•çÖ—•Ωπ}Õ—Ö—’ÃÄËÙÄùÖ¡¡…ΩŸïêúÏ(ÄÄÄÄÄÄÄÄÄÄÄÅ9\π…ï≈’ïÕ—ïë}…Ω±îÄËÙÄúúÏ(ÄÄÄÄÄÄÄÅ9Å%Ï(ÄÄÄÄÄÄÄÅIQUI8Å9\Ï(ÄÄÄÅ9Å%Ï((ÄÄÄÄ¥¥ÅÅµïµâï»ÅµÖ‰ÅÖÕ¨ÅôΩ»ÅÑÅ…Ω±îÏÅΩπ±‰ÅÖ∏ÅÖëµ•∏ÅµÖ‰Åù…Öπ–ÅΩπî∏(ÄÄÄÅ%Å9\π…ï≈’ïÕ—ïë}…Ω±îÅ%LÅ%MQ%9PÅI=4Å=1π…ï≈’ïÕ—ïë}…Ω±îÅQ!8(ÄÄÄÄÄÄÄÅ%Å9\π…ï≈’ïÕ—ïë}…Ω±îÄÙÄúú(ÄÄÄÄÄÄÄÄÄÄÅ9Å=1π…Ω±îÄÙÄùÕ—’ëïπ–ú(ÄÄÄÄÄÄÄÄÄÄÅ9Å9=PÅ¡’â±•åπ•Õ}Öëµ•∏†§ÅQ!8(ÄÄÄÄÄÄÄÄÄÄÄÅ9\πŸï…•ô•çÖ—•Ωπ}Õ—Ö—’ÃÄËÙÄùÖ¡¡…ΩŸïêúÏ(ÄÄÄÄÄÄÄÄÄÄÄÅIQUI8Å9\Ï(ÄÄÄÄÄÄÄÅ9Å%Ï((ÄÄÄÄÄÄÄÅ%Å9\π…ï≈’ïÕ—ïë}…Ω±îÄ¯ÄúúÅ9Å9=PÅ¡’â±•åπ•Õ}Öëµ•∏†§ÅQ!8(ÄÄÄÄÄÄÄÄÄÄÄÅ%Å=1πŸï…•ô•çÖ—•Ωπ}Õ—Ö—’ÃÄÙÄù…ï©ïç—ïêúÅ9Å=1π…ï≈’ïÕ—ïë}…Ω±îÄÙÅ9\π…ï≈’ïÕ—ïë}…Ω±îÅQ!8(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅI%MÅaAQ%=8Äù∏ÅÖëµ•∏ÅÖ±…ïÖë‰Å…ï©ïç—ïêÅ—°Ö–Å…Ω±îÅ…ï≈’ïÕ–∏ú(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅUM%9ÅII=ÄÙÄú–»‘¿ƒúÏ(ÄÄÄÄÄÄÄÄÄÄÄÅ9Å%Ï(ÄÄÄÄÄÄÄÄÄÄÄÅ9\πŸï…•ô•çÖ—•Ωπ}Õ—Ö—’ÃÄËÙÄù¡ïπë•πúúÏ(ÄÄÄÄÄÄÄÄÄÄÄÅIQUI8Å9\Ï(ÄÄÄÄÄÄÄÅ9Å%Ï(ÄÄÄÅ9Å%Ï((ÄÄÄÅ%Å9\π…Ω±îÅ%LÅ%MQ%9PÅI=4Å=1π…Ω±î(ÄÄÄÄÄÄÅ=HÅ9\πŸï…•ô•çÖ—•Ωπ}Õ—Ö—’ÃÅ%LÅ%MQ%9PÅI=4Å=1πŸï…•ô•çÖ—•Ωπ}Õ—Ö—’ÃÅQ!8(ÄÄÄÄÄÄÄÅ%Å9=PÅ¡’â±•åπ•Õ}Öëµ•∏†§ÅQ!8(ÄÄÄÄÄÄÄÄÄÄÄÅI%MÅaAQ%=8Äù=π±‰ÅÖ∏ÅÖëµ•∏ÅçÖ∏Åç°ÖπùîÅÑÅ…Ω±îÅΩ»ÅÖ¡¡…ΩŸÖ∞ÅÕ—Ö—’Ã∏ú(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅUM%9ÅII=ÄÙÄú–»‘¿ƒúÏ(ÄÄÄÄÄÄÄÅ9Å%Ï(ÄÄÄÅ9Å%Ï((ÄÄÄÅIQUI8Å9\Ï)9Ï(êêÏ()IY=-Å10Å=8ÅU9Q%=8Å¡’â±•åπïπôΩ…çï}¡…Ωô•±ï}…Ω±ï}•π—ïù…•—‰†§ÅI=4ÅAU	1%∞ÅÖπΩ∏∞ÅÖ’—°ïπ—•çÖ—ïêÏ)IY=-Å10Å=8ÅU9Q%=8Å¡’â±•åπÖ¡¡…ΩŸï}µïµâï…Õ°•¿°UU%§ÅI=4ÅAU	1%∞ÅÖπΩ∏Ï)IY=-Å10Å=8ÅU9Q%=8Å¡’â±•åπÕï—}’Õï…}…Ω±î°UU%∞ÅQaP§ÅI=4ÅAU	1%∞ÅÖπΩ∏Ï)I9PÅaUQÅ=8ÅU9Q%=8Å¡’â±•åπÖ¡¡…ΩŸï}µïµâï…Õ°•¿°UU%§ÅQ<ÅÖ’—°ïπ—•çÖ—ïêÏ)I9PÅaUQÅ=8ÅU9Q%=8Å¡’â±•åπÕï—}’Õï…}…Ω±î°UU%∞ÅQaP§ÅQ<ÅÖ’—°ïπ—•çÖ—ïêÏ(((¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥(¥¥Äƒƒ∏Å-	I,∞ÅLÅ%QLÅ=]8Å55	HÅMI%	Å%P(¥¥Å=π±‰Å›°Ö–Å›ÖÃÅÖç—’Ö±±‰ÅπÖµïêËÅ—°îÅÕç°ΩΩ∞ÅÖπêÅ•—ÃÅôΩ’»Åµï∏ùÃÅ°ΩÕ—ï±Ã∏(¥¥Å9ºÅ°Ö±∞Å•ÃÅ•πŸïπ—ïêÅ°ï…î∞ÅÕºÅÑÅ±Öë•ïÃúÅ°ΩÕ—ï∞ÅÖ¡¡ïÖ…ÃÅ—°îÅµΩµïπ–(¥¥ÅÕΩµïâΩë‰Å›°ºÅ≠πΩ›ÃÅ•—ÃÅπÖµîÅÖëëÃÅ•–∏ÅŸï…‰ÅΩ—°ï»ÅÕç°ΩΩ∞Å•ÃÅ±ïô–ÅΩ’–ÅΩò(¥¥Å—°•ÃÅ—Öâ±îÅΩ∏Å¡’…¡ΩÕîÄ¥Å•—ÃÅΩ›∏ÅÕ—ÖôòÅ—’…∏Å•—ÃÅΩ›∏ÅÕï…Ÿ•çïÃÅΩ∏∏(¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥()%9MIPÅ%9Q<Å¡’â±•åπçÖµ¡’Õ}Õï…Ÿ•çïÃ(ÄÄÄÄÄÄÄÄ°Õç°ΩΩ∞∞ÅÖççΩµµΩëÖ—•Ω∏∞ÅçÖ—ï…•πú∞Åç°Ö¡±Ö•πç‰∞ÅÖ——ïπëÖπçî∞Å’¡ëÖ—ïë}â‰§)M1PÄù-ÖâÖ…Ö¨ÅUπ•Ÿï…Õ•—‰ú∞ÅQIU∞ÅQIU∞ÅQIU∞ÅQIU∞(ÄÄÄÄÄÄÄ°M1PÅ¿π•êÅI=4Å¡’â±•åπ¡…Ωô•±ïÃÅLÅ¿Å]!IÅ¿π…Ω±îÄÙÄùÖëµ•∏úÅ=IHÅ	dÅ¿πç…ïÖ—ïë}Ö–Å1%5%PÄƒ§)=8Å=91%PÄ°Õç°ΩΩ±}≠ï‰§Å<Å9=Q!%9Ï()%9MIPÅ%9Q<Å¡’â±•åπ°ΩÕ—ï±ÃÄ°Õç°ΩΩ∞∞ÅπÖµî∞Åùïπëï»∞ÅŸï…•ô•ïê∞ÅÖëëïë}â‰§)M1PÄù-ÖâÖ…Ö¨ÅUπ•Ÿï…Õ•—‰ú∞Å†ππÖµî∞Äùµï∏ú∞ÅQIU∞(ÄÄÄÄÄÄÄ°M1PÅ¿π•êÅI=4Å¡’â±•åπ¡…Ωô•±ïÃÅLÅ¿Å]!IÅ¿π…Ω±îÄÙÄùÖëµ•∏úÅ=IHÅ	dÅ¿πç…ïÖ—ïë}Ö–Å1%5%PÄƒ§)I=4Ä°Y1ULÄ†ù±ïµïπ—ï•—Ñú§∞Ä†ù	ΩùΩ…•Ñú§∞Ä†ù	Ö…•πùºú§∞Ä†ùQ’…≠ÖπÑú§§ÅLÅ†°πÖµî§)=8Å=91%PÄ°Õç°ΩΩ±}≠ï‰∞ÅπÖµï}≠ï‰§Å<Å9=Q!%9Ï(((¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥(¥¥Äƒ»∏ÅQ10ÅA=MQIMPÅQ!ÅM!AÅ!9(¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥()9=Q%dÅ¡ù…Õ–∞Äù…ï±ΩÖêÅÕç°ïµÑúÏ(((¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥(¥¥ÅAIPÄ»»Å!,ËÅ—°îÅ—›ºÅ…Ω›ÃÅ—°Ö–ÅÑÅÕç°ΩΩ∞ÅçÖππΩ–Åô•‡Åô…Ω¥Å—°îÅÖ¡¿(¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥()M1PÄùçÖµ¡’ÃÅÕï…Ÿ•çîËÅ-ÖâÖ…Ö¨Å°ÖÃÅ•—ÃÅëï¡Ö…—µïπ—ÃúÅLÅç°ïç≠}πÖµî∞(ÄÄÄÄÄÄÅMÅ]!8Å=U9P†®§ÄÙÄƒÅQ!8ÄùΩ¨ú(ÄÄÄÄÄÄÄÄÄÄÄÅ1MÄù5%MM%9Ä°—’…∏Å—°îÅôΩ’»ÅÕ›•—ç°ïÃÅΩ∏ÅôΩ»Å—°Ö–ÅÕç°ΩΩ∞Å•∏Å—°îÅMï…Ÿ•çïÃÅ¡Öùî§úÅ9ÅLÅ…ïÕ’±–)I=4Å¡’â±•åπçÖµ¡’Õ}Õï…Ÿ•çïÃ)]!IÅÕç°ΩΩ±}≠ï‰ÄÙÄù≠ÖâÖ…Ö¨Å’π•Ÿï…Õ•—‰ú)U9%=8Å10)M1PÄù°ΩÕ—ï±ÃÅπÖµïêÅôΩ»Å-ÖâÖ…Ö¨ú∞(ÄÄÄÄÄÄÅMÅ]!8Å=U9P†®§Ä¯ÙÄ–ÅQ!8ÄùΩ¨ú(ÄÄÄÄÄÄÄÄÄÄÄÅ1MÄù5%MM%9Ä°—°îÅôΩ’»Åµï∏úùÃÅ°ΩÕ—ï±ÃÅ—°îÅÕç°ΩΩ∞ÅπÖµïêÅÖ…îÅπΩ–ÅÖ±∞Å•∏Å—°îÅ±•Õ–§úÅ9)I=4Å¡’â±•åπ°ΩÕ—ï±Ã)]!IÅÕç°ΩΩ±}≠ï‰ÄÙÄù≠ÖâÖ…Ö¨Å’π•Ÿï…Õ•—‰ú)U9%=8Å10)M1PÄù…ïù•Õ—ï»ËÅÖ∏ÅÖ’—°ïπ—•çÖ—ïêÅÖççΩ’π–ÅµÖ‰ÅΩ¡ï∏Å•–ú∞(ÄÄÄÄÄÄÅMÅ]!8Å°ÖÕ}ô’πç—•Ωπ}¡…•Ÿ•±ïùî†ùÖ’—°ïπ—•çÖ—ïêú∞Äù¡’â±•åπΩ¡ïπ}ç±ÖÕÕ}ç°ïç≠•∏°’’•ê∞Å•π—ïùï»§ú∞ÄùaUQú§(ÄÄÄÄÄÄÄÄÄÄÄÅQ!8ÄùΩ¨úÅ1MÄù5%MM%9Ä°ÑÅ±ïç—’…ï»ÅçÖππΩ–ÅΩ¡ï∏ÅÑÅç±ÖÕÃÅ…ïù•Õ—ï»§úÅ9Ï(((¥¥ÄÙÙÙÙÙÙÙÙÙÙÙÙÅAIPÄ»Ãº»–ËÅµ•ù…Ö—•ΩπÃº»¿»ÿƒ¿»’}ôΩ’πë}•—ïµÃπÕ≈∞ÄÙÙÙÙÙÙÙÙÙÙÙÙ(¥¥ÄÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙ(¥¥ÅAIPÄ»ÃËÅM=5	=dÅA%-ÅU@ÅÅ=U59P(¥¥ÅÅÕ—’ëïπ–Å%Å•ÃÅ±Â•πúÅΩ∏Å—°îÅ…ΩÖê∏Å]°ΩïŸï»Å¡•ç≠ÃÅ•–Å’¿Å¡°Ω—Ωù…Ö¡°ÃÅ•–∞(¥¥Å—Â¡ïÃÅ—°îÅπ’µâï»Å¡…•π—ïêÅΩ∏Å•–ÅÖπêÅÕÖÂÃÅ›°ï…îÅ—°ï‰ÅÖ…îÅÕ—Öπë•πú∏ÅQ°î(¥¥ÅëÖ—ÖâÖÕîÄ¥ÅπïŸï»Å—°îÅ¡ÖùîÄ¥Å›Ω…≠ÃÅΩ’–Å›°ΩÕîÅπ’µâï»Å•–Å•ÃÅÖπêÅ—ï±±ÃÅΩπ±‰(¥¥Å—°Ö–Å¡ï…ÕΩ∏∏ÅΩ’»Å…’±ïÃÅ°Ω±êÅ°ï…îË(¥¥ÄÄÄ®Å•–Å•ÃÅπïŸï»Å¡’â±•å∏Å9ºÅ¡ΩÕ–∞ÅπºÅâ’±±ï—•∏∞ÅπºÅ±•Õ–ÅÖπ‰Åµïµâï»ÅçÖ∏(¥¥ÄÄÄÄÅâ…Ω›Õî∏Å=π±‰Å—°…ïîÅÖççΩ’π—ÃÅïŸï»ÅÕïîÅÑÅ…Ω‹ËÅ—°îÅ°ÖπêÅ—°Ö–ÅôΩ’πêÅ•–∞(¥¥ÄÄÄÄÅ—°îÅëïÕ¨ÅΩòÅ—°Ö–ÅÕç°ΩΩ∞∞ÅÖπêÅ—°îÅ¡ï…ÕΩ∏Å•–Åâï±ΩπùÃÅ—º∏(¥¥ÄÄÄ®Å—°îÅΩ›πï»Å•ÃÅπïŸï»Å—Ω±êÅ›°ºÅôΩ’πêÅ—°ï•»ÅëΩç’µïπ–∞ÅÖπêÅ—°îÅô•πëï»Å•Ã(¥¥ÄÄÄÄÅπïŸï»Å—Ω±êÅ—°îÅΩ›πï»ùÃÅ¡°ΩπîÅπ’µâï»∏ÅQ°îÅΩ›πï»Å…ïÖëÃÅÑÅ¡±ÖçîÅÖπêÅÑ(¥¥ÄÄÄÄÅ—•µîÄ¥Å›°•ç†Å•ÃÅÖ±∞Å—°ï‰ÅπïïêÅ—ºÅ›Ö±¨Å—°ï…î∏(¥¥ÄÄÄ®Å—°îÅµÖ—ç†Å°Ö¡¡ïπÃÅ•πÕ•ëîÅ—°îÅëÖ—ÖâÖÕî∞ÅâïçÖ’ÕîÅÕ—’ëïπ—}…ïù•Õ—…Ö—•ΩπÃ(¥¥ÄÄÄÄÅ•ÃÅÕ°’–ÅÖùÖ•πÕ–Åâ…Ω›Õ•πúÅΩ∏Å¡’…¡ΩÕî∏ÅÅ¡ÖùîÅ—°Ö–ÅçΩ’±êÅ±ΩΩ¨ÅÑÅπ’µâï»(¥¥ÄÄÄÄÅ’¿Å›Ω’±êÅ°ÖπêÅ—°îÅ›°Ω±îÅ…ïù•Õ—ï»Å—ºÅÖπÂΩπîÅ›°ºÅΩ¡ïπïêÅ—°îÅçΩπÕΩ±î∏(¥¥ÄÄÄ®ÅÑÅπ’µâï»ÅçÖππΩ–ÅâîÅ›Ö±≠ïê∏ÅQ°îÅÕÖµîÅ°ÖπêÅ…ï¡Ω…—•πúÅ—°îÅÕÖµîÅπ’µâï»(¥¥ÄÄÄÄÅ—›•çîÅ•∏ÅÕ•‡Å°Ω’…ÃÅ•ÃÅ…ïô’Õïê∞ÅÖπêÅÕ•‡Å…ï¡Ω…—ÃÅ•∏ÅÑÅëÖ‰Å•ÃÅ—°îÅµΩÕ–(¥¥ÄÄÄÄÅÖπ‰ÅÖççΩ’π–ÅµÖ≠ïÃ∞ÅÕºÅ—°•ÃÅôïÖ—’…îÅçÖππΩ–ÅâîÅ’ÕïêÅ—ºÅ—ïÕ–Å›°•ç†(¥¥ÄÄÄÄÅÕ—’ëïπ–Åπ’µâï…ÃÅ°ÖŸîÅÖççΩ’π—Ã∏(¥¥ÅQ°îÅÖπÕ›ï»ÅÑÅô•πëï»Åùï—ÃÅâÖç¨Å•ÃÅΩπîÅâ•–ËÅÕΩµïâΩë‰Å›ÖÃÅ—Ω±ê∞ÅΩ»Å—°•Ã(¥¥Åπ’µâï»Å°ÖÃÅπºÅÖççΩ’π–Å°ï…î∏Å9ïŸï»ÅÑÅπÖµî∏(¥¥ÅQ°îÅ¡°Ω—ºÅùΩïÃÅ•∏Å—°îÅ¡…•ŸÖ—îÅâ’ç≠ï–Å’πëï»Å—°îÅô•πëï»ùÃÅΩ›∏ÅôΩ±ëï»ÅÖπê(¥¥ÅΩπ±‰Å—›ºÅ¡ïΩ¡±îÅçÖ∏ÅïŸï»ÅΩ¡ï∏Å•–ËÅ—°îÅô•πëï»ÅÖπêÅ—°îÅÕç°ΩΩ∞ùÃÅëïÕ¨∏(¥¥Å%ëïµ¡Ω—ïπ–ËÅÕÖôîÅ—ºÅ…’∏ÅµΩ…îÅ—°Ö∏ÅΩπçî∏(¥¥ÄÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙ(((¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥(¥¥Äƒ∏Å=9ÅI=\ÅAHÅ=U59PÅA%-ÅU@(¥¥ÅÕç°ΩΩ∞Å•ÃÅçΩ¡•ïêÅô…Ω¥Å—°îÅô•πëï»ùÃÅΩ›∏Å¡…Ωô•±îÅÖ–Å—°îÅµΩµïπ–ÅΩò(¥¥Å…ï¡Ω…—•πú∞ÅÕºÅ—°îÅëïÕ¨ÅΩòÅ—°Ö–ÅÕç°ΩΩ∞Åô•πëÃÅ—°îÅ…Ω‹ÅïŸï∏Å•òÅ—°îÅô•πëï»(¥¥Å±Ö—ï»Åç°ÖπùïÃÅ—°ï•»Å’π•Ÿï…Õ•—‰∏Åπ’µâï…}≠ï‰Å•ÃÅ—°îÅπΩ…µÖ±•ÕïêÅôΩ…¥Å—°î(¥¥ÅµÖ—ç†Å•ÃÅ—…•ïêÅÖùÖ•πÕ–ÏÅπ’µâï…}•π¡’–ÅÕ—ÖÂÃÅï·Öç—±‰ÅÖÃÅ—Â¡ïê∞ÅôΩ»Å—°î(¥¥ÅëïÕ¨Å—ºÅ…ïÖêÅÑÅπ’µâï»Å—°îÅÖ¡¿ÅçΩ’±êÅπΩ–ÅµÖ—ç†∏(¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥()IQÅQ	1Å%Å9=PÅa%MQLÅ¡’â±•åπôΩ’πë}•—ïµÃÄ†(ÄÄÄÅ•êÅUU%ÅAI%5IdÅ-dÅU1PÅùïπ}…ÖπëΩµ}’’•ê†§∞(ÄÄÄÅÕç°ΩΩ∞ÅQaPÅ9=PÅ9U10ÅU1PÄúú∞(ÄÄÄÅÕç°ΩΩ±}≠ï‰ÅQaPÅ9IQÅ1]eLÅLÄ°1=]H°	QI%4°Õç°ΩΩ∞§§§ÅMQ=I∞(ÄÄÄÅ…ï¡Ω…—ï…}•êÅUU%Å9=PÅ9U10ÅII9LÅ¡’â±•åπ¡…Ωô•±ïÃ°•ê§Å=8Å1QÅM∞(ÄÄÄÅ≠•πêÅQaPÅ9=PÅ9U10ÅU1PÄùΩ—°ï»ú(ÄÄÄÄÄÄÄÅ=9MQI%9PÅôΩ’πë}•—ïµÕ}≠•πë}ç°ïç¨(ÄÄÄÄÄÄÄÅ!,Ä°≠•πêÅ%8Ä†ùÕ—’ëïπ—}•êú∞ÄùπÖ—•ΩπÖ±}•êú∞Äù¡ÖÕÕ¡Ω…–ú∞Äùë…•Ÿï…Õ}±•çïπÕîú∞(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄùâÖπ≠}çÖ…êú∞Äù¡°Ωπîú∞Äù±Ö¡—Ω¿ú∞ÄùâΩΩ¨ú∞Äù≠ïÂÃú∞Äù›Ö±±ï–ú∞ÄùΩ—°ï»ú§§∞(ÄÄÄÅπ’µâï…}•π¡’–ÅQaPÅ9=PÅ9U10ÅU1PÄúú∞(ÄÄÄÅπ’µâï…}≠ï‰ÅQaPÅ9=PÅ9U10ÅU1PÄúú∞(ÄÄÄÅ¡±ÖçîÅQaPÅ9=PÅ9U10(ÄÄÄÄÄÄÄÅ=9MQI%9PÅôΩ’πë}•—ïµÕ}¡±Öçï}±ïπù—°}ç°ïç¨Å!,Ä°ç°Ö…}±ïπù—†°¡±Öçî§ÄÙÄ»¿¿§∞(ÄÄÄÅ°ï±ë}Ö–ÅQaPÅ9=PÅ9U10ÅU1PÄù›•—°}ô•πëï»ú(ÄÄÄÄÄÄÄÅ=9MQI%9PÅôΩ’πë}•—ïµÕ}°ï±ë}Ö—}ç°ïç¨(ÄÄÄÄÄÄÄÅ!,Ä°°ï±ë}Ö–Å%8Ä†ù›•—°}ô•πëï»ú∞ÄùÕïç’…•—Â}ëïÕ¨ú∞Äù±ΩÕ—}Ωôô•çîú§§∞(ÄÄÄÅôΩ’πë}Ö–ÅQ%5MQ5AQhÅ9=PÅ9U10ÅU1PÅ9=\†§∞(ÄÄÄÅ¡°Ω—Ω}¡Ö—†ÅQaP∞(ÄÄÄÅÕ—Ö—’ÃÅQaPÅ9=PÅ9U10ÅU1PÄùΩ¡ï∏ú(ÄÄÄÄÄÄÄÅ=9MQI%9PÅôΩ’πë}•—ïµÕ}Õ—Ö—’Õ}ç°ïç¨Å!,Ä°Õ—Ö—’ÃÅ%8Ä†ùΩ¡ï∏ú∞Äù…ï—’…πïêú§§∞(ÄÄÄÅµÖ—ç°ïë}’Õï…}•êÅUU%ÅII9LÅ¡’â±•åπ¡…Ωô•±ïÃ°•ê§Å=8Å1QÅMPÅ9U10∞(ÄÄÄÅµÖ—ç°ïë}â‰ÅQaP(ÄÄÄÄÄÄÄÅ=9MQI%9PÅôΩ’πë}•—ïµÕ}µÖ—ç°ïë}âÂ}ç°ïç¨(ÄÄÄÄÄÄÄÅ!,Ä°µÖ—ç°ïë}â‰Å%8Ä†ù…ïù•Õ—…Ö—•Ω∏ú∞ÄùÕ—Öôô}•êú∞ÄùπÖ—•ΩπÖ±}•êú§§∞(ÄÄÄÅµÖ—ç°ïë}Ö–ÅQ%5MQ5AQh∞(ÄÄÄÅΩ›πï…}Õïïπ}Ö–ÅQ%5MQ5AQh∞(ÄÄÄÅç…ïÖ—ïë}Ö–ÅQ%5MQ5AQhÅ9=PÅ9U10ÅU1PÅ9=\†§∞(ÄÄÄÅ’¡ëÖ—ïë}Ö–ÅQ%5MQ5AQhÅ9=PÅ9U10ÅU1PÅ9=\†§∞(ÄÄÄÅ=9MQI%9PÅôΩ’πë}•—ïµÕ}π’µâï…}≠ïÂ}±ïπù—°}ç°ïç¨Å!,Ä°ç°Ö…}±ïπù—†°π’µâï…}≠ï‰§ÄÙÄÃ»§(§Ï()IQÅ%9`Å%Å9=PÅa%MQLÅôΩ’πë}•—ïµÕ}Õç°ΩΩ±}•ë‡(ÄÄÄÅ=8Å¡’â±•åπôΩ’πë}•—ïµÃÄ°Õç°ΩΩ±}≠ï‰∞Åç…ïÖ—ïë}Ö–ÅM§Ï)IQÅ%9`Å%Å9=PÅa%MQLÅôΩ’πë}•—ïµÕ}…ï¡Ω…—ï…}•ë‡(ÄÄÄÅ=8Å¡’â±•åπôΩ’πë}•—ïµÃÄ°…ï¡Ω…—ï…}•ê∞Åç…ïÖ—ïë}Ö–ÅM§Ï)IQÅ%9`Å%Å9=PÅa%MQLÅôΩ’πë}•—ïµÕ}Ω›πï…}•ë‡(ÄÄÄÅ=8Å¡’â±•åπôΩ’πë}•—ïµÃÄ°µÖ—ç°ïë}’Õï…}•ê∞ÅôΩ’πë}Ö–ÅM§(ÄÄÄÅ]!IÅµÖ—ç°ïë}’Õï…}•êÅ%LÅ9=PÅ9U10Ï)IQÅ%9`Å%Å9=PÅa%MQLÅôΩ’πë}•—ïµÕ}π’µâï…}≠ïÂ}•ë‡(ÄÄÄÅ=8Å¡’â±•åπôΩ’πë}•—ïµÃÄ°π’µâï…}≠ï‰∞Å…ï¡Ω…—ï…}•ê∞Åç…ïÖ—ïë}Ö–ÅM§Ï()1QHÅQ	1Å¡’â±•åπôΩ’πë}•—ïµÃÅ9	1ÅI=\Å1Y0ÅMUI%QdÏ((¥¥ÅIïÖêÅΩπ±‰∞ÅÖπêÅΩπ±‰ÅôΩ»Å—°îÅ—›ºÅÖççΩ’π—ÃÅ—°Ö–Å—Ω’ç°ïêÅ—°îÅëΩç’µïπ–∏(¥¥ÅQ°ï…îÅ•ÃÅπºÅ%9MIP∞ÅUAQÅΩ»Å1QÅ¡Ω±•ç‰ÅÖ–ÅÖ±∞ËÅÑÅ¡ÖùîÅçÖππΩ–Å›…•—î(¥¥ÅÑÅôΩ’πêÅ•—ï¥∞ÅΩπ±‰Å—°îÅô’πç—•ΩπÃÅâï±Ω‹ÅçÖ∏∏)I=@ÅA=1%dÅ%Åa%MQLÄâ•πëï»Å…ïÖëÃÅ—°ï•»ÅΩ›∏Å…ï¡Ω…–àÅ=8Å¡’â±•åπôΩ’πë}•—ïµÃÏ)IQÅA=1%dÄâ•πëï»Å…ïÖëÃÅ—°ï•»ÅΩ›∏Å…ï¡Ω…–à(ÄÄÄÅ=8Å¡’â±•åπôΩ’πë}•—ïµÃÅ=HÅM1PÅQ<ÅÖ’—°ïπ—•çÖ—ïê(ÄÄÄÅUM%9Ä°…ï¡Ω…—ï…}•êÄÙÄ°M1PÅÖ’—†π’•ê†§§§Ï()I=@ÅA=1%dÅ%Åa%MQLÄâQ°îÅëïÕ¨ÅΩòÅÑÅÕç°ΩΩ∞Å…ïÖëÃÅ•—ÃÅΩ›∏Åô•πëÃàÅ=8Å¡’â±•åπôΩ’πë}•—ïµÃÏ)IQÅA=1%dÄâQ°îÅëïÕ¨ÅΩòÅÑÅÕç°ΩΩ∞Å…ïÖëÃÅ•—ÃÅΩ›∏Åô•πëÃà(ÄÄÄÅ=8Å¡’â±•åπôΩ’πë}•—ïµÃÅ=HÅM1PÅQ<ÅÖ’—°ïπ—•çÖ—ïê(ÄÄÄÅUM%9Ä°¡’â±•åπ•Õ}Õç°ΩΩ±}Õ—Öôò°Õç°ΩΩ±}≠ï‰§§Ï()I9PÅM1PÅ=8Å¡’â±•åπôΩ’πë}•—ïµÃÅQ<ÅÖ’—°ïπ—•çÖ—ïêÏ(((¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥(¥¥Ä»∏ÅIA=IPÅÅ=U59P∏ÅQ!Å5Q!%9Å!AA9LÅ!I∞Å%8ÅQ!ÅQ	M∞(¥¥ÄÄÄÅ9Å=91dÅ=9Å	%PÅ=5LÅ	,Å=UP∏(¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥()IQÅ=HÅIA1ÅU9Q%=8Å¡’â±•åπ…ï¡Ω…—}ôΩ’πë}•—ï¥†(ÄÄÄÅ¡}≠•πêÅQaP∞(ÄÄÄÅ¡}π’µâï»ÅQaP∞(ÄÄÄÅ¡}¡±ÖçîÅQaP∞(ÄÄÄÅ¡}°ï±ë}Ö–ÅQaP∞(ÄÄÄÅ¡}¡°Ω—Ω}¡Ö—†ÅQaP∞(ÄÄÄÅ¡}ôΩ’πë}Ö–ÅQ%5MQ5AQhÅU1PÅ9U10(§)IQUI9LÅ)M=9)19UÅ¡±¡ùÕ≈∞)MUI%QdÅ%9H)MPÅÕïÖ…ç°}¡Ö—†ÄÙÄúú)LÄêê)1I(ÄÄÄÅµîÅUU%ÄËÙÅÖ’—†π’•ê†§Ï(ÄÄÄÅ≠•πë}Ω¨ÅQaPÏ(ÄÄÄÅ°ï±ë}Ω¨ÅQaPÏ(ÄÄÄÅç±ïÖπ}π’µâï»ÅQaPÏ(ÄÄÄÅç±ïÖπ}¡±ÖçîÅQaPÏ(ÄÄÄÅµÂ}Õç°ΩΩ∞ÅQaPÏ(ÄÄÄÅ•—ïµ}•êÅUU%Ï(ÄÄÄÅΩ›πï…}•êÅUU%Ï(ÄÄÄÅµÖ—ç°ïë}â‰ÅQaPÏ(ÄÄÄÅ°•—}çΩ’π–Å%9PÏ)	%8(ÄÄÄÅ%ÅµîÅ%LÅ9U10ÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8ÄùM•ù∏Å•∏ÅâïôΩ…îÅ…ï¡Ω…—•πúÅÑÅëΩç’µïπ–ÅÂΩ‘ÅôΩ’πê∏ú(ÄÄÄÄÄÄÄÄÄÄÄÅUM%9ÅII=ÄÙÄú–»‘¿ƒúÏ(ÄÄÄÅ9Å%Ï((ÄÄÄÅ≠•πë}Ω¨ÄËÙÅMÅ]!8Å¡}≠•πêÅ%8Ä†ùÕ—’ëïπ—}•êú∞ÄùπÖ—•ΩπÖ±}•êú∞Äù¡ÖÕÕ¡Ω…–ú∞Äùë…•Ÿï…Õ}±•çïπÕîú∞(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄùâÖπ≠}çÖ…êú∞Äù¡°Ωπîú∞Äù±Ö¡—Ω¿ú∞ÄùâΩΩ¨ú∞Äù≠ïÂÃú∞Äù›Ö±±ï–ú∞ÄùΩ—°ï»ú§(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅQ!8Å¡}≠•πêÅ1MÄùΩ—°ï»úÅ9Ï(ÄÄÄÅ°ï±ë}Ω¨ÄËÙÅMÅ]!8Å¡}°ï±ë}Ö–Å%8Ä†ù›•—°}ô•πëï»ú∞ÄùÕïç’…•—Â}ëïÕ¨ú∞Äù±ΩÕ—}Ωôô•çîú§(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅQ!8Å¡}°ï±ë}Ö–Å1MÄù›•—°}ô•πëï»úÅ9Ï((ÄÄÄÅç±ïÖπ}π’µâï»ÄËÙÅ1P°¡’â±•åππΩ…µÖ±•Èï}•ë}π’µâï»°¡}π’µâï»§∞ÄÃ»§Ï(ÄÄÄÅç±ïÖπ}¡±ÖçîÄËÙÅ1P°	QI%4°=1M°¡}¡±Öçî∞Äúú§§∞Ä»¿¿§Ï((ÄÄÄÅ%Åç°Ö…}±ïπù—†°ç±ïÖπ}π’µâï»§ÄÄÃÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8ÄùQÂ¡îÅ—°îÅπ’µâï»Å¡…•π—ïêÅΩ∏Å—°îÅëΩç’µïπ–∞Åï·Öç—±‰ÅÖÃÅ•–Å•ÃÅ¡…•π—ïê∏ú(ÄÄÄÄÄÄÄÄÄÄÄÅUM%9ÅII=ÄÙÄú»»¿¿ƒúÏ(ÄÄÄÅ9Å%Ï(ÄÄÄÅ%Åç°Ö…}±ïπù—†°ç±ïÖπ}¡±Öçî§ÄÄÃÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8ÄùMÖ‰Å›°ï…îÅÂΩ‘ÅôΩ’πêÅ•–∞ÅÕºÅ—°îÅΩ›πï»Å≠πΩ›ÃÅ›°ï…îÅ—ºÅçΩµî∏ú(ÄÄÄÄÄÄÄÄÄÄÄÅUM%9ÅII=ÄÙÄú»»¿¿ƒúÏ(ÄÄÄÅ9Å%Ï((ÄÄÄÄ¥¥ÅQ°îÅÕÖµîÅ°Öπê∞Å—°îÅÕÖµîÅπ’µâï»∞Å—›•çîÅ•∏ÅÕ•‡Å°Ω’…ÃÅ•ÃÅπΩ–ÅÑÅô•πê∏(ÄÄÄÅM1PÅ=U9P†®§Å%9Q<Å°•—}çΩ’π–(ÄÄÄÅI=4Å¡’â±•åπôΩ’πë}•—ïµÃÅLÅò(ÄÄÄÅ]!IÅòπ…ï¡Ω…—ï…}•êÄÙÅµî(ÄÄÄÄÄÅ9Åòππ’µâï…}≠ï‰ÄÙÅç±ïÖπ}π’µâï»(ÄÄÄÄÄÅ9Åòπç…ïÖ—ïë}Ö–Ä¯Å9=\†§Ä¥Å%9QIY0ÄúÿÅ°Ω’…ÃúÏ(ÄÄÄÅ%Å°•—}çΩ’π–Ä¯Ä¿ÅQ!8(ÄÄÄÄÄÄÄÅIQUI8Å©ÕΩπâ}â’•±ë}Ωâ©ïç–†ù…ïÕ’±–ú∞Äùë’¡±•çÖ—îú§Ï(ÄÄÄÅ9Å%Ï((ÄÄÄÄ¥¥ÅM•‡Å…ï¡Ω…—ÃÅÑÅëÖ‰Å•ÃÅ—°îÅµΩÕ–ÅÖ∏ÅÖççΩ’π–ÅçÖ∏ÅµÖ≠î∞ÅÕºÅÑÅ±•Õ–ÅΩò(ÄÄÄÄ¥¥Åπ’µâï…ÃÅçÖ∏ÅπïŸï»ÅâîÅ›Ö±≠ïêÅ—°…Ω’ù†Å—°•ÃÅô’πç—•Ω∏∏(ÄÄÄÅM1PÅ=U9P†®§Å%9Q<Å°•—}çΩ’π–(ÄÄÄÅI=4Å¡’â±•åπôΩ’πë}•—ïµÃÅLÅò(ÄÄÄÅ]!IÅòπ…ï¡Ω…—ï…}•êÄÙÅµî(ÄÄÄÄÄÅ9Åòπç…ïÖ—ïë}Ö–Ä¯Å9=\†§Ä¥Å%9QIY0Äú»–Å°Ω’…ÃúÏ(ÄÄÄÅ%Å°•—}çΩ’π–Ä¯ÙÄÿÅQ!8(ÄÄÄÄÄÄÄÅIQUI8Å©ÕΩπâ}â’•±ë}Ωâ©ïç–†ù…ïÕ’±–ú∞Äù—ΩΩ}µÖπ‰ú§Ï(ÄÄÄÅ9Å%Ï((ÄÄÄÅM1PÅ	QI%4°¿π’π•Ÿï…Õ•—‰§Å%9Q<ÅµÂ}Õç°ΩΩ∞(ÄÄÄÅI=4Å¡’â±•åπ¡…Ωô•±ïÃÅLÅ¿(ÄÄÄÅ]!IÅ¿π•êÄÙÅµîÏ(ÄÄÄÅµÂ}Õç°ΩΩ∞ÄËÙÅ=1M°µÂ}Õç°ΩΩ∞∞Äúú§Ï((ÄÄÄÅ%9MIPÅ%9Q<Å¡’â±•åπôΩ’πë}•—ïµÃ(ÄÄÄÄÄÄÄÄÄÄÄÄ°Õç°ΩΩ∞∞Å…ï¡Ω…—ï…}•ê∞Å≠•πê∞Åπ’µâï…}•π¡’–∞Åπ’µâï…}≠ï‰∞Å¡±Öçî∞Å°ï±ë}Ö–∞Å¡°Ω—Ω}¡Ö—†∞ÅôΩ’πë}Ö–§(ÄÄÄÅY1ULÄ°µÂ}Õç°ΩΩ∞∞Åµî∞Å≠•πë}Ω¨∞(ÄÄÄÄÄÄÄÄÄÄÄÅ1P°	QI%4°=1M°¡}π’µâï»∞Äúú§§∞Ä–¿§∞Åç±ïÖπ}π’µâï»∞Åç±ïÖπ}¡±Öçî∞Å°ï±ë}Ω¨∞(ÄÄÄÄÄÄÄÄÄÄÄÅ9U11%°1P°	QI%4°=1M°¡}¡°Ω—Ω}¡Ö—†∞Äúú§§∞Ä–¿¿§∞Äúú§∞(ÄÄÄÄÄÄÄÄÄÄÄÅ=1M°¡}ôΩ’πë}Ö–∞Å9=\†§§§(ÄÄÄÅIQUI9%9Å•êÅ%9Q<Å•—ïµ}•êÏ((ÄÄÄÄ¥¥Å]°ΩÕîÅπ’µâï»Å•ÃÅ•–¸ÅQ°…ïîÅ—Öâ±ïÃ∞Å—…•ïêÅ•∏Å—°•ÃÅΩ…ëï»∏Å=π±‰Å—°îÅ•ê(ÄÄÄÄ¥¥ÅΩòÅ—°îÅΩ›πï»Å•ÃÅïŸï»Å…ïÖêÅΩ’–ÅΩòÅ—°ï¥∞ÅπïŸï»ÅÑÅπÖµîÅΩ»ÅÑÅ¡°Ωπî∏(ÄÄÄÅM1PÅÃπ’Õï…}•êÅ%9Q<ÅΩ›πï…}•ê(ÄÄÄÅI=4Å¡’â±•åπÕ—’ëïπ—}…ïù•Õ—…Ö—•ΩπÃÅLÅÃ(ÄÄÄÅ]!IÅÃπ…ïù•Õ—…Ö—•Ωπ}π’µâï»ÄÙÅç±ïÖπ}π’µâï»(ÄÄÄÅ=IHÅ	dÅÃπç…ïÖ—ïë}Ö–(ÄÄÄÅ1%5%PÄƒÏ((ÄÄÄÅ%ÅΩ›πï…}•êÅ%LÅ9=PÅ9U10ÅQ!8(ÄÄÄÄÄÄÄÅµÖ—ç°ïë}â‰ÄËÙÄù…ïù•Õ—…Ö—•Ω∏úÏ(ÄÄÄÅ9Å%Ï((ÄÄÄÅ%ÅΩ›πï…}•êÅ%LÅ9U10ÅQ!8(ÄÄÄÄÄÄÄÅM1PÅ¿π•êÅ%9Q<ÅΩ›πï…}•ê(ÄÄÄÄÄÄÄÅI=4Å¡’â±•åπ¡…Ωô•±ïÃÅLÅ¿(ÄÄÄÄÄÄÄÅ]!IÅ¡’â±•åππΩ…µÖ±•Èï}•ë}π’µâï»°¿πÕ—Öôô}•ë}π’µâï»§ÄÙÅç±ïÖπ}π’µâï»(ÄÄÄÄÄÄÄÄÄÅ9Å¿πÕ—Öôô}•ë}π’µâï»Ä¯Äúú(ÄÄÄÄÄÄÄÅ=IHÅ	dÅ¿πç…ïÖ—ïë}Ö–(ÄÄÄÄÄÄÄÅ1%5%PÄƒÏ((ÄÄÄÄÄÄÄÅ%ÅΩ›πï…}•êÅ%LÅ9=PÅ9U10ÅQ!8(ÄÄÄÄÄÄÄÄÄÄÄÅµÖ—ç°ïë}â‰ÄËÙÄùÕ—Öôô}•êúÏ(ÄÄÄÄÄÄÄÅ9Å%Ï(ÄÄÄÅ9Å%Ï((ÄÄÄÅ%ÅΩ›πï…}•êÅ%LÅ9U10ÅQ!8(ÄÄÄÄÄÄÄÅM1PÅ±Ãπ’Õï…}•êÅ%9Q<ÅΩ›πï…}•ê(ÄÄÄÄÄÄÄÅI=4Å¡’â±•åπ±ïç—’…ï…}Õ’âµ•ÕÕ•ΩπÃÅLÅ±Ã(ÄÄÄÄÄÄÄÅ]!IÅ¡’â±•åππΩ…µÖ±•Èï}•ë}π’µâï»°±ÃππÖ—•ΩπÖ±}•ë}π’µâï»§ÄÙÅç±ïÖπ}π’µâï»(ÄÄÄÄÄÄÄÅ=IHÅ	dÅ±Ãπç…ïÖ—ïë}Ö–(ÄÄÄÄÄÄÄÅ1%5%PÄƒÏ((ÄÄÄÄÄÄÄÅ%ÅΩ›πï…}•êÅ%LÅ9=PÅ9U10ÅQ!8(ÄÄÄÄÄÄÄÄÄÄÄÅµÖ—ç°ïë}â‰ÄËÙÄùπÖ—•ΩπÖ±}•êúÏ(ÄÄÄÄÄÄÄÅ9Å%Ï(ÄÄÄÅ9Å%Ï((ÄÄÄÅ%ÅΩ›πï…}•êÅ%LÅ9U10ÅQ!8(ÄÄÄÄÄÄÄÅIQUI8Å©ÕΩπâ}â’•±ë}Ωâ©ïç–†ù…ïÕ’±–ú∞Äù’πµÖ—ç°ïêú∞Äù•êú∞Å•—ïµ}•ê§Ï(ÄÄÄÅ9Å%Ï((ÄÄÄÅ%ÅΩ›πï…}•êÄÙÅµîÅQ!8(ÄÄÄÄÄÄÄÅUAQÅ¡’â±•åπôΩ’πë}•—ïµÃÅLÅò(ÄÄÄÄÄÄÄÄÄÄÅMPÅµÖ—ç°ïë}’Õï…}•êÄÙÅΩ›πï…}•ê∞(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅµÖ—ç°ïë}â‰ÄÙÅµÖ—ç°ïë}â‰∞(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅµÖ—ç°ïë}Ö–ÄÙÅ9=\†§∞(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅΩ›πï…}Õïïπ}Ö–ÄÙÅ9=\†§(ÄÄÄÄÄÄÄÄÅ]!IÅòπ•êÄÙÅ•—ïµ}•êÏ(ÄÄÄÄÄÄÄÅIQUI8Å©ÕΩπâ}â’•±ë}Ωâ©ïç–†ù…ïÕ’±–ú∞ÄùΩ›∏ú∞Äù•êú∞Å•—ïµ}•ê§Ï(ÄÄÄÅ9Å%Ï((ÄÄÄÅUAQÅ¡’â±•åπôΩ’πë}•—ïµÃÅLÅò(ÄÄÄÄÄÄÅMPÅµÖ—ç°ïë}’Õï…}•êÄÙÅΩ›πï…}•ê∞(ÄÄÄÄÄÄÄÄÄÄÅµÖ—ç°ïë}â‰ÄÙÅµÖ—ç°ïë}â‰∞(ÄÄÄÄÄÄÄÄÄÄÅµÖ—ç°ïë}Ö–ÄÙÅ9=\†§(ÄÄÄÄÅ]!IÅòπ•êÄÙÅ•—ïµ}•êÏ((ÄÄÄÅ%9MIPÅ%9Q<Å¡’â±•åππΩ—•ô•çÖ—•ΩπÃÄ°…ïç•¡•ïπ—}•ê∞ÅÖç—Ω…}•ê∞Å≠•πê∞ÅôΩ’πë}•—ïµ}•ê§(ÄÄÄÅY1ULÄ°Ω›πï…}•ê∞Åµî∞ÄùôΩ’πë}•—ï¥ú∞Å•—ïµ}•ê§Ï((ÄÄÄÅIQUI8Å©ÕΩπâ}â’•±ë}Ωâ©ïç–†ù…ïÕ’±–ú∞ÄùµÖ—ç°ïêú∞Äù•êú∞Å•—ïµ}•ê§Ï)9Ï(êêÏ(((¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥(¥¥ÄÃ∏Å]!PÅQ!Å=]9HÅ%LÅQ=1Ä¥Å9Å]!PÅQ!Å=]9HÅ%LÅ9YHÅQ=1(¥¥Å9ºÅ…ï¡Ω…—ï»ÅçΩ±’µ∏ÅÖ¡¡ïÖ…ÃÅ°ï…î∏ÅQ°îÅ¡ï…ÕΩ∏Å›°ºÅ±ΩÕ–Å—°îÅëΩç’µïπ–Å…ïÖëÃ(¥¥ÅÑÅ¡±Öçî∞ÅÑÅ—•µîÅÖπêÅ—°ï•»ÅΩ›∏Åπ’µâï»ÏÅ›°ºÅ¡•ç≠ïêÅ•–Å’¿ÅÕ—ÖÂÃÅ›•—†Å—°î(¥¥ÅëïÕ¨∏(¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥()IQÅ=HÅIA1ÅU9Q%=8Å¡’â±•åπµÂ}ôΩ’πë}•—ïµÃ†§)IQUI9LÅQ	1Ä†(ÄÄÄÅ•—ïµ}•êÅUU%∞(ÄÄÄÅ≠•πêÅQaP∞(ÄÄÄÅπ’µâï…}≠ï‰ÅQaP∞(ÄÄÄÅ¡±ÖçîÅQaP∞(ÄÄÄÅ°ï±ë}Ö–ÅQaP∞(ÄÄÄÅôΩ’πë}Ö–ÅQ%5MQ5AQh∞(ÄÄÄÅÕ—Ö—’ÃÅQaP∞(ÄÄÄÅÕç°ΩΩ∞ÅQaP∞(ÄÄÄÅµÖ—ç°ïë}Ö–ÅQ%5MQ5AQh∞(ÄÄÄÅΩ›πï…}Õïïπ}Ö–ÅQ%5MQ5AQh(§)19UÅ¡±¡ùÕ≈∞)MQ	1)MUI%QdÅ%9H)MPÅÕïÖ…ç°}¡Ö—†ÄÙÄúú)LÄêê)	%8(ÄÄÄÅ%ÅÖ’—†π’•ê†§Å%LÅ9U10ÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8ÄùM•ù∏Å•∏Åô•…Õ–∏ú(ÄÄÄÄÄÄÄÄÄÄÄÅUM%9ÅII=ÄÙÄú–»‘¿ƒúÏ(ÄÄÄÅ9Å%Ï((ÄÄÄÅIQUI8ÅEUId(ÄÄÄÅM1PÅòπ•ê∞Åòπ≠•πê∞Åòππ’µâï…}≠ï‰∞Åòπ¡±Öçî∞Åòπ°ï±ë}Ö–∞ÅòπôΩ’πë}Ö–∞ÅòπÕ—Ö—’Ã∞(ÄÄÄÄÄÄÄÄÄÄÅòπÕç°ΩΩ∞∞ÅòπµÖ—ç°ïë}Ö–∞ÅòπΩ›πï…}Õïïπ}Ö–(ÄÄÄÅI=4Å¡’â±•åπôΩ’πë}•—ïµÃÅLÅò(ÄÄÄÅ]!IÅòπµÖ—ç°ïë}’Õï…}•êÄÙÅÖ’—†π’•ê†§(ÄÄÄÅ=IHÅ	dÄ°òπΩ›πï…}Õïïπ}Ö–Å%LÅ9U10§ÅM∞ÅòπôΩ’πë}Ö–ÅM(ÄÄÄÅ1%5%PÄÃ¿Ï)9Ï(êêÏ()IQÅ=HÅIA1ÅU9Q%=8Å¡’â±•åπÕïïπ}ôΩ’πë}•—ï¥°¡}•—ïµ}•êÅUU%§)IQUI9LÅ	==18)19UÅ¡±¡ùÕ≈∞)MUI%QdÅ%9H)MPÅÕïÖ…ç°}¡Ö—†ÄÙÄúú)LÄêê)1I(ÄÄÄÅµîÅUU%ÄËÙÅÖ’—†π’•ê†§Ï)	%8(ÄÄÄÅ%ÅµîÅ%LÅ9U10ÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8ÄùM•ù∏Å•∏Åô•…Õ–∏ú(ÄÄÄÄÄÄÄÄÄÄÄÅUM%9ÅII=ÄÙÄú–»‘¿ƒúÏ(ÄÄÄÅ9Å%Ï((ÄÄÄÅUAQÅ¡’â±•åπôΩ’πë}•—ïµÃÅLÅò(ÄÄÄÄÄÄÅMPÅΩ›πï…}Õïïπ}Ö–ÄÙÅ9=\†§(ÄÄÄÄÅ]!IÅòπ•êÄÙÅ¡}•—ïµ}•ê(ÄÄÄÄÄÄÅ9ÅòπµÖ—ç°ïë}’Õï…}•êÄÙÅµî(ÄÄÄÄÄÄÅ9ÅòπΩ›πï…}Õïïπ}Ö–Å%LÅ9U10Ï(ÄÄÄÅIQUI8Å=U9Ï)9Ï(êêÏ(((¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥(¥¥Ä–∏Å]!PÅQ!Å%9HÅMLËÅQ!%HÅ=]8ÅIA=IQL∞Å9Å]!Q!HÅ9e	=dÅ]L(¥¥ÄÄÄÅQ=1∏Å9ïŸï»Å—°îÅΩ›πï»ùÃÅπÖµîÄ¥Å—°Ö–Å•ÃÅ—°îÅëïÕ¨ùÃÅ…ïçΩ…ê∞ÅπΩ–Å—°ï•…Ã∏(¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥()IQÅ=HÅIA1ÅU9Q%=8Å¡’â±•åπµÂ}ôΩ’πë}…ï¡Ω…—Ã†§)IQUI9LÅQ	1Ä†(ÄÄÄÅ•—ïµ}•êÅUU%∞(ÄÄÄÅ≠•πêÅQaP∞(ÄÄÄÅπ’µâï…}≠ï‰ÅQaP∞(ÄÄÄÅ¡±ÖçîÅQaP∞(ÄÄÄÅ°ï±ë}Ö–ÅQaP∞(ÄÄÄÅôΩ’πë}Ö–ÅQ%5MQ5AQh∞(ÄÄÄÅÕ—Ö—’ÃÅQaP∞(ÄÄÄÅ¡°Ω—Ω}¡Ö—†ÅQaP∞(ÄÄÄÅ›ÖÕ}µÖ—ç°ïêÅ	==18∞(ÄÄÄÅç…ïÖ—ïë}Ö–ÅQ%5MQ5AQh(§)19UÅ¡±¡ùÕ≈∞)MQ	1)MUI%QdÅ%9H)MPÅÕïÖ…ç°}¡Ö—†ÄÙÄúú)LÄêê)	%8(ÄÄÄÅ%ÅÖ’—†π’•ê†§Å%LÅ9U10ÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8ÄùM•ù∏Å•∏Åô•…Õ–∏ú(ÄÄÄÄÄÄÄÄÄÄÄÅUM%9ÅII=ÄÙÄú–»‘¿ƒúÏ(ÄÄÄÅ9Å%Ï((ÄÄÄÅIQUI8ÅEUId(ÄÄÄÅM1PÅòπ•ê∞Åòπ≠•πê∞Åòππ’µâï…}≠ï‰∞Åòπ¡±Öçî∞Åòπ°ï±ë}Ö–∞ÅòπôΩ’πë}Ö–∞ÅòπÕ—Ö—’Ã∞(ÄÄÄÄÄÄÄÄÄÄÅòπ¡°Ω—Ω}¡Ö—†∞ÅòπµÖ—ç°ïë}’Õï…}•êÅ%LÅ9=PÅ9U10∞Åòπç…ïÖ—ïë}Ö–(ÄÄÄÅI=4Å¡’â±•åπôΩ’πë}•—ïµÃÅLÅò(ÄÄÄÅ]!IÅòπ…ï¡Ω…—ï…}•êÄÙÅÖ’—†π’•ê†§(ÄÄÄÅ=IHÅ	dÅòπç…ïÖ—ïë}Ö–ÅM(ÄÄÄÅ1%5%PÄ–¿Ï)9Ï(êêÏ(((¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥(¥¥Ä‘∏ÅQ!ÅM,ËÅQ!ÅM!==0ùLÅ=]8Å=%ÅMLÅYIeQ!%9Å	=UPÅ%QLÅ=]8(¥¥ÄÄÄÅM!==0∞Å%91U%9Å]!<ÅA%-ÅQ!Å=U59PÅU@Å9ÅQ!ÅA!=Q=IA ∏(¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥()IQÅ=HÅIA1ÅU9Q%=8Å¡’â±•åπÕç°ΩΩ±}ôΩ’πë}•—ïµÃ°¡}Õç°ΩΩ±}≠ï‰ÅQaP§)IQUI9LÅQ	1Ä†(ÄÄÄÅ•—ïµ}•êÅUU%∞(ÄÄÄÅ≠•πêÅQaP∞(ÄÄÄÅπ’µâï…}•π¡’–ÅQaP∞(ÄÄÄÅπ’µâï…}≠ï‰ÅQaP∞(ÄÄÄÅ¡±ÖçîÅQaP∞(ÄÄÄÅ°ï±ë}Ö–ÅQaP∞(ÄÄÄÅôΩ’πë}Ö–ÅQ%5MQ5AQh∞(ÄÄÄÅÕ—Ö—’ÃÅQaP∞(ÄÄÄÅ¡°Ω—Ω}¡Ö—†ÅQaP∞(ÄÄÄÅô•πëï…}•êÅUU%∞(ÄÄÄÅô•πëï…}πÖµîÅQaP∞(ÄÄÄÅô•πëï…}¡°ΩπîÅQaP∞(ÄÄÄÅΩ›πï…}•êÅUU%∞(ÄÄÄÅΩ›πï…}πÖµîÅQaP∞(ÄÄÄÅΩ›πï…}¡°ΩπîÅQaP∞(ÄÄÄÅµÖ—ç°ïë}Ö–ÅQ%5MQ5AQh∞(ÄÄÄÅΩ›πï…}Õïïπ}Ö–ÅQ%5MQ5AQh(§)19UÅ¡±¡ùÕ≈∞)MQ	1)MUI%QdÅ%9H)MPÅÕïÖ…ç°}¡Ö—†ÄÙÄúú)LÄêê)	%8(ÄÄÄÅ%Å9=PÅ¡’â±•åπ•Õ}Õç°ΩΩ±}Õ—Öôò°¡}Õç°ΩΩ±}≠ï‰§ÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8Äù=π±‰Å—°îÅΩôô•çîÅΩòÅ—°Ö–ÅÕç°ΩΩ∞ÅÕïïÃÅ•—ÃÅôΩ’πêÅëΩç’µïπ—Ã∏ú(ÄÄÄÄÄÄÄÄÄÄÄÅUM%9ÅII=ÄÙÄú–»‘¿ƒúÏ(ÄÄÄÅ9Å%Ï((ÄÄÄÅIQUI8ÅEUId(ÄÄÄÅM1PÅòπ•ê∞Åòπ≠•πê∞Åòππ’µâï…}•π¡’–∞Åòππ’µâï…}≠ï‰∞Åòπ¡±Öçî∞Åòπ°ï±ë}Ö–∞ÅòπôΩ’πë}Ö–∞(ÄÄÄÄÄÄÄÄÄÄÅòπÕ—Ö—’Ã∞Åòπ¡°Ω—Ω}¡Ö—†∞(ÄÄÄÄÄÄÄÄÄÄÅòπ…ï¡Ω…—ï…}•ê∞Å»πô’±±}πÖµî∞Å»πçΩπ—Öç—}¡°Ωπî∞(ÄÄÄÄÄÄÄÄÄÄÅòπµÖ—ç°ïë}’Õï…}•ê∞Åºπô’±±}πÖµî∞ÅºπçΩπ—Öç—}¡°Ωπî∞(ÄÄÄÄÄÄÄÄÄÄÅòπµÖ—ç°ïë}Ö–∞ÅòπΩ›πï…}Õïïπ}Ö–(ÄÄÄÅI=4Å¡’â±•åπôΩ’πë}•—ïµÃÅLÅò(ÄÄÄÅ)=%8Å¡’â±•åπ¡…Ωô•±ïÃÅLÅ»Å=8Å»π•êÄÙÅòπ…ï¡Ω…—ï…}•ê(ÄÄÄÅ1PÅ)=%8Å¡’â±•åπ¡…Ωô•±ïÃÅLÅºÅ=8Åºπ•êÄÙÅòπµÖ—ç°ïë}’Õï…}•ê(ÄÄÄÅ]!IÅòπÕç°ΩΩ±}≠ï‰ÄÙÅ1=]H°	QI%4°=1M°¡}Õç°ΩΩ±}≠ï‰∞Äúú§§§(ÄÄÄÅ=IHÅ	dÅòπç…ïÖ—ïë}Ö–ÅM(ÄÄÄÅ1%5%PÄ»¿¿Ï)9Ï(êêÏ(((¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥(¥¥Äÿ∏Å1=M%9ÅÅ%9(¥¥ÅQ°îÅô•πëï»ÅÕÖÂÃÅ›°ï…îÅ—°îÅëΩç’µïπ–ÅπΩ‹Å•ÃÏÅ—°îÅëïÕ¨ÅΩ»Å—°îÅΩ›πï»ÅÕÖÂÃ(¥¥Å•–Å°ÖÃÅùΩπîÅâÖç¨Å•π—ºÅ—°îÅ…•ù°–Å°ÖπëÃ∏Å9ΩâΩë‰Åï±ÕîÅçÖ∏Å—Ω’ç†ÅÑÅ…Ω‹∏(¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥()IQÅ=HÅIA1ÅU9Q%=8Å¡’â±•åπÕï—}ôΩ’πë}•—ïµ}…ïÕ’±–†(ÄÄÄÅ¡}•—ïµ}•êÅUU%∞(ÄÄÄÅ¡}Õ—Ö—’ÃÅQaP∞(ÄÄÄÅ¡}°ï±ë}Ö–ÅQaP(§)IQUI9LÅ	==18)19UÅ¡±¡ùÕ≈∞)MUI%QdÅ%9H)MPÅÕïÖ…ç°}¡Ö—†ÄÙÄúú)LÄêê)1I(ÄÄÄÅµîÅUU%ÄËÙÅÖ’—†π’•ê†§Ï(ÄÄÄÅ…Ω›}Õ—Ö—’ÃÅQaPÏ(ÄÄÄÅÖ±±Ω›ïêÅ	==18Ï)	%8(ÄÄÄÅ%ÅµîÅ%LÅ9U10ÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8ÄùM•ù∏Å•∏Åô•…Õ–∏ú(ÄÄÄÄÄÄÄÄÄÄÄÅUM%9ÅII=ÄÙÄú–»‘¿ƒúÏ(ÄÄÄÅ9Å%Ï((ÄÄÄÅ%Å¡}Õ—Ö—’ÃÅ9=PÅ%8Ä†ùΩ¡ï∏ú∞Äù…ï—’…πïêú§ÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8ÄùQ°Ö–Å•ÃÅπΩ–ÅÑÅÕ—Ö—îÅÑÅôΩ’πêÅëΩç’µïπ–ÅçÖ∏ÅâîÅ•∏∏ú(ÄÄÄÄÄÄÄÄÄÄÄÅUM%9ÅII=ÄÙÄú»»¿¿ƒúÏ(ÄÄÄÅ9Å%Ï(ÄÄÄÅ%Å¡}°ï±ë}Ö–Å%LÅ9=PÅ9U10Å9Å¡}°ï±ë}Ö–Å9=PÅ%8Ä†ù›•—°}ô•πëï»ú∞ÄùÕïç’…•—Â}ëïÕ¨ú∞Äù±ΩÕ—}Ωôô•çîú§ÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8ÄùQ°Ö–Å•ÃÅπΩ–ÅÑÅ¡±ÖçîÅÑÅôΩ’πêÅëΩç’µïπ–Å•ÃÅ≠ï¡–∏ú(ÄÄÄÄÄÄÄÄÄÄÄÅUM%9ÅII=ÄÙÄú»»¿¿ƒúÏ(ÄÄÄÅ9Å%Ï((ÄÄÄÅM1PÅòπÕ—Ö—’ÃÅ%9Q<Å…Ω›}Õ—Ö—’Ã(ÄÄÄÅI=4Å¡’â±•åπôΩ’πë}•—ïµÃÅLÅò(ÄÄÄÅ]!IÅòπ•êÄÙÅ¡}•—ïµ}•êÏ((ÄÄÄÅ%Å…Ω›}Õ—Ö—’ÃÅ%LÅ9U10ÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8ÄùQ°Ö–ÅëΩç’µïπ–Å•ÃÅπΩ–ÅΩ∏Å…ïçΩ…ê∏ú(ÄÄÄÄÄÄÄÄÄÄÄÅUM%9ÅII=ÄÙÄù@¿¿¿»úÏ(ÄÄÄÅ9Å%Ï((ÄÄÄÅM1PÄ†(ÄÄÄÄÄÄÄÅòπ…ï¡Ω…—ï…}•êÄÙÅµî(ÄÄÄÄÄÄÄÅ=HÅ¡’â±•åπ•Õ}Õç°ΩΩ±}Õ—Öôò°òπÕç°ΩΩ±}≠ï‰§(ÄÄÄÄÄÄÄÅ=HÄ°òπµÖ—ç°ïë}’Õï…}•êÄÙÅµîÅ9Å¡}Õ—Ö—’ÃÄÙÄù…ï—’…πïêú§(ÄÄÄÄ§Å%9Q<ÅÖ±±Ω›ïê(ÄÄÄÅI=4Å¡’â±•åπôΩ’πë}•—ïµÃÅLÅò(ÄÄÄÅ]!IÅòπ•êÄÙÅ¡}•—ïµ}•êÏ((ÄÄÄÅ%Å9=PÅ=1M°Ö±±Ω›ïê∞Å1M§ÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8Äù=π±‰Å—°îÅô•πëï»∞Å—°îÅΩ›πï»ÅΩ»Å—°îÅëïÕ¨ÅΩòÅ—°Ö–ÅÕç°ΩΩ∞ÅçÖ∏Åç°ÖπùîÅ—°•Ã∏ú(ÄÄÄÄÄÄÄÄÄÄÄÅUM%9ÅII=ÄÙÄú–»‘¿ƒúÏ(ÄÄÄÅ9Å%Ï((ÄÄÄÅUAQÅ¡’â±•åπôΩ’πë}•—ïµÃÅLÅò(ÄÄÄÄÄÄÅMPÅÕ—Ö—’ÃÄÙÅ¡}Õ—Ö—’Ã∞(ÄÄÄÄÄÄÄÄÄÄÅ°ï±ë}Ö–ÄÙÅ=1M°¡}°ï±ë}Ö–∞Åòπ°ï±ë}Ö–§∞(ÄÄÄÄÄÄÄÄÄÄÅΩ›πï…}Õïïπ}Ö–ÄÙÅMÅ]!8ÅòπµÖ—ç°ïë}’Õï…}•êÄÙÅµîÅQ!8Å=1M°òπΩ›πï…}Õïïπ}Ö–∞Å9=\†§§(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅ1MÅòπΩ›πï…}Õïïπ}Ö–Å9(ÄÄÄÄÅ]!IÅòπ•êÄÙÅ¡}•—ïµ}•êÏ(ÄÄÄÅIQUI8ÅQIUÏ)9Ï(êêÏ()IY=-Å10Å=8ÅU9Q%=8Å¡’â±•åπ…ï¡Ω…—}ôΩ’πë}•—ï¥°QaP∞ÅQaP∞ÅQaP∞ÅQaP∞ÅQaP∞ÅQ%5MQ5AQh§ÅI=4ÅAU	1%∞ÅÖπΩ∏Ï)IY=-Å10Å=8ÅU9Q%=8Å¡’â±•åπµÂ}ôΩ’πë}•—ïµÃ†§ÅI=4ÅAU	1%∞ÅÖπΩ∏Ï)IY=-Å10Å=8ÅU9Q%=8Å¡’â±•åπÕïïπ}ôΩ’πë}•—ï¥°UU%§ÅI=4ÅAU	1%∞ÅÖπΩ∏Ï)IY=-Å10Å=8ÅU9Q%=8Å¡’â±•åπµÂ}ôΩ’πë}…ï¡Ω…—Ã†§ÅI=4ÅAU	1%∞ÅÖπΩ∏Ï)IY=-Å10Å=8ÅU9Q%=8Å¡’â±•åπÕç°ΩΩ±}ôΩ’πë}•—ïµÃ°QaP§ÅI=4ÅAU	1%∞ÅÖπΩ∏Ï)IY=-Å10Å=8ÅU9Q%=8Å¡’â±•åπÕï—}ôΩ’πë}•—ïµ}…ïÕ’±–°UU%∞ÅQaP∞ÅQaP§ÅI=4ÅAU	1%∞ÅÖπΩ∏Ï)I9PÅaUQÅ=8ÅU9Q%=8Å¡’â±•åπ…ï¡Ω…—}ôΩ’πë}•—ï¥°QaP∞ÅQaP∞ÅQaP∞ÅQaP∞ÅQaP∞ÅQ%5MQ5AQh§ÅQ<ÅÖ’—°ïπ—•çÖ—ïêÏ)I9PÅaUQÅ=8ÅU9Q%=8Å¡’â±•åπµÂ}ôΩ’πë}•—ïµÃ†§ÅQ<ÅÖ’—°ïπ—•çÖ—ïêÏ)I9PÅaUQÅ=8ÅU9Q%=8Å¡’â±•åπÕïïπ}ôΩ’πë}•—ï¥°UU%§ÅQ<ÅÖ’—°ïπ—•çÖ—ïêÏ)I9PÅaUQÅ=8ÅU9Q%=8Å¡’â±•åπµÂ}ôΩ’πë}…ï¡Ω…—Ã†§ÅQ<ÅÖ’—°ïπ—•çÖ—ïêÏ)I9PÅaUQÅ=8ÅU9Q%=8Å¡’â±•åπÕç°ΩΩ±}ôΩ’πë}•—ïµÃ°QaP§ÅQ<ÅÖ’—°ïπ—•çÖ—ïêÏ)I9PÅaUQÅ=8ÅU9Q%=8Å¡’â±•åπÕï—}ôΩ’πë}•—ïµ}…ïÕ’±–°UU%∞ÅQaP∞ÅQaP§ÅQ<ÅÖ’—°ïπ—•çÖ—ïêÏ(((¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥(¥¥Ä‹∏ÅQ!ÅA!=Q=IA Å=ÅÅ=U59P(¥¥Å%–Å•ÃÅ’¡±ΩÖëïêÅ•π—ºÅ—°îÅ¡…•ŸÖ—îÅâ’ç≠ï–Å•πÕ•ëîÅ—°îÅô•πëï»ùÃÅΩ›∏ÅôΩ±ëï»∞(¥¥Å›°•ç†Å—°îÅï·•Õ—•πúÅ•πÕï…–Å¡Ω±•ç‰ÅÖ±…ïÖë‰ÅÖ±±Ω›Ã∏ÅQ°•ÃÅ¡Ω±•ç‰Å•ÃÅ—°îÅ…ïÖê(¥¥ÅÕ•ëîËÅ—°îÅô•πëï»ÅΩ¡ïπÃÅ—°ï•»ÅΩ›∏Åô•±î∞ÅÖπêÅ—°îÅëïÕ¨ÅΩòÅ—°îÅÕç°ΩΩ∞ÅΩ¡ïπÃÅÑ(¥¥Åô•±îÅÑÅôΩ’πêÅ•—ï¥ÅÖç—’Ö±±‰Å¡Ω•π—ÃÅÖ–∏Å9ΩâΩë‰Åï±Õî∞ÅπΩ–ÅïŸï∏ÅÑÅµ’—’Ö∞(¥¥ÅçΩππïç—•Ω∏∞ÅïŸï»Åùï—ÃÅÑÅÕ•ùπïêÅUI0ÅôΩ»Å•–∏(¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥()I=@ÅA=1%dÅ%Åa%MQLÄâQ°îÅëïÕ¨ÅΩ¡ïπÃÅÑÅôΩ’πêÅëΩç’µïπ–Å¡°Ω—ºàÅ=8ÅÕ—Ω…ÖùîπΩâ©ïç—ÃÏ)IQÅA=1%dÄâQ°îÅëïÕ¨ÅΩ¡ïπÃÅÑÅôΩ’πêÅëΩç’µïπ–Å¡°Ω—ºà(ÄÄÄÅ=8ÅÕ—Ω…ÖùîπΩâ©ïç—ÃÅ=HÅM1PÅQ<ÅÖ’—°ïπ—•çÖ—ïê(ÄÄÄÅUM%9Ä†(ÄÄÄÄÄÄÄÅâ’ç≠ï—}•êÄÙÄùçÖµ¡’Ãµ¡…•ŸÖ—îµµïë•Ñú(ÄÄÄÄÄÄÄÅ9Åa%MQLÄ†(ÄÄÄÄÄÄÄÄÄÄÄÅM1PÄƒ(ÄÄÄÄÄÄÄÄÄÄÄÅI=4Å¡’â±•åπôΩ’πë}•—ïµÃÅLÅò(ÄÄÄÄÄÄÄÄÄÄÄÅ]!IÄ†ù¡…•ŸÖ—îµµïë•ÑËúÅÒÅÕ—Ω…ÖùîπΩâ©ïç—ÃππÖµî§ÄÙÅòπ¡°Ω—Ω}¡Ö—†(ÄÄÄÄÄÄÄÄÄÄÄÄÄÅ9Ä†(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅòπ…ï¡Ω…—ï…}•êÄÙÄ°M1PÅÖ’—†π’•ê†§§(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅ=HÅ¡’â±•åπ•Õ}Õç°ΩΩ±}Õ—Öôò°òπÕç°ΩΩ±}≠ï‰§(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ§(ÄÄÄÄÄÄÄÄ§(ÄÄÄÄ§Ï(((¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥(¥¥Ä‡∏ÅQ!Å=]9HùLÅ1IPÅ%LÅMQ%10Å)UMPÅÅAI%YQÅ9=Q%%Q%=8(¥¥Å%–Å©Ω•πÃÅ—°îÅ≠•πëÃÅ—°Ö–ÅÖ±…ïÖë‰Åï·•Õ–ÅÖπêÅ¡Ω•π—ÃÅÖ–Å—°îÅ…Ω‹Å•–ÅçÖµî(¥¥Åô…Ω¥∞ÅÕºÅ—°îÅÖ¡¿ÅçÖ∏Å…ïÖêÅ—°îÅÕÖôîÅçΩ±’µπÃÅ—°…Ω’ù†ÅµÂ}ôΩ’πë}•—ïµÃ†§(¥¥Å•πÕ—ïÖêÅΩòÅÕ°Ω›•πúÅÑÅπΩ—•ô•çÖ—•Ω∏Åâ’•±–Åô…Ω¥ÅÕΩµïâΩë‰Åï±ÕîùÃÅπÖµî∏(¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥()1QHÅQ	1Å¡’â±•åππΩ—•ô•çÖ—•ΩπÃ(ÄÄÄÅÅ=1U58Å%Å9=PÅa%MQLÅôΩ’πë}•—ïµ}•êÅUU%(ÄÄÄÄÄÄÄÅII9LÅ¡’â±•åπôΩ’πë}•—ïµÃ°•ê§Å=8Å1QÅMÏ()IQÅ%9`Å%Å9=PÅa%MQLÅπΩ—•ô•çÖ—•ΩπÕ}ôΩ’πë}•—ïµ}•ë‡(ÄÄÄÅ=8Å¡’â±•åππΩ—•ô•çÖ—•ΩπÃÄ°ôΩ’πë}•—ïµ}•ê§(ÄÄÄÅ]!IÅôΩ’πë}•—ïµ}•êÅ%LÅ9=PÅ9U10Ï()<Äêê)	%8(ÄÄÄÅ1QHÅQ	1Å¡’â±•åππΩ—•ô•çÖ—•ΩπÃÅI=@Å=9MQI%9PÅ%Åa%MQLÅπΩ—•ô•çÖ—•ΩπÕ}≠•πë}ç°ïç¨Ï(ÄÄÄÅ1QHÅQ	1Å¡’â±•åππΩ—•ô•çÖ—•ΩπÃ(ÄÄÄÄÄÄÄÅÅ=9MQI%9PÅπΩ—•ô•çÖ—•ΩπÕ}≠•πë}ç°ïç¨(ÄÄÄÄÄÄÄÅ!,Ä°≠•πêÅ%8Ä†ù…ïÖç—•Ω∏ú∞ÄùçΩµµïπ–ú∞ÄùôΩ±±Ω‹ú∞ÄùµïÕÕÖùîú∞Äùô…•ïπë}…ï≈’ïÕ–ú∞ÄùôΩ’πë}•—ï¥ú§§Ï)9Ï(êêÏ(((¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥(¥¥Ä‰∏ÅÅ=U9Å=U59PÅ%LÅ9=PÅÅA=MP∞ÅM<Å%PÅ%LÅ9=PÅ%8ÅI1Q%5Å%Q!H(¥¥ÅQ°îÅÖ±ï…–Å…Ω‹Å—°Ö–ÅµÂ}ôΩ’πë}•—ïµÃ†§Å±ïÖŸïÃÅâï°•πêÅ±•ŸïÃÅ•∏ÅπΩ—•ô•çÖ—•ΩπÃ∞(¥¥Å›°•ç†Å•ÃÅÖ±…ïÖë‰Å¡’â±•Õ°ïê∏ÅôΩ’πë}•—ïµÃÅ•—Õï±òÅÕ—ÖÂÃÅΩ’–ÅΩòÅ—°î(¥¥Å¡’â±•çÖ—•Ω∏ÅΩ∏Å¡’…¡ΩÕîËÅπΩ—°•πúÅÖâΩ’–ÅÑÅÕ—…Öπùï»ùÃÅëΩç’µïπ–ÅÕ°Ω’±êÅïŸï»(¥¥ÅÖ……•ŸîÅΩ∏ÅÖπΩ—°ï»Å¡°Ωπî∏(¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥()I=@ÅQI%HÅ%Åa%MQLÅôΩ’πë}•—ïµÕ}Õï—}’¡ëÖ—ïë}Ö–Å=8Å¡’â±•åπôΩ’πë}•—ïµÃÏ)IQÅQI%HÅôΩ’πë}•—ïµÕ}Õï—}’¡ëÖ—ïë}Ö–(ÄÄÄÅ	=IÅUAQÅ=8Å¡’â±•åπôΩ’πë}•—ïµÃ(ÄÄÄÅ=HÅ ÅI=\(ÄÄÄÅaUQÅU9Q%=8Å¡’â±•åπÕï—}’¡ëÖ—ïë}Ö–†§Ï()9=Q%dÅ¡ù…Õ–∞Äù…ï±ΩÖêÅÕç°ïµÑúÏ(((¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥(¥¥ÅAIPÄ»ÃÅ!,ËÅ—°îÅëΩΩ…ÃÅÑÅôΩ’πêÅëΩç’µïπ–ÅπïïëÃ(¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥()M1PÄù—Öâ±îËÅôΩ’πë}•—ïµÃúÅLÅç°ïç≠}πÖµî∞(ÄÄÄÄÄÄÅMÅ]!8Å–π—Öâ±ï}πÖµîÅ%LÅ9=PÅ9U10ÅQ!8ÄùΩ¨úÅ1MÄù5%MM%9Ä°πºÅëΩç’µïπ–ÅçÖ∏ÅâîÅ…ï¡Ω…—ïêÅÂï–§úÅ9ÅLÅ…ïÕ’±–)I=4Ä°M1PÄùôΩ’πë}•—ïµÃúËÈQaPÅLÅ∏§ÅLÅ›Öπ–)1PÅ)=%8Å•πôΩ…µÖ—•Ωπ}Õç°ïµÑπ—Öâ±ïÃÅLÅ–(ÄÄÄÄÄÄÅ=8Å–π—Öâ±ï}Õç°ïµÑÄÙÄù¡’â±•åúÅ9Å–π—Öâ±ï}πÖµîÄÙÅ›Öπ–π∏)U9%=8Å10)M1PÄùô’πç—•Ω∏ËÄúÅÒÅòπô’πç—•Ωπ}πÖµî∞(ÄÄÄÄÄÄÅMÅ]!8Å‡πÕ¡ïç•ô•ç}πÖµîÅ%LÅ9=PÅ9U10ÅQ!8ÄùΩ¨ú(ÄÄÄÄÄÄÄÄÄÄÄÅ1MÄù5%MM%9Ä°ÑÅôΩ’πêÅëΩç’µïπ–ÅçÖππΩ–ÅâîÅ…ï¡Ω…—ïêÅΩ»Å…ïÖêÅâÖç¨§úÅ9)I=4Ä°Y1ULÄ†ù…ï¡Ω…—}ôΩ’πë}•—ï¥ú§∞Ä†ùµÂ}ôΩ’πë}•—ïµÃú§∞Ä†ùÕïïπ}ôΩ’πë}•—ï¥ú§∞(ÄÄÄÄÄÄÄÄÄÄÄÄÄ†ùµÂ}ôΩ’πë}…ï¡Ω…—Ãú§∞Ä†ùÕç°ΩΩ±}ôΩ’πë}•—ïµÃú§∞Ä†ùÕï—}ôΩ’πë}•—ïµ}…ïÕ’±–ú§§ÅLÅò°ô’πç—•Ωπ}πÖµî§)1PÅ)=%8Å•πôΩ…µÖ—•Ωπ}Õç°ïµÑπ…Ω’—•πïÃÅLÅ‡(ÄÄÄÄÄÄÅ=8Å‡π…Ω’—•πï}Õç°ïµÑÄÙÄù¡’â±•åúÅ9Å‡π…Ω’—•πï}πÖµîÄÙÅòπô’πç—•Ωπ}πÖµî)U9%=8Å10)M1PÄùπΩ—•ô•çÖ—•Ω∏ËÅôΩ’πë}•—ï¥Å•ÃÅÖ∏ÅÖ±±Ω›ïêÅ≠•πêú∞(ÄÄÄÄÄÄÅMÅ]!8Åa%MQLÄ†(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅM1PÄƒÅI=4Å¡ù}çΩπÕ—…Ö•π–ÅLÅå(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅ]!IÅåπçΩπ…ï±•êÄÙÄù¡’â±•åππΩ—•ô•çÖ—•ΩπÃúËÈI1ML(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅ9ÅåπçΩππÖµîÄÙÄùπΩ—•ô•çÖ—•ΩπÕ}≠•πë}ç°ïç¨ú(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅ9Å¡ù}ùï—}çΩπÕ—…Ö•π—ëïò°åπΩ•ê§Å1%-ÄúïôΩ’πë}•—ï¥îú(ÄÄÄÄÄÄÄÄÄÄÄÄ§ÅQ!8ÄùΩ¨úÅ1MÄù5%MM%9Ä°—°îÅΩ›πï»Å›Ω’±êÅπïŸï»ÅâîÅÖ±ï…—ïê§úÅ9)U9%=8Å10)M1PÄù¡Ω±•ç‰ËÅ—°îÅëïÕ¨ÅçÖ∏ÅΩ¡ï∏ÅÑÅëΩç’µïπ–Å¡°Ω—ºú∞(ÄÄÄÄÄÄÅMÅ]!8Å=U9P†®§ÄÙÄƒÅQ!8ÄùΩ¨úÅ1MÄù5%MM%9Ä°—°îÅ¡°Ω—Ωù…Ö¡†ÅΩòÅÑÅôΩ’πêÅëΩç’µïπ–ÅÕ—ÖÂÃÅ’π…ïÖëÖâ±î§úÅ9)I=4Å¡ù}¡Ω±•ç•ïÃ)]!IÅÕç°ïµÖπÖµîÄÙÄùÕ—Ω…ÖùîúÅ9Å—Öâ±ïπÖµîÄÙÄùΩâ©ïç—Ãú(ÄÅ9Å¡Ω±•çÂπÖµîÄÙÄùQ°îÅëïÕ¨ÅΩ¡ïπÃÅÑÅôΩ’πêÅëΩç’µïπ–Å¡°Ω—ºú)U9%=8Å10)M1PÄù¡Ω±•ç‰ËÅÑÅôΩ’πêÅ•—ï¥ÅçÖππΩ–ÅâîÅ›…•——ï∏Åô…Ω¥ÅÑÅ¡Öùîú∞(ÄÄÄÄÄÄÅMÅ]!8Å=U9P†®§ÄÙÄ»ÅQ!8ÄùΩ¨ú(ÄÄÄÄÄÄÄÄÄÄÄÅ1MÄù5%MM%9Ä†úÅÒÅ=U9P†®§ÅÒÄúÅ¡Ω±•ç•ïÃÅΩ∏ÅôΩ’πë}•—ïµÃ∞Åï·¡ïç—ïêÄ»Å…ïÖêµΩπ±‰ÅΩπïÃ§úÅ9)I=4Å¡ù}¡Ω±•ç•ïÃ)]!IÅÕç°ïµÖπÖµîÄÙÄù¡’â±•åúÅ9Å—Öâ±ïπÖµîÄÙÄùôΩ’πë}•—ïµÃú)=IHÅ	dÅç°ïç≠}πÖµîÏ((¥¥ÄÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÅAI=%1ÅYQILÄÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙ(¥¥ÅA…Ωô•±îÅ¡°Ω—ΩÃÅ’ÕîÅÑÅëïë•çÖ—ïêÅ¡’â±•åÅâ’ç≠ï–ÅÕºÅΩ—°ï»ÅÕ•ùπïêµ•∏Åµïµâï…ÃÅçÖ∏(¥¥Åë•Õ¡±Ö‰Å—°ï¥∏ÅÖç†ÅÖççΩ’π–ÅµÖ‰Å›…•—îÅΩπ±‰Å•πÕ•ëîÅ•—ÃÅΩ›∏ÅUU%ÅôΩ±ëï»∏)	%8Ï()%9MIPÅ%9Q<ÅÕ—Ω…Öùîπâ’ç≠ï—ÃÄ†(ÄÄÄÅ•ê∞ÅπÖµî∞Å¡’â±•å∞Åô•±ï}Õ•Èï}±•µ•–∞ÅÖ±±Ω›ïë}µ•µï}—Â¡ïÃ(§)Y1ULÄ†(ÄÄÄÄùÖŸÖ—Ö…Ãú∞(ÄÄÄÄùÖŸÖ—Ö…Ãú∞(ÄÄÄÅQIU∞(ÄÄÄÄƒ¿–‡‘‹ÿ¿∞(ÄÄÄÅIIelù•µÖùîº®ùt(§)=8Å=91%PÄ°•ê§Å<ÅUAQ)MPÅπÖµîÄÙÅa1UππÖµî∞(ÄÄÄÅ¡’â±•åÄÙÅQIU∞(ÄÄÄÅô•±ï}Õ•Èï}±•µ•–ÄÙÅa1Uπô•±ï}Õ•Èï}±•µ•–∞(ÄÄÄÅÖ±±Ω›ïë}µ•µï}—Â¡ïÃÄÙÅa1UπÖ±±Ω›ïë}µ•µï}—Â¡ïÃÏ()I=@ÅA=1%dÅ%Åa%MQLÄâUÕï…ÃÅ’¡±ΩÖêÅΩ›∏ÅÖŸÖ—Ö»àÅ=8ÅÕ—Ω…ÖùîπΩâ©ïç—ÃÏ)IQÅA=1%dÄâUÕï…ÃÅ’¡±ΩÖêÅΩ›∏ÅÖŸÖ—Ö»à(ÄÄÄÅ=8ÅÕ—Ω…ÖùîπΩâ©ïç—ÃÅ=HÅ%9MIPÅQ<ÅÖ’—°ïπ—•çÖ—ïê(ÄÄÄÅ]%Q Å!,Ä†(ÄÄÄÄÄÄÄÅâ’ç≠ï—}•êÄÙÄùÖŸÖ—Ö…Ãú(ÄÄÄÄÄÄÄÅ9Ä°Õ—Ω…ÖùîπôΩ±ëï…πÖµî°πÖµî§•l≈tÄÙÄ°M1PÅÖ’—†π’•ê†§§ËÈQaP(ÄÄÄÄ§Ï()I=@ÅA=1%dÅ%Åa%MQLÄâπÂΩπîÅçÖ∏ÅŸ•ï‹ÅÖŸÖ—Ö…ÃàÅ=8ÅÕ—Ω…ÖùîπΩâ©ïç—ÃÏ)IQÅA=1%dÄâπÂΩπîÅçÖ∏ÅŸ•ï‹ÅÖŸÖ—Ö…Ãà(ÄÄÄÅ=8ÅÕ—Ω…ÖùîπΩâ©ïç—ÃÅ=HÅM1PÅQ<Å¡’â±•å(ÄÄÄÅUM%9Ä°â’ç≠ï—}•êÄÙÄùÖŸÖ—Ö…Ãú§Ï()=55%PÏ(((¥¥Å%90Å!,ËÅïŸï…‰Å…Ω‹ÅÕ°Ω’±êÅ…ïÖêÅΩ¨(¥¥ÄÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙ)M1PÄù¡’â±•çÖ—•Ω∏ËÄúÅÒÅ–π—Öâ±ï}πÖµîÅLÅç°ïç≠}πÖµî∞(ÄÄÄÄÄÄÅMÅ]!8Å¡–π—Öâ±ïπÖµîÅ%LÅ9=PÅ9U10ÅQ!8ÄùΩ¨úÅ1MÄù9=PÅAU	1%M!Å=HÅI1Q%5úÅ9ÅLÅ…ïÕ’±–)I=4Ä°Y1ULÄ†ùµïÕÕÖùïÃú§∞Ä†ùçΩµµ’π•—Â}µïÕÕÖùïÃú§∞Ä†ùçÖ±±}Õ•ùπÖ±Ãú§∞Ä†ùπΩ—•ô•çÖ—•ΩπÃú§§ÅLÅ–°—Öâ±ï}πÖµî§)1PÅ)=%8Å¡ù}¡’â±•çÖ—•Ωπ}—Öâ±ïÃÅLÅ¡–(ÄÄÄÄÄÄÅ=8Å¡–π¡’âπÖµîÄÙÄùÕ’¡ÖâÖÕï}…ïÖ±—•µîú(ÄÄÄÄÄÅ9Å¡–πÕç°ïµÖπÖµîÄÙÄù¡’â±•åú(ÄÄÄÄÄÅ9Å¡–π—Öâ±ïπÖµîÄÙÅ–π—Öâ±ï}πÖµî)U9%=8Å10)M1PÄù—Öâ±îËÄúÅÒÅ–π—Öâ±ï}πÖµî∞(ÄÄÄÄÄÄÅMÅ]!8Å—àπ—Öâ±ï}πÖµîÅ%LÅ9=PÅ9U10ÅQ!8ÄùΩ¨úÅ1MÄù5%MM%9úÅ9)I=4Ä°Y1ULÄ†ù’Õï…}â±Ωç≠Ãú§∞Ä†ù’Õï…}¡…ïÕïπçîú§∞Ä†ùçÖ±±}Õ•ùπÖ±Ãú§∞Ä†ùô…•ïπë}…ï≈’ïÕ—Ãú§∞(ÄÄÄÄÄÄÄÄÄÄÄÄÄ†ùµïÕÕÖùï}Ö——Öç°µïπ—Ãú§∞Ä†ùπΩ—•ô•çÖ—•Ωπ}¡…ïôï…ïπçïÃú§∞Ä†ùÕ—’ëïπ—}…ïù•Õ—…Ö—•ΩπÃú§∞(ÄÄÄÄÄÄÄÄÄÄÄÄÄ†ùçΩπ—Öç—}πÖµïÃú§∞Ä†ùµïÕÕÖùï}…ïÖç—•ΩπÃú§∞Ä†ùµïÕÕÖùï}Õ—Ö…Ãú§∞Ä†ù±ïç—’…ï…}Õ’âµ•ÕÕ•ΩπÃú§∞(ÄÄÄÄÄÄÄÄÄÄÄÄÄ†ù¡…Ωù…ÖµµïÃú§∞Ä†ù’π•—Ãú§∞Ä†ùç±ÖÕÕ}ÕïÕÕ•ΩπÃú§∞Ä†ùâ’±±ï—•πÃú§∞Ä†ùçΩµ¡Öπ•ïÃú§∞(ÄÄÄÄÄÄÄÄÄÄÄÄÄ†ùçΩµµ’π•—Â}…ïÖëÃú§∞Ä†ùëïŸ•çï}—Ω≠ïπÃú§∞Ä†ùçΩπŸï…ÕÖ—•Ωπ}Õï——•πùÃú§∞(ÄÄÄÄÄÄÄÄÄÄÄÄÄ†ùçÖµ¡’Õ}Õï…Ÿ•çïÃú§∞Ä†ù°ΩÕ—ï±Ãú§∞Ä†ù°ΩÕ—ï±}…ΩΩµÃú§∞Ä†ù°ΩÕ—ï±}âΩΩ≠•πùÃú§∞(ÄÄÄÄÄÄÄÄÄÄÄÄÄ†ùµïÖ±}¡±ÖπÃú§∞Ä†ùç°Ö¡±Ö•πçÂ}ïŸïπ—Ãú§∞Ä†ù¡…ÖÂï…}…ï≈’ïÕ—Ãú§∞Ä†ùç±ÖÕÕ}ç°ïç≠•πÃú§∞(ÄÄÄÄÄÄÄÄÄÄÄÄÄ†ùôΩ’πë}•—ïµÃú§§ÅLÅ–°—Öâ±ï}πÖµî§)1PÅ)=%8Å•πôΩ…µÖ—•Ωπ}Õç°ïµÑπ—Öâ±ïÃÅLÅ—à(ÄÄÄÄÄÄÅ=8Å—àπ—Öâ±ï}Õç°ïµÑÄÙÄù¡’â±•åúÅ9Å—àπ—Öâ±ï}πÖµîÄÙÅ–π—Öâ±ï}πÖµî)U9%=8Å10)M1PÄùÕ—Ω…ÖùîÅâ’ç≠ï–ËÅçÖµ¡’Ãµ›Ω…±êµµïë•Ñú∞(ÄÄÄÄÄÄÅMÅ]!8Åa%MQLÄ°M1PÄƒÅI=4ÅÕ—Ω…Öùîπâ’ç≠ï—ÃÅ]!IÅ•êÄÙÄùçÖµ¡’Ãµ›Ω…±êµµïë•Ñú§(ÄÄÄÄÄÄÄÄÄÄÄÅQ!8ÄùΩ¨úÅ1MÄù5%MM%9úÅ9)U9%=8Å10)M1PÄùù…Ω’¿Åô’πç—•Ω∏ËÄúÅÒÅòπô’πç—•Ωπ}πÖµî∞(ÄÄÄÄÄÄÅMÅ]!8Å‡πÕ¡ïç•ô•ç}πÖµîÅ%LÅ9=PÅ9U10ÅQ!8ÄùΩ¨úÅ1MÄù5%MM%9Ä°ù…Ω’¡ÃÅ›•±∞ÅπΩ–Å›Ω…¨§úÅ9)I=4Ä°Y1ULÄ†ùç…ïÖ—ï}ù…Ω’¿ú§∞Ä†ùÖëë}ù…Ω’¡}µïµâï…Ãú§∞Ä†ùµÂ}ù…Ω’¡Ãú§∞Ä†ùµÖ…≠}ù…Ω’¡}…ïÖêú§§ÅLÅò°ô’πç—•Ωπ}πÖµî§)1PÅ)=%8Å•πôΩ…µÖ—•Ωπ}Õç°ïµÑπ…Ω’—•πïÃÅLÅ‡(ÄÄÄÄÄÄÅ=8Å‡π…Ω’—•πï}Õç°ïµÑÄÙÄù¡’â±•åúÅ9Å‡π…Ω’—•πï}πÖµîÄÙÅòπô’πç—•Ωπ}πÖµî)U9%=8Å10)M1PÄù¡’Õ†Åô’πç—•Ω∏ËÄúÅÒÅòπô’πç—•Ωπ}πÖµî∞(ÄÄÄÄÄÄÅMÅ]!8Å‡πÕ¡ïç•ô•ç}πÖµîÅ%LÅ9=PÅ9U10ÅQ!8ÄùΩ¨úÅ1MÄù5%MM%9Ä°¡’Õ†ÅÖ±ï…—ÃÅ›•±∞ÅπΩ–Å›Ω…¨§úÅ9)I=4Ä°Y1ULÄ†ù…ïù•Õ—ï…}ëïŸ•çï}—Ω≠ï∏ú§∞Ä†ùôΩ…ùï—}ëïŸ•çï}—Ω≠ï∏ú§§ÅLÅò°ô’πç—•Ωπ}πÖµî§)1PÅ)=%8Å•πôΩ…µÖ—•Ωπ}Õç°ïµÑπ…Ω’—•πïÃÅLÅ‡(ÄÄÄÄÄÄÅ=8Å‡π…Ω’—•πï}Õç°ïµÑÄÙÄù¡’â±•åúÅ9Å‡π…Ω’—•πï}πÖµîÄÙÅòπô’πç—•Ωπ}πÖµî)U9%=8Å10)M1PÄù•ëïπ—•—‰Åô’πç—•Ω∏ËÄúÅÒÅòπô’πç—•Ωπ}πÖµî∞(ÄÄÄÄÄÄÅMÅ]!8Å‡πÕ¡ïç•ô•ç}πÖµîÅ%LÅ9=PÅ9U10ÅQ!8ÄùΩ¨úÅ1MÄù5%MM%9Ä°Öëµ•πÃÅçÖππΩ–ÅçΩ……ïç–ÅÑÅÕç°ΩΩ∞ÅΩ»Å¡…Ωù…Öµµî§úÅ9)I=4Ä°Y1ULÄ†ùÕï—}µïµâï…}’π•Ÿï…Õ•—‰ú§∞Ä†ùÕï—}µïµâï…}¡…Ωù…Öµµîú§§ÅLÅò°ô’πç—•Ωπ}πÖµî§)1PÅ)=%8Å•πôΩ…µÖ—•Ωπ}Õç°ïµÑπ…Ω’—•πïÃÅLÅ‡(ÄÄÄÄÄÄÅ=8Å‡π…Ω’—•πï}Õç°ïµÑÄÙÄù¡’â±•åúÅ9Å‡π…Ω’—•πï}πÖµîÄÙÅòπô’πç—•Ωπ}πÖµî)U9%=8Å10)M1PÄùçΩ±’µ∏ËÅçΩπŸï…ÕÖ—•Ωπ}Õï——•πùÃ∏úÅÒÅåπçΩ±’µπ}πÖµî∞(ÄÄÄÄÄÄÅMÅ]!8Å‡πçΩ±’µπ}πÖµîÅ%LÅ9=PÅ9U10ÅQ!8ÄùΩ¨úÅ1MÄù5%MM%9Ä°Ö…ç°•Ÿî∞Åµ’—î∞Å±Ωç¨ÅÖπêÅçΩ±Ω’…ÃÅ›•±∞ÅÕ—Ö‰ÅΩ∏Å—°•ÃÅ¡°ΩπîÅΩπ±‰§úÅ9)I=4Ä°Y1ULÄ†ùÖ…ç°•Ÿïêú§∞Ä†ùµ’—ïêú§∞Ä†ù±Ωç≠ïêú§∞Ä†ùç°Ö—}±•Õ–ú§∞Ä†ù—°ïµîú§∞Ä†ùç±ïÖ…ïë}Ö–ú§∞Ä†ù°•ëëïπ}Ö–ú§§ÅLÅå°çΩ±’µπ}πÖµî§)1PÅ)=%8Å•πôΩ…µÖ—•Ωπ}Õç°ïµÑπçΩ±’µπÃÅLÅ‡(ÄÄÄÄÄÄÅ=8Å‡π—Öâ±ï}Õç°ïµÑÄÙÄù¡’â±•åúÅ9Å‡π—Öâ±ï}πÖµîÄÙÄùçΩπŸï…ÕÖ—•Ωπ}Õï——•πùÃúÅ9Å‡πçΩ±’µπ}πÖµîÄÙÅåπçΩ±’µπ}πÖµî)U9%=8Å10)M1PÄùçΩ±’µ∏ËÅµïÕÕÖùïÃ∏úÅÒÅåπçΩ±’µπ}πÖµî∞(ÄÄÄÄÄÄÅMÅ]!8Å‡πçΩ±’µπ}πÖµîÅ%LÅ9=PÅ9U10ÅQ!8ÄùΩ¨úÅ1MÄù5%MM%9úÅ9)I=4Ä°Y1ULÄ†ùïë•—ïë}Ö–ú§∞Ä†ùëï±ï—ïë}ôΩ…}ïŸï…ÂΩπîú§∞Ä†ùëï±ï—ïë}â‰ú§∞Ä†ù…ï¡±Â}—ºú§∞Ä†ù…ï¡±Â}¡…ïŸ•ï‹ú§§ÅLÅå°çΩ±’µπ}πÖµî§)1PÅ)=%8Å•πôΩ…µÖ—•Ωπ}Õç°ïµÑπçΩ±’µπÃÅLÅ‡(ÄÄÄÄÄÄÅ=8Å‡π—Öâ±ï}Õç°ïµÑÄÙÄù¡’â±•åúÅ9Å‡π—Öâ±ï}πÖµîÄÙÄùµïÕÕÖùïÃúÅ9Å‡πçΩ±’µπ}πÖµîÄÙÅåπçΩ±’µπ}πÖµî)U9%=8Å10)M1PÄùçΩ±’µ∏ËÅ¡…Ωô•±ïÃ∏úÅÒÅåπçΩ±’µπ}πÖµî∞(ÄÄÄÄÄÄÅMÅ]!8Å‡πçΩ±’µπ}πÖµîÅ%LÅ9=PÅ9U10ÅQ!8ÄùΩ¨úÅ1MÄù5%MM%9úÅ9)I=4Ä°Y1ULÄ†ù…Ω±îú§∞Ä†ùŸï…•ô•çÖ—•Ωπ}Õ—Ö—’Ãú§∞Ä†ù•Õ}ë•ÕçΩŸï…Öâ±îú§∞Ä†ù’π•Ÿï…Õ•—‰ú§∞(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ†ùÕ—Öôô}•ë}π’µâï»ú§∞Ä†ùïµ¡±ΩÂµïπ—}Õ—Ö—’Ãú§∞Ä†ùÕ—’ëÂ}µΩëîú§∞Ä†ù±ïç—’…ï…}Õ•πçîú§∞Ä†ùçΩµ¡Öπ‰ú§∞Ä†ùçΩµ¡ÖπÂ}…Ω±îú§∞(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄ†ù¡°Ωπï}ë•ù•—Ãú§§ÅLÅå°çΩ±’µπ}πÖµî§)1PÅ)=%8Å•πôΩ…µÖ—•Ωπ}Õç°ïµÑπçΩ±’µπÃÅLÅ‡(ÄÄÄÄÄÄÅ=8Å‡π—Öâ±ï}Õç°ïµÑÄÙÄù¡’â±•åúÅ9Å‡π—Öâ±ï}πÖµîÄÙÄù¡…Ωô•±ïÃúÅ9Å‡πçΩ±’µπ}πÖµîÄÙÅåπçΩ±’µπ}πÖµî)U9%=8Å10)M1PÄù¡°ΩπîÅô’πç—•Ω∏ËÄúÅÒÅòπô’πç—•Ωπ}πÖµî∞(ÄÄÄÄÄÄÅMÅ]!8Å‡πÕ¡ïç•ô•ç}πÖµîÅ%LÅ9=PÅ9U10ÅQ!8ÄùΩ¨úÅ1MÄù5%MM%9Ä°ë•Ö±±•πúÅÑÅπ’µâï»Åô…Ω¥Å—°îÅÖ¡¿Å›•±∞ÅπΩ–Å›Ω…¨§úÅ9)I=4Ä°Y1ULÄ†ùπΩ…µÖ±•Èï}¡°Ωπï}ë•ù•—Ãú§∞Ä†ùô•πë}µïµâï…}âÂ}¡°Ωπîú§§ÅLÅò°ô’πç—•Ωπ}πÖµî§)1PÅ)=%8Å•πôΩ…µÖ—•Ωπ}Õç°ïµÑπ…Ω’—•πïÃÅLÅ‡(ÄÄÄÄÄÄÅ=8Å‡π…Ω’—•πï}Õç°ïµÑÄÙÄù¡’â±•åúÅ9Å‡π…Ω’—•πï}πÖµîÄÙÅòπô’πç—•Ωπ}πÖµî)U9%=8Å10)M1PÄùÕï…Ÿ•çïÃÅô’πç—•Ω∏ËÄúÅÒÅòπô’πç—•Ωπ}πÖµî∞(ÄÄÄÄÄÄÅMÅ]!8Å‡πÕ¡ïç•ô•ç}πÖµîÅ%LÅ9=PÅ9U10ÅQ!8ÄùΩ¨úÅ1MÄù5%MM%9Ä°°ΩÕ—ï±Ã∞Åç°Ö¡±Ö•πç‰ÅΩ»Å—°îÅç±ÖÕÃÅ…ïù•Õ—ï»Å›•±∞ÅπΩ–Å›Ω…¨§úÅ9)I=4Ä°Y1ULÄ†ùµÂ}Õç°ΩΩ±}≠ï‰ú§∞Ä†ù•Õ}Õç°ΩΩ±}Õ—Öôòú§∞Ä†ùµÖÂ}±ïÖë}ç°Ö¡±Ö•πç‰ú§∞(ÄÄÄÄÄÄÄÄÄÄÄÄÄ†ùÖÕ≠}ôΩ…}°ΩÕ—ï±}âïêú§∞Ä†ùëïç•ëï}°ΩÕ—ï±}âΩΩ≠•πúú§∞Ä†ùµÂ}âïë}…ï≈’ïÕ—Ãú§∞(ÄÄÄÄÄÄÄÄÄÄÄÄÄ†ùÕç°ΩΩ±}âïë}…ï≈’ïÕ—Ãú§∞Ä†ùç±ÖÕÕ}Ωçç’……ïπçï}ëÖ—îú§∞(ÄÄÄÄÄÄÄÄÄÄÄÄÄ†ùΩ¡ïπ}ç±ÖÕÕ}ç°ïç≠•∏ú§∞Ä†ùç°ïç≠}•π—Ω}ç±ÖÕÃú§∞Ä†ùç±ÖÕÕ}Ö——ïπëÖπçîú§§ÅLÅò°ô’πç—•Ωπ}πÖµî§)1PÅ)=%8Å•πôΩ…µÖ—•Ωπ}Õç°ïµÑπ…Ω’—•πïÃÅLÅ‡(ÄÄÄÄÄÄÅ=8Å‡π…Ω’—•πï}Õç°ïµÑÄÙÄù¡’â±•åúÅ9Å‡π…Ω’—•πï}πÖµîÄÙÅòπô’πç—•Ωπ}πÖµî)U9%=8Å10)M1PÄùôΩ’πêÅô’πç—•Ω∏ËÄúÅÒÅòπô’πç—•Ωπ}πÖµî∞(ÄÄÄÄÄÄÅMÅ]!8Å‡πÕ¡ïç•ô•ç}πÖµîÅ%LÅ9=PÅ9U10ÅQ!8ÄùΩ¨úÅ1MÄù5%MM%9Ä°ÑÅôΩ’πêÅëΩç’µïπ–ÅçÖππΩ–ÅâîÅ…ï¡Ω…—ïêÅΩ»Åç±Ö•µïê§úÅ9)I=4Ä°Y1ULÄ†ù…ï¡Ω…—}ôΩ’πë}•—ï¥ú§∞Ä†ùµÂ}ôΩ’πë}•—ïµÃú§∞Ä†ùÕïïπ}ôΩ’πë}•—ï¥ú§∞(ÄÄÄÄÄÄÄÄÄÄÄÄÄ†ùµÂ}ôΩ’πë}…ï¡Ω…—Ãú§∞Ä†ùÕç°ΩΩ±}ôΩ’πë}•—ïµÃú§∞Ä†ùÕï—}ôΩ’πë}•—ïµ}…ïÕ’±–ú§§ÅLÅò°ô’πç—•Ωπ}πÖµî§)1PÅ)=%8Å•πôΩ…µÖ—•Ωπ}Õç°ïµÑπ…Ω’—•πïÃÅLÅ‡(ÄÄÄÄÄÄÅ=8Å‡π…Ω’—•πï}Õç°ïµÑÄÙÄù¡’â±•åúÅ9Å‡π…Ω’—•πï}πÖµîÄÙÅòπô’πç—•Ωπ}πÖµî)=IHÅ	dÅç°ïç≠}πÖµîÏ((¥¥ÄÙÙÙÙÙÙÙÙÙÙÙÙÅAIPÄ»–º»–ËÅµ•ù…Ö—•ΩπÃº»¿»ÿƒƒ¿Ÿ}¡…ΩµΩ—•ΩπÃπÕ≈∞ÄÙÙÙÙÙÙÙÙÙÙÙÙ(¥¥ÄÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙ(¥¥Å5AULÅ=99PÉäPÅA%ÅA159QLÅ=HÅ1=0Å	UM%9MML(¥¥ÅÅ°ΩÕ—ï∞∞ÅÑÅ¡…•π–ÅÕ°Ω¿ÅΩ»ÅÑÅôΩΩêÅŸïπëΩ»Å¡ÖÂÃÅ—°îÅâ’•±ëï»ÅΩòÅ—°•ÃÅÖ¡¿(¥¥Åë•…ïç—±‰Ä°4µAïÕÑÅMïπêÅ5Ωπï‰∞ÅÖù…ïïêÅâ‰Å°Öπê§∞ÅÖπêÅ—°îÅâ’•±ëï»Å—°ï∏Å¡’—Ã(¥¥Å—°Ö–Åâ’Õ•πïÕÃÅÖ–Å—°îÅô…Ωπ–ÅΩòÅ—°îÅôïïêÅôΩ»ÅÑÅÕï–Åπ’µâï»ÅΩòÅëÖÂÃ∏(¥¥ÄÄÄ®ÅπΩ—°•πúÅ°ï…îÅ—Ö≠ïÃÅµΩπï‰∏ÅQ°ï…îÅ•ÃÅπºÅùÖ—ï›Ö‰∞ÅπºÅçÖ…ê∞ÅπºÅÕ•±ïπ–(¥¥ÄÄÄÄÅëïë’ç—•Ω∏∞ÅπºÅ¡ï…çïπ–ÅΩòÅÖπÂ—°•πú∏ÅQ°îÅ¡ÖÂµïπ–Å°Ö¡¡ïπÃÅΩ’—Õ•ëîÅ—°î(¥¥ÄÄÄÄÅÖ¡¿∞Åâï—›ïï∏Å—›ºÅ¡ïΩ¡±îÅ›°ºÅâΩ—†ÅÕÖ•êÅÂïÃ∏(¥¥ÄÄÄ®Å—°îÅ…Ω‹Å•ÃÅ—°îÅÖëŸï…—•Õïµïπ–∞ÅπΩ–ÅÑÅ¡ΩÕ–∏ÅÅÕ—’ëïπ–ùÃÅΩ›∏Å¡ΩÕ–Å•Ã(¥¥ÄÄÄÄÅπïŸï»ÅµÖ…≠ïêÅ¡…ΩµΩ—ïê∞ÅâïçÖ’ÕîÅ—°Ö–Å›Ω’±êÅ±ï–ÅÕΩµïâΩë‰Åâ’‰ÅÑÅ¡±Öçî(¥¥ÄÄÄÄÅ•∏Åô…Ωπ–ÅΩòÅÑÅç±ÖÕÕµÖ—îùÃÅ›Ω…ëÃÅ›•—°Ω’–Å—°îÅç±ÖÕÕµÖ—îÅÖù…ïï•πú∏(¥¥ÄÄÄ®ÅïŸï…ÂΩπîÅÕ•ùπïêÅ•∏ÅµÖ‰Å…ïÖêÅ—°îÅ±•ŸîÅΩπïÃÏÅΩπ±‰ÅÖ∏ÅÖëµ•∏ÅµÖ‰Å›…•—î∞(¥¥ÄÄÄÄÅÕºÅÑÅ¡…ΩµΩ—•Ω∏ÅçÖππΩ–ÅâîÅç…ïÖ—ïêÅΩ»Åïë•—ïêÅâ‰Å—°îÅâ’Õ•πïÕÃÅ•—Õï±ò(¥¥ÄÄÄÄÅ—°…Ω’ù†Å—°îÅÖ¡¿∏(¥¥ÄÄÄ®ÅÑÅ›•πëΩ‹ÅΩòÅëÖ—ïÃÅ•ÃÅÕ—Ω…ïê∞ÅπΩ–ÅÑÅô±Öú∏ÅQ°îÅôïïêÅÕ°Ω›ÃÅÑÅ¡±Öçïµïπ–(¥¥ÄÄÄÄÅΩπ±‰Å›°•±îÅ9=\†§Å•ÃÅ•πÕ•ëîÅ•–∞ÅÕºÅÖ∏ÅÖêÅ…ï—•…ïÃÅ•—Õï±òÅÖ–Å—°îÅµΩµïπ–(¥¥ÄÄÄÄÅ—°îÅ›ïï¨Å°îÅÕΩ±êÅ•ÃÅΩŸï»∞Å›°ï—°ï»ÅΩ»ÅπΩ–ÅÖπÂâΩë‰Å…ïµïµâï…ÃÅ—ºÅÕ›•—ç†(¥¥ÄÄÄÄÅ•–ÅΩôò∏(¥¥ÄÄÄ®ÅÕç°ΩΩ±}≠ï‰Å•ÃÅô…ïîÅ—ï·–ÅΩ∏Å¡’…¡ΩÕî∞Å—°îÅÕÖµîÅ›Ö‰Å¡…Ωô•±ïÃπçΩµ¡Öπ‰(¥¥ÄÄÄÄÅ•ÃËÅÑÅ¡±Öçïµïπ–ÅôΩ»Å—°îÅ›°Ω±îÅçΩ’π—…‰Å°ÖÃÅÖ∏Åïµ¡—‰Å≠ï‰∞ÅÑÅ¡±Öçïµïπ–(¥¥ÄÄÄÄÅÕΩ±êÅôΩ»ÅΩπîÅçÖµ¡’ÃÅçÖ……•ïÃÅ—°Ö–ÅçÖµ¡’ÃÅÕ¡ï±±ïêÅ—°îÅ›Ö‰Å—°îÅÖ¡¿(¥¥ÄÄÄÄÅÕ¡ï±±ÃÅ•–∏ÅÅâ±Öπ¨Å•ÃÄâïŸï…Â›°ï…îà∞ÅπïŸï»ÄâπΩâΩë‰à∏(¥¥Å%ëïµ¡Ω—ïπ–ËÅÕÖôîÅ—ºÅ…’∏ÅµΩ…îÅ—°Ö∏ÅΩπçî∏(¥¥ÄÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙ(((¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥(¥¥Äƒ∏ÅQ!ÅQ]<Å!1ALÅQ!%LÅQ	1Å9L(¥¥Å	Ω—†ÅÖ±…ïÖë‰Åï·•Õ–Å•∏Å—°îÅµÖ•∏ÅÕç°ïµÑ∞ÅÕºÅ—°•ÃÅ•ÃÅÑÅ…îµëïç±Ö…Ö—•Ω∏ÅΩò(¥¥Å—°îÅëïô•π•—•ΩπÃÅ—°Ö–ÅÖ…îÅÖ±…ïÖë‰Å—°ï…î∞Å•∏Åï·Öç—±‰Å—°ΩÕîÅ›Ω…ëÃ∏Å%–Å•Ã(¥¥Å°ï…îÅÕºÅ—°Ö–Å—°•ÃÅΩπîÅô•±îÅçÖ∏ÅâîÅ¡ÖÕ—ïêÅΩ∏Å•—ÃÅΩ›∏ÅÖπêÅÕ—•±∞Å›Ω…¨∏(¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥()IQÅ=HÅIA1ÅU9Q%=8Å¡’â±•åπÕï—}’¡ëÖ—ïë}Ö–†§)IQUI9LÅQI%H)19UÅ¡±¡ùÕ≈∞)MPÅÕïÖ…ç°}¡Ö—†ÄÙÄúú)LÄêê)	%8(ÄÄÄÅ9\π’¡ëÖ—ïë}Ö–ÄÙÅ9=\†§Ï(ÄÄÄÅIQUI8Å9\Ï)9Ï(êêÏ()IQÅ=HÅIA1ÅU9Q%=8Å¡’â±•åπ•Õ}Öëµ•∏†§)IQUI9LÅ	==18)19UÅÕ≈∞)MQ	1)MUI%QdÅ%9H)MPÅÕïÖ…ç°}¡Ö—†ÄÙÄúú)LÄêê(ÄÄÄÅM1PÅ=1M†(ÄÄÄÄÄÄÄÄ°M1PÅ¿π…Ω±îÄÙÄùÖëµ•∏úÅI=4Å¡’â±•åπ¡…Ωô•±ïÃÅLÅ¿Å]!IÅ¿π•êÄÙÅÖ’—†π’•ê†§§∞(ÄÄÄÄÄÄÄÅ1M(ÄÄÄÄ§Ï(êêÏ()IY=-Å10Å=8ÅU9Q%=8Å¡’â±•åπ•Õ}Öëµ•∏†§ÅI=4ÅAU	1%∞ÅÖπΩ∏Ï)I9PÅaUQÅ=8ÅU9Q%=8Å¡’â±•åπ•Õ}Öëµ•∏†§ÅQ<ÅÖ’—°ïπ—•çÖ—ïêÏ(((¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥(¥¥Ä»∏ÅQ!ÅA159QL(¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥()IQÅQ	1Å%Å9=PÅa%MQLÅ¡’â±•åπ¡…ΩµΩ—•ΩπÃÄ†(ÄÄÄÅ•êÅUU%ÅAI%5IdÅ-dÅU1PÅùïπ}…ÖπëΩµ}’’•ê†§∞(ÄÄÄÅâ’Õ•πïÕÃÅQaPÅ9=PÅ9U10Å!,Ä°ç°Ö…}±ïπù—†°	QI%4°â’Õ•πïÕÃ§§Å	Q]8Ä»Å9Ä‡¿§∞(ÄÄÄÅ°ïÖë±•πîÅQaPÅ9=PÅ9U10Å!,Ä°ç°Ö…}±ïπù—†°	QI%4°°ïÖë±•πî§§Å	Q]8Ä–Å9Äƒ»¿§∞(ÄÄÄÅâΩë‰ÅQaPÅ!,Ä°âΩë‰Å%LÅ9U10Å=HÅç°Ö…}±ïπù—†°	QI%4°âΩë‰§§ÄÙÄÿ¿¿§∞(ÄÄÄÅ•µÖùï}’…∞ÅQaPÅ!,Ä°•µÖùï}’…∞Å%LÅ9U10Å=HÅç°Ö…}±ïπù—†°	QI%4°•µÖùï}’…∞§§ÄÙÄ»¿–‡§∞(ÄÄÄÅçΩπ—Öç–ÅQaPÅ!,Ä°çΩπ—Öç–Å%LÅ9U10Å=HÅç°Ö…}±ïπù—†°	QI%4°çΩπ—Öç–§§ÄÙÄ–¿§∞(ÄÄÄÅ±•π¨ÅQaPÅ!,Ä°±•π¨Å%LÅ9U10Å=HÅ±•π¨Å¯Äùy°——¡Ã¸Ëººú§∞(ÄÄÄÅÕç°ΩΩ±}≠ï‰ÅQaPÅ9=PÅ9U10ÅU1PÄúúÅ!,Ä°ç°Ö…}±ïπù—†°	QI%4°Õç°ΩΩ±}≠ï‰§§ÄÙÄƒ»¿§∞(ÄÄÄÅÕ—Ö…—Õ}Ö–ÅQ%5MQ5AQhÅ9=PÅ9U10ÅU1PÅ9=\†§∞(ÄÄÄÅïπëÕ}Ö–ÅQ%5MQ5AQhÅ9=PÅ9U10∞(ÄÄÄÅ¡…•çï}πΩ—îÅQaPÅ!,Ä°¡…•çï}πΩ—îÅ%LÅ9U10Å=HÅç°Ö…}±ïπù—†°	QI%4°¡…•çï}πΩ—î§§ÄÙÄ»¿¿§∞(ÄÄÄÅç…ïÖ—ïë}â‰ÅUU%ÅII9LÅÖ’—†π’Õï…Ã°•ê§Å=8Å1QÅMPÅ9U10∞(ÄÄÄÅç…ïÖ—ïë}Ö–ÅQ%5MQ5AQhÅ9=PÅ9U10ÅU1PÅ9=\†§∞(ÄÄÄÅ’¡ëÖ—ïë}Ö–ÅQ%5MQ5AQhÅ9=PÅ9U10ÅU1PÅ9=\†§∞(ÄÄÄÄ¥¥ÅÅ›•πëΩ‹Å—°Ö–Å°ÖÃÅÖ±…ïÖë‰Åç±ΩÕïêÅ•ÃÅ≠ï¡–∞ÅπïŸï»Åëï±ï—ïêËÅ•–Å•ÃÅ—°î(ÄÄÄÄ¥¥Å…ïçΩ…êÅΩòÅÑÅ›ïï¨ÅÕΩµïâΩë‰Å¡Ö•êÅôΩ»∏(ÄÄÄÅ=9MQI%9PÅ¡…ΩµΩ—•ΩπÕ}›•πëΩ›}µÖ≠ïÕ}ÕïπÕîÅ!,Ä°ïπëÕ}Ö–Ä¯ÅÕ—Ö…—Õ}Ö–§∞(ÄÄÄÄ¥¥Å∏ÅÖêÅ›•—†Åπï•—°ï»ÅÑÅ¡°ΩπîÅπ’µâï»ÅπΩ»ÅÑÅ±•π¨Å—ï±±ÃÅ—°îÅÕ—’ëïπ–(ÄÄÄÄ¥¥ÅπΩ—°•πúÅ°îÅçÖ∏ÅÖç–ÅΩ∏∞ÅÕºÅ•–Å•ÃÅπΩ–ÅÖ±±Ω›ïêÅ•∏∏(ÄÄÄÅ=9MQI%9PÅ¡…ΩµΩ—•ΩπÕ}…ïÖç°Öâ±îÅ!,Ä†(ÄÄÄÄÄÄÄÅ	QI%4°=1M°çΩπ—Öç–∞Äúú§§Ä¯ÄúúÅ=HÅ	QI%4°=1M°±•π¨∞Äúú§§Ä¯Äúú(ÄÄÄÄ§(§Ï()=559PÅ=8ÅQ	1Å¡’â±•åπ¡…ΩµΩ—•ΩπÃÅ%L(ÄÄÄÄùA±Öçïµïπ—ÃÅÕΩ±êÅâ‰Å°ÖπêÅÖπêÅÕ°Ω›∏ÅÖ–Å—°îÅô…Ωπ–ÅΩòÅ—°îÅôïïêÅ›°•±îÅ—°ï•»ÅëÖ—îÅ›•πëΩ‹Å•ÃÅΩ¡ï∏∏úÏ)=559PÅ=8Å=1U58Å¡’â±•åπ¡…ΩµΩ—•ΩπÃπÕç°ΩΩ±}≠ï‰Å%L(ÄÄÄÄùµ¡—‰ÅµïÖπÃÅïŸï…‰ÅçÖµ¡’Ã∏Å=—°ï…›•ÕîÅ—°îÅÕç°ΩΩ∞Å—°•ÃÅ¡±Öçïµïπ–Å›ÖÃÅÕΩ±êÅ—º∞ÅÕ¡ï±±ïêÅ—°îÅ›Ö‰Å—°îÅÖ¡¿ÅÕ¡ï±±ÃÅ•–∏úÏ)=559PÅ=8Å=1U58Å¡’â±•åπ¡…ΩµΩ—•ΩπÃπ¡…•çï}πΩ—îÅ%L(ÄÄÄÄù]°Ö–Å°îÅÖù…ïïêÅ›•—†Å—°îÅâ’Õ•πïÕÃÄ¥ÅÑÅ¡…•ŸÖ—îÅπΩ—î∞ÅπïŸï»ÅÕ°Ω›∏Å—ºÅÑÅÕ—’ëïπ–∏úÏ((¥¥ÅQ°îÅôïïêÅÖÕ≠ÃÅΩπîÅ≈’ïÕ—•Ω∏ÅΩòÅ—°•ÃÅ—Öâ±îËÅ›°Ö–Å•ÃÅ±•ŸîÅ…•ù°–ÅπΩ‹∏)IQÅ%9`Å%Å9=PÅa%MQLÅ¡…ΩµΩ—•ΩπÕ}±•Ÿï}•ë‡(ÄÄÄÅ=8Å¡’â±•åπ¡…ΩµΩ—•ΩπÃÄ°ïπëÕ}Ö–ÅM∞ÅÕ—Ö…—Õ}Ö–ÅM§Ï(((¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥(¥¥ÄÃ∏Å-@Å’¡ëÖ—ïë}Ö–Å!=9MP(¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥()I=@ÅQI%HÅ%Åa%MQLÅ¡…ΩµΩ—•ΩπÕ}Õï—}’¡ëÖ—ïë}Ö–Å=8Å¡’â±•åπ¡…ΩµΩ—•ΩπÃÏ)IQÅQI%HÅ¡…ΩµΩ—•ΩπÕ}Õï—}’¡ëÖ—ïë}Ö–(ÄÄÄÅ	=IÅUAQÅ=8Å¡’â±•åπ¡…ΩµΩ—•ΩπÃ(ÄÄÄÅ=HÅ ÅI=\(ÄÄÄÅaUQÅU9Q%=8Å¡’â±•åπÕï—}’¡ëÖ—ïë}Ö–†§Ï(((¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥(¥¥Ä–∏Å]!<Å5dÅMÅ9Å]I%Q(¥¥ÅIïÖë•πúÅ•ÃÅôΩ»ÅïŸï…‰ÅÕ•ùπïêµ•∏ÅÖççΩ’π–∞ÅâïçÖ’ÕîÅÖ∏ÅÖëŸï…—•Õïµïπ–Å•∏ÅÑ(¥¥ÅÕ—’ëïπ–ÅÖ¡¿Å•ÃÅÕ—•±∞ÅçΩπ—ïπ–Å—°îÅÕ—’ëïπ–Å•ÃÅµïÖπ–Å—ºÅ±ΩΩ¨ÅÖ–∏Å]…•—•πú(¥¥Å•ÃÅôΩ»ÅÖ∏ÅÖëµ•∏ÅÖ±Ωπî∏(¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥()1QHÅQ	1Å¡’â±•åπ¡…ΩµΩ—•ΩπÃÅ9	1ÅI=\Å1Y0ÅMUI%QdÏ()I=@ÅA=1%dÅ%Åa%MQLÅ¡…ΩµΩ—•ΩπÕ}…ïÖëÖâ±îÅ=8Å¡’â±•åπ¡…ΩµΩ—•ΩπÃÏ)IQÅA=1%dÅ¡…ΩµΩ—•ΩπÕ}…ïÖëÖâ±îÅ=8Å¡’â±•åπ¡…ΩµΩ—•ΩπÃ(ÄÄÄÅ=HÅM1PÅQ<ÅÖ’—°ïπ—•çÖ—ïê(ÄÄÄÅUM%9Ä°QIU§Ï()I=@ÅA=1%dÅ%Åa%MQLÅ¡…ΩµΩ—•ΩπÕ}Öëµ•π}ÖëêÅ=8Å¡’â±•åπ¡…ΩµΩ—•ΩπÃÏ)IQÅA=1%dÅ¡…ΩµΩ—•ΩπÕ}Öëµ•π}ÖëêÅ=8Å¡’â±•åπ¡…ΩµΩ—•ΩπÃ(ÄÄÄÅ=HÅ%9MIPÅQ<ÅÖ’—°ïπ—•çÖ—ïê(ÄÄÄÅ]%Q Å!,Ä°¡’â±•åπ•Õ}Öëµ•∏†§Å9Åç…ïÖ—ïë}â‰ÄÙÅÖ’—†π’•ê†§§Ï()I=@ÅA=1%dÅ%Åa%MQLÅ¡…ΩµΩ—•ΩπÕ}Öëµ•π}ïë•–Å=8Å¡’â±•åπ¡…ΩµΩ—•ΩπÃÏ)IQÅA=1%dÅ¡…ΩµΩ—•ΩπÕ}Öëµ•π}ïë•–Å=8Å¡’â±•åπ¡…ΩµΩ—•ΩπÃ(ÄÄÄÅ=HÅUAQÅQ<ÅÖ’—°ïπ—•çÖ—ïê(ÄÄÄÅUM%9Ä°¡’â±•åπ•Õ}Öëµ•∏†§§(ÄÄÄÅ]%Q Å!,Ä°¡’â±•åπ•Õ}Öëµ•∏†§§Ï()I=@ÅA=1%dÅ%Åa%MQLÅ¡…ΩµΩ—•ΩπÕ}Öëµ•π}…ïµΩŸîÅ=8Å¡’â±•åπ¡…ΩµΩ—•ΩπÃÏ)IQÅA=1%dÅ¡…ΩµΩ—•ΩπÕ}Öëµ•π}…ïµΩŸîÅ=8Å¡’â±•åπ¡…ΩµΩ—•ΩπÃ(ÄÄÄÅ=HÅ1QÅQ<ÅÖ’—°ïπ—•çÖ—ïê(ÄÄÄÅUM%9Ä°¡’â±•åπ•Õ}Öëµ•∏†§§Ï()I9PÅM1P∞Å%9MIP∞ÅUAQ∞Å1QÅ=8Å¡’â±•åπ¡…ΩµΩ—•ΩπÃÅQ<ÅÖ’—°ïπ—•çÖ—ïêÏ(((¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥(¥¥Ä‘∏Å]!PÅ%LÅ1%YÅ=HÅQ!%LÅ5AUL(¥¥Å=πîÅçÖ±∞Å•πÕ—ïÖêÅΩòÅÑÅç±•ïπ–µÕ•ëîÅô•±—ï»∞ÅâïçÖ’ÕîÅ—°îÅç±Ωç¨Å—°Ö–Åµ’Õ–(¥¥Åëïç•ëîÅ›°ï∏ÅÑÅ¡Ö•êÅ›ïï¨ÅïπëÃÅ•ÃÅ—°îÅëÖ—ÖâÖÕîÅç±Ωç¨∞ÅπΩ–Å—°îÅç±Ωç¨ÅΩò(¥¥Å›°•ç°ïŸï»Å¡°ΩπîÅ°Ö¡¡ïπÃÅ—ºÅâîÅΩ¡ï∏∏ÅMUI%QdÅ%9Y=-HÅ•ÃÅëï±•âï…Ö—îÅÖπê(¥¥Å•ÃÅ—°îÅëïôÖ’±–ËÅ—°îÅ¡Ω±•ç•ïÃÅÖâΩŸîÅÕ—•±∞Å…ïÖêÅÖÃÅ—°îÅÕ—’ëïπ–ÅÖÕ≠•πú∏(¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥()IQÅ=HÅIA1ÅU9Q%=8Å¡’â±•åπ±•Ÿï}¡…ΩµΩ—•ΩπÃ°¡}Õç°ΩΩ±}≠ï‰ÅQaP§)IQUI9LÅMQ=Å¡’â±•åπ¡…ΩµΩ—•ΩπÃ)19UÅÕ≈∞)MQ	1)MPÅÕïÖ…ç°}¡Ö—†ÄÙÄúú)LÄêê(ÄÄÄÅM1PÅ¿∏®(ÄÄÄÅI=4Å¡’â±•åπ¡…ΩµΩ—•ΩπÃÅLÅ¿(ÄÄÄÅ]!IÅ¿πÕ—Ö…—Õ}Ö–ÄÙÅ9=\†§(ÄÄÄÄÄÅ9Å¿πïπëÕ}Ö–Ä¯Å9=\†§(ÄÄÄÄÄÅ9Ä°	QI%4°=1M°¿πÕç°ΩΩ±}≠ï‰∞Äúú§§ÄÙÄúú(ÄÄÄÄÄÄÄÄÄÄÅ=HÅ	QI%4°=1M°¿πÕç°ΩΩ±}≠ï‰∞Äúú§§ÄÙÅ	QI%4°=1M°¡}Õç°ΩΩ±}≠ï‰∞Äúú§§§(ÄÄÄÅ=IHÅ	dÅ¿πÕ—Ö…—Õ}Ö–ÅM(ÄÄÄÅ1%5%PÄ–(êêÏ()=559PÅ=8ÅU9Q%=8Å¡’â±•åπ±•Ÿï}¡…ΩµΩ—•ΩπÃ°QaP§Å%L(ÄÄÄÄùQ°îÅ¡±Öçïµïπ—ÃÅÑÅÕ—’ëïπ–Å•ÃÅÖ±±Ω›ïêÅ—ºÅÕïîÅÖ–Å—°•ÃÅµΩµïπ–∞Åπï›ïÕ–ÅÕÖ±îÅô•…Õ–∏úÏ()I9PÅaUQÅ=8ÅU9Q%=8Å¡’â±•åπ±•Ÿï}¡…ΩµΩ—•ΩπÃ°QaP§ÅQ<ÅÖ’—°ïπ—•çÖ—ïêÏ(((¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥(¥¥Äÿ∏Å]!PÅ=9Å5%8Å=AIQ%=8Å1==-LÅ1%-(¥¥ÅIï—•…•πúÅïÖ…±‰Å•ÃÅÖ∏ÅUAQÅΩòÅïπëÕ}Ö–∞ÅπΩ–ÅÑÅ1Q∞ÅÕºÅ—°îÅ°•Õ—Ω…‰ÅΩò(¥¥Å›°Ö–Å›ÖÃÅÕΩ±êÅÕ—ÖÂÃÅ•∏Å—°îÅ—Öâ±î∏(¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥()IQÅ=HÅIA1ÅU9Q%=8Å¡’â±•åπ…ï—•…ï}¡…ΩµΩ—•Ω∏°¡}¡…ΩµΩ—•Ωπ}•êÅUU%§)IQUI9LÅ	==18)19UÅ¡±¡ùÕ≈∞)MUI%QdÅ%9H)MPÅÕïÖ…ç°}¡Ö—†ÄÙÄúú)LÄêê)	%8(ÄÄÄÅ%Å9=PÅ¡’â±•åπ•Õ}Öëµ•∏†§ÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8Äù=π±‰ÅÖ∏ÅÖëµ•∏ÅµÖ‰Å…ï—•…îÅÑÅ¡±Öçïµïπ–∏ú(ÄÄÄÄÄÄÄÄÄÄÄÅUM%9ÅII=ÄÙÄú–»‘¿ƒúÏ(ÄÄÄÅ9Å%Ï((ÄÄÄÅUAQÅ¡’â±•åπ¡…ΩµΩ—•ΩπÃ(ÄÄÄÄÄÄÅMPÅïπëÕ}Ö–ÄÙÅ9=\†§(ÄÄÄÄÅ]!IÅ•êÄÙÅ¡}¡…ΩµΩ—•Ωπ}•ê(ÄÄÄÄÄÄÅ9ÅïπëÕ}Ö–Ä¯Å9=\†§Ï((ÄÄÄÅ%Å9=PÅ=U9ÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8ÄùQ°Ö–Å¡±Öçïµïπ–Å•ÃÅπΩ–Å…’ππ•πú∏ú(ÄÄÄÄÄÄÄÄÄÄÄÅUM%9ÅII=ÄÙÄù@¿¿¿»úÏ(ÄÄÄÅ9Å%Ï((ÄÄÄÅIQUI8ÅQIUÏ)9Ï(êêÏ()IY=-Å10Å=8ÅU9Q%=8Å¡’â±•åπ…ï—•…ï}¡…ΩµΩ—•Ω∏°UU%§ÅI=4ÅAU	1%∞ÅÖπΩ∏Ï)I9PÅaUQÅ=8ÅU9Q%=8Å¡’â±•åπ…ï—•…ï}¡…ΩµΩ—•Ω∏°UU%§ÅQ<ÅÖ’—°ïπ—•çÖ—ïêÏ(((¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥(¥¥Ä‹∏ÅAI==ÅQ!%LÅ%1ÅI8(¥¥Ä¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥¥()M1PÄù¡…ΩµΩ—•ΩπÃÅ—Öâ±îËÄúÅÒ(ÄÄÄÄÄÄÅMÅ]!8Å—Ω}…ïùç±ÖÕÃ†ù¡’â±•åπ¡…ΩµΩ—•ΩπÃú§Å%LÅ9=PÅ9U10(ÄÄÄÄÄÄÄÄÄÄÄÅQ!8ÄùΩ¨úÅ1MÄù5%MM%9Ä°¡Ö•êÅ¡±Öçïµïπ—ÃÅçÖππΩ–ÅâîÅÕ°Ω›∏§úÅ9)LÅç°ïç≠}πÖµî)U9%=8Å10)M1PÄù¡…ΩµΩ—•ΩπÃÅ°ÖÃÅÑÅ±•ŸîÅ›•πëΩ‹ËÄúÅÒ(ÄÄÄÄÄÄÅMÅ]!8Åa%MQLÄ†(ÄÄÄÄÄÄÄÄÄÄÅM1PÄƒÅI=4Å¡ù}çΩπÕ—…Ö•π–(ÄÄÄÄÄÄÄÄÄÄÅ]!IÅçΩπ…ï±•êÄÙÄù¡’â±•åπ¡…ΩµΩ—•ΩπÃúËÈ…ïùç±ÖÕÃ(ÄÄÄÄÄÄÄÄÄÄÄÄÅ9ÅçΩππÖµîÄÙÄù¡…ΩµΩ—•ΩπÕ}›•πëΩ›}µÖ≠ïÕ}ÕïπÕîú§(ÄÄÄÄÄÄÄÄÄÄÄÅQ!8ÄùΩ¨úÅ1MÄù5%MM%9Ä°ÑÅ¡±Öçïµïπ–ÅçΩ’±êÅâîÅÕΩ±êÅ›•—†ÅπºÅïπê§úÅ9)U9%=8Å10)M1PÄù¡…ΩµΩ—•ΩπÃÅ…ïÖëÖâ±îÅâ‰ÅÑÅµïµâï»ËÄúÅÒ(ÄÄÄÄÄÄÅMÅ]!8Åa%MQLÄ†(ÄÄÄÄÄÄÄÄÄÄÅM1PÄƒÅI=4Å¡ù}¡Ω±•ç•ïÃ(ÄÄÄÄÄÄÄÄÄÄÅ]!IÅÕç°ïµÖπÖµîÄÙÄù¡’â±•åúÅ9Å—Öâ±ïπÖµîÄÙÄù¡…ΩµΩ—•ΩπÃú(ÄÄÄÄÄÄÄÄÄÄÄÄÅ9Å¡Ω±•çÂπÖµîÄÙÄù¡…ΩµΩ—•ΩπÕ}…ïÖëÖâ±îú§(ÄÄÄÄÄÄÄÄÄÄÄÅQ!8ÄùΩ¨úÅ1MÄù5%MM%9Ä°Õ—’ëïπ—ÃÅ›•±∞ÅÕïîÅπºÅ¡±Öçïµïπ—Ã§úÅ9)U9%=8Å10)M1PÄù¡…ΩµΩ—•ΩπÃÅÖëµ•∏µΩπ±‰Å›…•—ïÃËÄúÅÒ(ÄÄÄÄÄÄÅMÅ]!8Åa%MQLÄ†(ÄÄÄÄÄÄÄÄÄÄÅM1PÄƒÅI=4Å¡ù}¡Ω±•ç•ïÃ(ÄÄÄÄÄÄÄÄÄÄÅ]!IÅÕç°ïµÖπÖµîÄÙÄù¡’â±•åúÅ9Å—Öâ±ïπÖµîÄÙÄù¡…ΩµΩ—•ΩπÃú(ÄÄÄÄÄÄÄÄÄÄÄÄÅ9Å¡Ω±•çÂπÖµîÄÙÄù¡…ΩµΩ—•ΩπÕ}Öëµ•π}ïë•–ú§(ÄÄÄÄÄÄÄÄÄÄÄÅQ!8ÄùΩ¨úÅ1MÄù5%MM%9Ä°Öπ‰ÅÖççΩ’π–ÅçΩ’±êÅÕï±∞ÅÑÅ¡±Öçïµïπ–§úÅ9)U9%=8Å10)M1PÄùô’πç—•Ω∏ËÅ±•Ÿï}¡…ΩµΩ—•ΩπÃ°—ï·–§ËÄúÅÒ(ÄÄÄÄÄÄÅMÅ]!8Å°ÖÕ}ô’πç—•Ωπ}¡…•Ÿ•±ïùî†ùÖ’—°ïπ—•çÖ—ïêú∞(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄù¡’â±•åπ±•Ÿï}¡…ΩµΩ—•ΩπÃ°—ï·–§ú∞ÄùaUQú§(ÄÄÄÄÄÄÄÄÄÄÄÅQ!8ÄùΩ¨úÅ1MÄù5%MM%9Ä°—°îÅôïïêÅçÖππΩ–ÅÖÕ¨Å›°Ö–Å•ÃÅ±•Ÿî§úÅ9)U9%=8Å10)M1PÄùô’πç—•Ω∏ËÅ…ï—•…ï}¡…ΩµΩ—•Ω∏°’’•ê§ËÄúÅÒ(ÄÄÄÄÄÄÅMÅ]!8Å°ÖÕ}ô’πç—•Ωπ}¡…•Ÿ•±ïùî†ùÖ’—°ïπ—•çÖ—ïêú∞(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄù¡’â±•åπ…ï—•…ï}¡…ΩµΩ—•Ω∏°’’•ê§ú∞ÄùaUQú§(ÄÄÄÄÄÄÄÄÄÄÄÅQ!8ÄùΩ¨úÅ1MÄù5%MM%9Ä°Ö∏ÅÖëµ•∏ÅçÖππΩ–Å…ï—•…îÅÑÅ¡±Öçïµïπ–§úÅ9)=IHÅ	dÅç°ïç≠}πÖµîÏ(4(4(¥¥ÄÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÅ%Q%=90ËÅçÖµ¡’ÃÅµïÖ∞µ¡±Ö∏ÅÕ’âÕç…•¡—•ΩπÃÄÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙÙ4(¥¥ÅM—’ëïπ–Å…ï≈’ïÕ—ÃÅôΩ»ÅçÖµ¡’ÃÅô’±∞µâΩÖ…êÅÖπêÅ°Ö±òµâΩÖ…êÅµïÖ∞ÅÕ’âÕç…•¡—•ΩπÃ∏)IQÅQ	1Å%Å9=PÅa%MQLÅ¡’â±•åπµïÖ±}Õ’âÕç…•¡—•ΩπÃÄ†(ÄÄÄÅ•êÅUU%ÅAI%5IdÅ-dÅU1PÅùïπ}…ÖπëΩµ}’’•ê†§∞(ÄÄÄÅÕ—’ëïπ—}•êÅUU%Å9=PÅ9U10ÅII9LÅ¡’â±•åπ¡…Ωô•±ïÃ°•ê§Å=8Å1QÅM∞(ÄÄÄÅµïÖ±}¡±Öπ}•êÅUU%Å9=PÅ9U10ÅII9LÅ¡’â±•åπµïÖ±}¡±ÖπÃ°•ê§Å=8Å1QÅIMQI%P∞(ÄÄÄÅÕç°ΩΩ∞ÅQaPÅ9=PÅ9U10∞(ÄÄÄÅÕç°ΩΩ±}≠ï‰ÅQaPÅ9IQÅ1]eLÅLÄ°1=]H°	QI%4°Õç°ΩΩ∞§§§ÅMQ=I∞(ÄÄÄÅÕïµïÕ—ï»ÅQaPÅ9=PÅ9U10Å!,Ä°ç°Ö…}±ïπù—†°	QI%4°ÕïµïÕ—ï»§§Å	Q]8ÄÃÅ9Ä–¿§∞(ÄÄÄÅÕ—Ö—’ÃÅQaPÅ9=PÅ9U10ÅU1PÄù…ï≈’ïÕ—ïêú(ÄÄÄÄÄÄÄÅ!,Ä°Õ—Ö—’ÃÅ%8Ä†ù…ï≈’ïÕ—ïêú∞ÄùÖç—•Ÿîú∞Äù…ï©ïç—ïêú∞ÄùçÖπçï±±ïêú∞Äùï·¡•…ïêú§§∞(ÄÄÄÅÕ—Ö…—Õ}Ö–ÅQ%5MQ5AQhÅ9=PÅ9U10ÅU1PÅ9=\†§∞(ÄÄÄÅïπëÕ}Ö–ÅQ%5MQ5AQhÅ9=PÅ9U10ÅU1PÄ°9=\†§Ä¨Å%9QIY0ÄúÿÅµΩπ—°Ãú§∞(ÄÄÄÅëïç•Õ•Ωπ}πΩ—îÅQaPÅ9=PÅ9U10ÅU1PÄúúÅ!,Ä°ç°Ö…}±ïπù—†°ëïç•Õ•Ωπ}πΩ—î§ÄÙÄ–¿¿§∞(ÄÄÄÅëïç•ëïë}â‰ÅUU%ÅII9LÅ¡’â±•åπ¡…Ωô•±ïÃ°•ê§Å=8Å1QÅMPÅ9U10∞(ÄÄÄÅëïç•ëïë}Ö–ÅQ%5MQ5AQh∞(ÄÄÄÅç…ïÖ—ïë}Ö–ÅQ%5MQ5AQhÅ9=PÅ9U10ÅU1PÅ9=\†§∞(ÄÄÄÅ’¡ëÖ—ïë}Ö–ÅQ%5MQ5AQhÅ9=PÅ9U10ÅU1PÅ9=\†§(§Ï()IQÅ%9`Å%Å9=PÅa%MQLÅµïÖ±}Õ’âÕç…•¡—•ΩπÕ}Õ—’ëïπ—}•ë‡(ÄÄÄÅ=8Å¡’â±•åπµïÖ±}Õ’âÕç…•¡—•ΩπÃÄ°Õ—’ëïπ—}•ê∞Åç…ïÖ—ïë}Ö–ÅM§Ï)IQÅ%9`Å%Å9=PÅa%MQLÅµïÖ±}Õ’âÕç…•¡—•ΩπÕ}Õç°ΩΩ±}Õ—Ö—’Õ}•ë‡(ÄÄÄÅ=8Å¡’â±•åπµïÖ±}Õ’âÕç…•¡—•ΩπÃÄ°Õç°ΩΩ±}≠ï‰∞ÅÕ—Ö—’Ã∞Åç…ïÖ—ïë}Ö–ÅM§Ï()1QHÅQ	1Å¡’â±•åπµïÖ±}Õ’âÕç…•¡—•ΩπÃÅ9	1ÅI=\Å1Y0ÅMUI%QdÏ)I9PÅM1PÅ=8Å¡’â±•åπµïÖ±}Õ’âÕç…•¡—•ΩπÃÅQ<ÅÖ’—°ïπ—•çÖ—ïêÏ)IY=-Å10Å=8Å¡’â±•åπµïÖ±}Õ’âÕç…•¡—•ΩπÃÅI=4ÅÖπΩ∏∞ÅAU	1%Ï()I=@ÅA=1%dÅ%Åa%MQLÅµïÖ±}Õ’âÕç…•¡—•ΩπÕ}…ïÖë}ÿƒÅ=8Å¡’â±•åπµïÖ±}Õ’âÕç…•¡—•ΩπÃÏ)IQÅA=1%dÅµïÖ±}Õ’âÕç…•¡—•ΩπÕ}…ïÖë}ÿƒÅ=8Å¡’â±•åπµïÖ±}Õ’âÕç…•¡—•ΩπÃ(ÄÄÄÅ=HÅM1PÅQ<ÅÖ’—°ïπ—•çÖ—ïê(ÄÄÄÅUM%9Ä°Õ—’ëïπ—}•êÄÙÅÖ’—†π’•ê†§Å=HÅ¡’â±•åπ•Õ}Õç°ΩΩ±}Õ—Öôò°Õç°ΩΩ±}≠ï‰§§Ï()IQÅ=HÅIA1ÅU9Q%=8Å¡’â±•åπ…ï≈’ïÕ—}µïÖ±}Õ’âÕç…•¡—•Ωπ}ÿƒ†(ÄÄÄÅ¡}µïÖ±}¡±Öπ}•êÅUU%∞(ÄÄÄÅ¡}ÕïµïÕ—ï»ÅQaP(§)IQUI9LÅUU%)19UÅ¡±¡ùÕ≈∞ÅMUI%QdÅ%9HÅMPÅÕïÖ…ç°}¡Ö—†ÄÙÄúúÅLÄêê)1I(ÄÄÄÅŸ}’Õï»ÅUU%ÄËÙÅÖ’—†π’•ê†§Ï(ÄÄÄÅŸ}Õç°ΩΩ∞ÅQaPÏ(ÄÄÄÅŸ}Õç°ΩΩ±}≠ï‰ÅQaPÏ(ÄÄÄÅŸ}’π•Ÿï…Õ•—‰ÅQaPÏ(ÄÄÄÅŸ}…ïù•Õ—…Ö—•Ω∏ÅQaPÏ(ÄÄÄÅŸ}•êÅUU%Ï(ÄÄÄÅŸ}ÕïµïÕ—ï»ÅQaPÄËÙÅ	QI%4°=1M°¡}ÕïµïÕ—ï»∞Äúú§§Ï)	%8(ÄÄÄÅ%ÅŸ}’Õï»Å%LÅ9U10ÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8ÄùM•ù∏Å•∏ÅâïôΩ…îÅ…ï≈’ïÕ—•πúÅÑÅµïÖ∞Å¡±Ö∏∏úÅUM%9ÅII=ÄÙÄú–»‘¿ƒúÏ(ÄÄÄÅ9Å%Ï(ÄÄÄÅ%Åç°Ö…}±ïπù—†°Ÿ}ÕïµïÕ—ï»§ÄÄÃÅ=HÅç°Ö…}±ïπù—†°Ÿ}ÕïµïÕ—ï»§Ä¯Ä–¿ÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8Äùπ—ï»Å—°îÅÕïµïÕ—ï»∞ÅôΩ»Åï·Öµ¡±îÄ»¿»ÿº»¿»‹¥ƒ∏úÅUM%9ÅII=ÄÙÄú»»¿»ÃúÏ(ÄÄÄÅ9Å%Ï(ÄÄÄÅM1PÅ¿π’π•Ÿï…Õ•—‰∞ÅÕ»π…ïù•Õ—…Ö—•Ωπ}π’µâï»(ÄÄÄÄÄÅ%9Q<ÅŸ}’π•Ÿï…Õ•—‰∞ÅŸ}…ïù•Õ—…Ö—•Ω∏(ÄÄÄÄÄÅI=4Å¡’â±•åπ¡…Ωô•±ïÃÅ¿(ÄÄÄÄÄÅ1PÅ)=%8Å¡’â±•åπÕ—’ëïπ—}…ïù•Õ—…Ö—•ΩπÃÅÕ»Å=8ÅÕ»π’Õï…}•êÄÙÅ¿π•ê(ÄÄÄÄÅ]!IÅ¿π•êÄÙÅŸ}’Õï»Ï(ÄÄÄÅ%Å9U11%°	QI%4°Ÿ}…ïù•Õ—…Ö—•Ω∏§∞Äúú§Å%LÅ9U10ÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8ÄùëêÅÂΩ’»ÅÕ—’ëïπ–Å…ïù•Õ—…Ö—•Ω∏Åπ’µâï»ÅâïôΩ…îÅÕ’âÕç…•â•πú∏úÅUM%9ÅII=ÄÙÄù@¿¿¿ƒúÏ(ÄÄÄÅ9Å%Ï(ÄÄÄÅM1PÅµ¿πÕç°ΩΩ∞∞Åµ¿πÕç°ΩΩ±}≠ï‰(ÄÄÄÄÄÅ%9Q<ÅŸ}Õç°ΩΩ∞∞ÅŸ}Õç°ΩΩ±}≠ï‰(ÄÄÄÄÄÅI=4Å¡’â±•åπµïÖ±}¡±ÖπÃÅµ¿(ÄÄÄÄÅ]!IÅµ¿π•êÄÙÅ¡}µïÖ±}¡±Öπ}•ê(ÄÄÄÄÄÄÅ9Ä°µ¿πÕ—Ö…—Õ}Ω∏Å%LÅ9U10Å=HÅµ¿πÕ—Ö…—Õ}Ω∏ÄÙÅUII9Q}Q§(ÄÄÄÄÄÄÅ9Ä°µ¿πïπëÕ}Ω∏Å%LÅ9U10Å=HÅµ¿πïπëÕ}Ω∏Ä¯ÙÅUII9Q}Q§Ï(ÄÄÄÅ%ÅŸ}Õç°ΩΩ±}≠ï‰Å%LÅ9U10ÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8ÄùQ°Ö–ÅµïÖ∞Å¡±Ö∏Å•ÃÅπºÅ±Ωπùï»ÅÖŸÖ•±Öâ±î∏úÅUM%9ÅII=ÄÙÄù@¿¿¿»úÏ(ÄÄÄÅ9Å%Ï(ÄÄÄÅ%Å1=]H°	QI%4°=1M°Ÿ}’π•Ÿï…Õ•—‰∞Äúú§§§Ä¯ÅŸ}Õç°ΩΩ±}≠ï‰ÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8ÄùeΩ’»Å¡…Ωô•±îÅµ’Õ–Åâï±ΩπúÅ—ºÅ—°•ÃÅÕç°ΩΩ∞ÅâïôΩ…îÅÕ’âÕç…•â•πú∏úÅUM%9ÅII=ÄÙÄú–»‘¿ƒúÏ(ÄÄÄÅ9Å%Ï(ÄÄÄÅ%Åa%MQLÄ°M1PÄƒÅI=4Å¡’â±•åπµïÖ±}Õ’âÕç…•¡—•ΩπÃÅµÃ(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅ]!IÅµÃπÕ—’ëïπ—}•êÄÙÅŸ}’Õï»(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅ9Å1=]H°	QI%4°µÃπÕïµïÕ—ï»§§ÄÙÅ1=]H°Ÿ}ÕïµïÕ—ï»§(ÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÄÅ9ÅµÃπÕ—Ö—’ÃÅ%8Ä†ù…ï≈’ïÕ—ïêú∞ÄùÖç—•Ÿîú§Å9ÅµÃπïπëÕ}Ö–Ä¯Å9=\†§§ÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8ÄùeΩ‘ÅÖ±…ïÖë‰Å°ÖŸîÅÑÅµïÖ∞µ¡±Ö∏Å…ï≈’ïÕ–ÅôΩ»Å—°•ÃÅÕïµïÕ—ï»∏úÅUM%9ÅII=ÄÙÄú»Ã‘¿‘úÏ(ÄÄÄÅ9Å%Ï(ÄÄÄÅ%9MIPÅ%9Q<Å¡’â±•åπµïÖ±}Õ’âÕç…•¡—•ΩπÃÄ°Õ—’ëïπ—}•ê∞ÅµïÖ±}¡±Öπ}•ê∞ÅÕç°ΩΩ∞∞ÅÕïµïÕ—ï»§(ÄÄÄÅY1ULÄ°Ÿ}’Õï»∞Å¡}µïÖ±}¡±Öπ}•ê∞ÅŸ}Õç°ΩΩ∞∞ÅŸ}ÕïµïÕ—ï»§(ÄÄÄÅIQUI9%9Å•êÅ%9Q<ÅŸ}•êÏ(ÄÄÄÅIQUI8ÅŸ}•êÏ)9Ï(êêÏ()IQÅ=HÅIA1ÅU9Q%=8Å¡’â±•åπµÂ}µïÖ±}Õ’âÕç…•¡—•ΩπÕ}ÿƒ†§)IQUI9LÅQ	1Ä†(ÄÄÄÅÕ’âÕç…•¡—•Ωπ}•êÅUU%∞Å¡±Öπ}πÖµîÅQaP∞Å¡±Öπ}≠•πêÅQaP∞ÅÕïµïÕ—ï»ÅQaP∞ÅÕ—Ö—’ÃÅQaP∞(ÄÄÄÅÕ—Ö…—Õ}Ö–ÅQ%5MQ5AQh∞ÅïπëÕ}Ö–ÅQ%5MQ5AQh∞Å¡…•çï}ÕïµïÕ—ï»Å9U5I%∞(ÄÄÄÅëïç•Õ•Ωπ}πΩ—îÅQaP∞Åç…ïÖ—ïë}Ö–ÅQ%5MQ5AQh(§)19UÅ¡±¡ùÕ≈∞ÅMUI%QdÅ%9HÅMPÅÕïÖ…ç°}¡Ö—†ÄÙÄúúÅLÄêê)	%8(ÄÄÄÅUAQÅ¡’â±•åπµïÖ±}Õ’âÕç…•¡—•ΩπÃÅLÅµÃ(ÄÄÄÄÄÄÅMPÅÕ—Ö—’ÃÄÙÄùï·¡•…ïêú∞Å’¡ëÖ—ïë}Ö–ÄÙÅ9=\†§(ÄÄÄÄÅ]!IÅµÃπÕ—’ëïπ—}•êÄÙÅÖ’—†π’•ê†§(ÄÄÄÄÄÄÅ9ÅµÃπÕ—Ö—’ÃÄÙÄùÖç—•Ÿîú(ÄÄÄÄÄÄÅ9ÅµÃπïπëÕ}Ö–ÄÙÅ9=\†§Ï(ÄÄÄÅIQUI8ÅEUId(ÄÄÄÅM1PÅµÃπ•ê∞Åµ¿ππÖµî∞Åµ¿π≠•πê∞ÅµÃπÕïµïÕ—ï»∞ÅµÃπÕ—Ö—’Ã∞ÅµÃπÕ—Ö…—Õ}Ö–∞ÅµÃπïπëÕ}Ö–∞(ÄÄÄÄÄÄÄÄÄÄÅµ¿π¡…•çï}ÕïµïÕ—ï»∞ÅµÃπëïç•Õ•Ωπ}πΩ—î∞ÅµÃπç…ïÖ—ïë}Ö–(ÄÄÄÄÄÅI=4Å¡’â±•åπµïÖ±}Õ’âÕç…•¡—•ΩπÃÅµÃ(ÄÄÄÄÄÅ)=%8Å¡’â±•åπµïÖ±}¡±ÖπÃÅµ¿Å=8Åµ¿π•êÄÙÅµÃπµïÖ±}¡±Öπ}•ê(ÄÄÄÄÅ]!IÅµÃπÕ—’ëïπ—}•êÄÙÅÖ’—†π’•ê†§(ÄÄÄÄÅ=IHÅ	dÅµÃπç…ïÖ—ïë}Ö–ÅMÅ1%5%PÄÃ¿Ï)9Ï(êêÏ()IQÅ=HÅIA1ÅU9Q%=8Å¡’â±•åπÕç°ΩΩ±}µïÖ±}Õ’âÕç…•¡—•ΩπÕ}ÿƒ°¡}Õç°ΩΩ±}≠ï‰ÅQaP§)IQUI9LÅQ	1Ä†(ÄÄÄÅÕ’âÕç…•¡—•Ωπ}•êÅUU%∞ÅÕ—’ëïπ—}πÖµîÅQaP∞Å…ïù•Õ—…Ö—•Ωπ}π’µâï»ÅQaP∞(ÄÄÄÅ¡±Öπ}πÖµîÅQaP∞Å¡±Öπ}≠•πêÅQaP∞ÅÕïµïÕ—ï»ÅQaP∞ÅÕ—Ö—’ÃÅQaP∞(ÄÄÄÅÕ—Ö…—Õ}Ö–ÅQ%5MQ5AQh∞ÅïπëÕ}Ö–ÅQ%5MQ5AQh∞Å¡…•çï}ÕïµïÕ—ï»Å9U5I%∞(ÄÄÄÅëïç•Õ•Ωπ}πΩ—îÅQaP∞Åç…ïÖ—ïë}Ö–ÅQ%5MQ5AQh(§)19UÅ¡±¡ùÕ≈∞ÅMUI%QdÅ%9HÅMPÅÕïÖ…ç°}¡Ö—†ÄÙÄúúÅLÄêê)	%8(ÄÄÄÅ%Å9=PÅ¡’â±•åπ•Õ}Õç°ΩΩ±}Õ—Öôò°¡}Õç°ΩΩ±}≠ï‰§ÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8Äù=π±‰Å—°•ÃÅÕç°ΩΩ≥äeÃÅçÖ—ï…•πúÅΩôô•çîÅçÖ∏Å…ïŸ•ï‹ÅÕ’âÕç…•¡—•ΩπÃ∏úÅUM%9ÅII=ÄÙÄú–»‘¿ƒúÏ(ÄÄÄÅ9Å%Ï(ÄÄÄÅUAQÅ¡’â±•åπµïÖ±}Õ’âÕç…•¡—•ΩπÃÅµÃÅMPÅÕ—Ö—’ÃÄÙÄùï·¡•…ïêú∞Å’¡ëÖ—ïë}Ö–ÄÙÅ9=\†§(ÄÄÄÄÅ]!IÅµÃπÕç°ΩΩ±}≠ï‰ÄÙÅ1=]H°	QI%4°=1M°¡}Õç°ΩΩ±}≠ï‰∞Äúú§§§(ÄÄÄÄÄÄÅ9ÅµÃπÕ—Ö—’ÃÄÙÄùÖç—•ŸîúÅ9ÅµÃπïπëÕ}Ö–ÄÙÅ9=\†§Ï(ÄÄÄÅIQUI8ÅEUId(ÄÄÄÅM1PÅµÃπ•ê∞Å¿πô’±±}πÖµî∞ÅÕ»π…ïù•Õ—…Ö—•Ωπ}π’µâï»∞Åµ¿ππÖµî∞Åµ¿π≠•πê∞ÅµÃπÕïµïÕ—ï»∞(ÄÄÄÄÄÄÄÄÄÄÅµÃπÕ—Ö—’Ã∞ÅµÃπÕ—Ö…—Õ}Ö–∞ÅµÃπïπëÕ}Ö–∞Åµ¿π¡…•çï}ÕïµïÕ—ï»∞ÅµÃπëïç•Õ•Ωπ}πΩ—î∞ÅµÃπç…ïÖ—ïë}Ö–(ÄÄÄÄÄÅI=4Å¡’â±•åπµïÖ±}Õ’âÕç…•¡—•ΩπÃÅµÃ(ÄÄÄÄÄÅ)=%8Å¡’â±•åπµïÖ±}¡±ÖπÃÅµ¿Å=8Åµ¿π•êÄÙÅµÃπµïÖ±}¡±Öπ}•ê(ÄÄÄÄÄÅ)=%8Å¡’â±•åπ¡…Ωô•±ïÃÅ¿Å=8Å¿π•êÄÙÅµÃπÕ—’ëïπ—}•ê(ÄÄÄÄÄÅ1PÅ)=%8Å¡’â±•åπÕ—’ëïπ—}…ïù•Õ—…Ö—•ΩπÃÅÕ»Å=8ÅÕ»π’Õï…}•êÄÙÅµÃπÕ—’ëïπ—}•ê(ÄÄÄÄÅ]!IÅµÃπÕç°ΩΩ±}≠ï‰ÄÙÅ1=]H°	QI%4°=1M°¡}Õç°ΩΩ±}≠ï‰∞Äúú§§§(ÄÄÄÄÅ=IHÅ	dÅµÃπç…ïÖ—ïë}Ö–ÅMÅ1%5%PÄ»¿¿Ï)9Ï(êêÏ()IQÅ=HÅIA1ÅU9Q%=8Å¡’â±•åπ…ïŸ•ï›}µïÖ±}Õ’âÕç…•¡—•Ωπ}ÿƒ†(ÄÄÄÅ¡}Õ’âÕç…•¡—•Ωπ}•êÅUU%∞Å¡}Ö¡¡…ΩŸîÅ	==18∞Å¡}πΩ—îÅQaPÅU1PÄúú(§)IQUI9LÅQaP)19UÅ¡±¡ùÕ≈∞ÅMUI%QdÅ%9HÅMPÅÕïÖ…ç°}¡Ö—†ÄÙÄúúÅLÄêê)1IÅŸ}Õç°ΩΩ±}≠ï‰ÅQaPÏÅŸ}Õ—Ö—’ÃÅQaPÏ)	%8(ÄÄÄÅM1PÅÕç°ΩΩ±}≠ï‰∞ÅÕ—Ö—’ÃÅ%9Q<ÅŸ}Õç°ΩΩ±}≠ï‰∞ÅŸ}Õ—Ö—’Ã(ÄÄÄÄÄÅI=4Å¡’â±•åπµïÖ±}Õ’âÕç…•¡—•ΩπÃÅ]!IÅ•êÄÙÅ¡}Õ’âÕç…•¡—•Ωπ}•êÅ=HÅUAQÏ(ÄÄÄÅ%ÅŸ}Õç°ΩΩ±}≠ï‰Å%LÅ9U10ÅQ!8ÅI%MÅaAQ%=8Äù9ºÅÕ’ç†ÅµïÖ∞µ¡±Ö∏Å…ï≈’ïÕ–∏úÅUM%9ÅII=ÄÙÄù@¿¿¿»úÏÅ9Å%Ï(ÄÄÄÅ%Å9=PÅ¡’â±•åπ•Õ}Õç°ΩΩ±}Õ—Öôò°Ÿ}Õç°ΩΩ±}≠ï‰§ÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8Äù=π±‰Å—°•ÃÅÕç°ΩΩ≥äeÃÅçÖ—ï…•πúÅΩôô•çîÅçÖ∏Åëïç•ëîÅÑÅÕ’âÕç…•¡—•Ω∏∏úÅUM%9ÅII=ÄÙÄú–»‘¿ƒúÏ(ÄÄÄÅ9Å%Ï(ÄÄÄÅ%ÅŸ}Õ—Ö—’ÃÄ¯Äù…ï≈’ïÕ—ïêúÅQ!8(ÄÄÄÄÄÄÄÅI%MÅaAQ%=8ÄùQ°•ÃÅµïÖ∞µ¡±Ö∏Å…ï≈’ïÕ–Å°ÖÃÅÖ±…ïÖë‰Åâïï∏Å…ïŸ•ï›ïê∏úÅUM%9ÅII=ÄÙÄù@¿¿¿ƒúÏ(ÄÄÄÅ9Å%Ï(ÄÄÄÅUAQÅ¡’â±•åπµïÖ±}Õ’âÕç…•¡—•ΩπÃ(ÄÄÄÄÄÄÅMPÅÕ—Ö—’ÃÄÙÅMÅ]!8Å¡}Ö¡¡…ΩŸîÅQ!8ÄùÖç—•ŸîúÅ1MÄù…ï©ïç—ïêúÅ9∞(ÄÄÄÄÄÄÄÄÄÄÅÕ—Ö…—Õ}Ö–ÄÙÅ9=\†§∞ÅïπëÕ}Ö–ÄÙÅ9=\†§Ä¨Å%9QIY0ÄúÿÅµΩπ—°Ãú∞(ÄÄÄÄÄÄÄÄÄÄÅëïç•Õ•Ωπ}πΩ—îÄÙÅ1P°	QI%4°=1M°¡}πΩ—î∞Äúú§§∞Ä–¿¿§∞(ÄÄÄÄÄÄÄÄÄÄÅëïç•ëïë}â‰ÄÙÅÖ’—†π’•ê†§∞Åëïç•ëïë}Ö–ÄÙÅ9=\†§∞Å’¡ëÖ—ïë}Ö–ÄÙÅ9=\†§(ÄÄÄÄÅ]!IÅ•êÄÙÅ¡}Õ’âÕç…•¡—•Ωπ}•êÏ(ÄÄÄÅIQUI8ÅMÅ]!8Å¡}Ö¡¡…ΩŸîÅQ!8ÄùÖç—•ŸîúÅ1MÄù…ï©ïç—ïêúÅ9Ï)9Ï(êêÏ()IQÅ=HÅIA1ÅU9Q%=8Å¡’â±•åπçÖπçï±}µÂ}µïÖ±}Õ’âÕç…•¡—•Ωπ}ÿƒ°¡}Õ’âÕç…•¡—•Ωπ}•êÅUU%§)IQUI9LÅ	==18)19UÅ¡±¡ùÕ≈∞ÅMUI%QdÅ%9HÅMPÅÕïÖ…ç°}¡Ö—†ÄÙÄúúÅLÄêê)1IÅŸ}çΩ’π–Å%9QHÏ)	%8(ÄÄÄÅUAQÅ¡’â±•åπµïÖ±}Õ’âÕç…•¡—•ΩπÃÅMPÅÕ—Ö—’ÃÄÙÄùçÖπçï±±ïêú∞Å’¡ëÖ—ïë}Ö–ÄÙÅ9=\†§(ÄÄÄÄÅ]!IÅ•êÄÙÅ¡}Õ’âÕç…•¡—•Ωπ}•êÅ9ÅÕ—’ëïπ—}•êÄÙÅÖ’—†π’•ê†§(ÄÄÄÄÄÄÅ9ÅÕ—Ö—’ÃÅ%8Ä†ù…ï≈’ïÕ—ïêú∞ÄùÖç—•Ÿîú§Å9ÅïπëÕ}Ö–Ä¯Å9=\†§Ï(ÄÄÄÅPÅ%9=MQ%LÅŸ}çΩ’π–ÄÙÅI=]}=U9PÏ(ÄÄÄÅIQUI8ÅŸ}çΩ’π–ÄÙÄƒÏ)9Ï(êêÏ()IY=-Å10Å=8ÅU9Q%=8Å¡’â±•åπ…ï≈’ïÕ—}µïÖ±}Õ’âÕç…•¡—•Ωπ}ÿƒ°UU%∞ÅQaP§ÅI=4ÅAU	1%∞ÅÖπΩ∏Ï)IY=-Å10Å=8ÅU9Q%=8Å¡’â±•åπµÂ}µïÖ±}Õ’âÕç…•¡—•ΩπÕ}ÿƒ†§ÅI=4ÅAU	1%∞ÅÖπΩ∏Ï)IY=-Å10Å=8ÅU9Q%=8Å¡’â±•åπÕç°ΩΩ±}µïÖ±}Õ’âÕç…•¡—•ΩπÕ}ÿƒ°QaP§ÅI=4ÅAU	1%∞ÅÖπΩ∏Ï)IY=-Å10Å=8ÅU9Q%=8Å¡’â±•åπ…ïŸ•ï›}µïÖ±}Õ’âÕç…•¡—•Ωπ}ÿƒ°UU%∞Å	==18∞ÅQaP§ÅI=4ÅAU	1%∞ÅÖπΩ∏Ï)IY=-Å10Å=8ÅU9Q%=8Å¡’â±•åπçÖπçï±}µÂ}µïÖ±}Õ’âÕç…•¡—•Ωπ}ÿƒ°UU%§ÅI=4ÅAU	1%∞ÅÖπΩ∏Ï)I9PÅaUQÅ=8ÅU9Q%=8Å¡’â±•åπ…ï≈’ïÕ—}µïÖ±}Õ’âÕç…•¡—•Ωπ}ÿƒ°UU%∞ÅQaP§ÅQ<ÅÖ’—°ïπ—•çÖ—ïêÏ)I9PÅaUQÅ=8ÅU9Q%=8Å¡’â±•åπµÂ}µïÖ±}Õ’âÕç…•¡—•ΩπÕ}ÿƒ†§ÅQ<ÅÖ’—°ïπ—•çÖ—ïêÏ)I9PÅaUQÅ=8ÅU9Q%=8Å¡’â±•åπÕç°ΩΩ±}µïÖ±}Õ’âÕç…•¡—•ΩπÕ}ÿƒ°QaP§ÅQ<ÅÖ’—°ïπ—•çÖ—ïêÏ)I9PÅaUQÅ=8ÅU9Q%=8Å¡’â±•åπ…ïŸ•ï›}µïÖ±}Õ’âÕç…•¡—•Ωπ}ÿƒ°UU%∞Å	==18∞ÅQaP§ÅQ<ÅÖ’—°ïπ—•çÖ—ïêÏ)I9PÅaUQÅ=8ÅU9Q%=8Å¡’â±•åπçÖπçï±}µÂ}µïÖ±}Õ’âÕç…•¡—•Ωπ}ÿƒ°UU%§ÅQ<ÅÖ’—°ïπ—•çÖ—ïêÏ()9=Q%dÅ¡ù…Õ–∞Äù…ï±ΩÖêÅÕç°ïµÑúÏ(4(

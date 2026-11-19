@@ -97,7 +97,6 @@
             font: inherit;
             font-size: 14px;
         }
-        .panel input[type="checkbox"] { width: auto; margin: 0 6px 0 0; vertical-align: middle; }
         .panel textarea { min-height: 74px; resize: vertical; }
         .panel button[type="submit"], .panel button.go {
             margin-top: 12px;
@@ -174,11 +173,11 @@
         .footnote { margin: 18px 0 8px; color: var(--muted); font-size: 12.5px; line-height: 1.6; }
         [hidden] { display: none !important; }
     </style>
-  <script type="module" crossorigin src="/assets/services-ujW0hgcd.js"></script>
+  <script type="module" crossorigin src="/assets/services-B1eRzWYy.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/supabase-BZASSCr-.js">
-  <link rel="modulepreload" crossorigin href="/assets/offline-banner-FNj5sJXW.js">
+  <link rel="modulepreload" crossorigin href="/assets/offline-banner-D1VOAd_A.js">
   <link rel="modulepreload" crossorigin href="/assets/offline-store-DwnENRt3.js">
-  <link rel="modulepreload" crossorigin href="/assets/found-items-BEfO60nN.js">
+  <link rel="modulepreload" crossorigin href="/assets/found-items-CFHPg_qu.js">
   <link rel="stylesheet" crossorigin href="/assets/offline-banner-BFBmpa7B.css">
   <script type="module">import.meta.url;import("_").catch(()=>1);(async function*(){})().next();if(location.protocol!="file:"){window.__vite_is_modern_browser=true}</script>
   <script type="module">!function(){if(window.__vite_is_modern_browser)return;console.warn("vite: loading legacy chunks, syntax error above and the same error below should be ignored");var e=document.getElementById("vite-legacy-polyfill"),n=document.createElement("script");n.src=e.src,n.onload=function(){System.import(document.getElementById('vite-legacy-entry').getAttribute('data-src'))},document.body.appendChild(n)}();</script>
@@ -224,7 +223,6 @@
             <label><input type="checkbox" id="switch-accommodation"> <span data-i18n="Hostels and beds">Hostels and beds</span></label>
             <label><input type="checkbox" id="switch-catering"> <span data-i18n="Catering and meal plans">Catering and meal plans</span></label>
             <label><input type="checkbox" id="switch-chaplaincy"> <span data-i18n="Chaplaincy and the year's programme">Chaplaincy and the year's programme</span></label>
-            <label><input type="checkbox" id="switch-attendance"> <span data-i18n="Classes and attendance register">Classes and attendance register</span></label>
             <button class="go" type="button" id="switch-save" data-i18n="Save these switches">Save these switches</button>
             <p data-i18n="Only the office of that school, or an admin, can change them. A school with no row here offers nothing until it is switched on.">
                 Only the office of that school, or an admin, can change them. A school with no row here offers nothing
@@ -233,32 +231,16 @@
             <p id="switch-status" class="status" role="status"></p>
         </details>
 
-        <section id="attendance-section" hidden>
-            <article class="uni-card">
-                <div class="uni-head">
-                    <h3 class="uni-name" data-i18n="Classes and attendance">Classes and attendance</h3>
-                    <span class="uni-meta" data-i18n="Timetable · units · class register">Timetable · units · class register</span>
-                </div>
-                <p class="uni-note" data-i18n="Open your course timetable, see your units and lecturers, and check in to class with the code from your lecturer.">
-                    Open your course timetable, see your units and lecturers, and check in to class with the code from your lecturer.
-                </p>
-                <a class="row-button go" href="/classes.html" data-i18n="Open classes">Open classes</a>
-            </article>
-        </section>
-
         <section id="bed-section" hidden>
             <div class="panel booking-guide">
                 <strong>Book a hostel room</strong>
                 <ol>
                     <li data-i18n="Sign in with your student account">Sign in with your student account.</li>
                     <li data-i18n="Choose a hostel and semester, then select a room marked available">Choose a hostel and semester, then select a room marked available.</li>
-                    <li data-i18n="Send your booking request, attach the M-Pesa or bank receipt, and wait for the housing office to verify payment and assign the room.">Send your booking request, attach the M-Pesa or bank receipt, and wait for the housing office to verify payment and assign the room.</li>
+                    <li data-i18n="Confirm your booking. The room is reserved immediately, and you can cancel it from Your bookings.">Confirm your booking. The room is reserved immediately, and you can cancel it from Your bookings.</li>
                 </ol>
-                <p data-i18n="Kabarak has four men's hostels with 90 rooms each and five women's hostels with 135 rooms each. The housing office sets whether each room is single, twin or triple.">
-                    Kabarak has four men's hostels with 90 rooms each and five women's hostels with 135 rooms each. The housing office sets whether each room is single, twin or triple.
-                </p>
-                <p data-i18n="Before booking, add your student registration number to your account. The housing office sees it with your request. After requesting a room, send the M-Pesa or bank receipt here for review.">
-                    Before booking, add your student registration number to your account. The housing office sees it with your request. After requesting a room, send the M-Pesa or bank receipt here for review.
+                <p>
+                    Men's hostels Turkana, Bogoria, Baringo and Elementeita have 90 rooms each. Women's hostels Sote A, Sote B, Kabon, Central and Lena Moi have 142 rooms each. The housing office sets which rooms have capacity for two or three students.
                 </p>
             </div>
             <div id="my-bed-heading" class="section-title" data-i18n="Your bookings">Your bookings</div>
@@ -294,7 +276,6 @@
                         <option value="single" data-i18n="Single">Single</option>
                         <option value="twin" data-i18n="Twin">Twin</option>
                         <option value="double" data-i18n="Double">Double</option>
-                        <option value="triple" data-i18n="Triple">Triple</option>
                         <option value="four" data-i18n="Four to a room">Four to a room</option>
                         <option value="other" data-i18n="Other">Other</option>
                     </select>
@@ -322,20 +303,20 @@
             <div class="section-title" data-i18n="Catering">Catering</div>
             <div id="meal-list"></div>
 
-            <div class="uni-card" id="meal-subscription-panel">
-                <h3 class="uni-name">Request a meal-plan subscription</h3>
-                <p>Choose a full-board or half-board plan. The catering office will review your request.</p>
-                <form id="meal-subscription-form">
-                    <label for="meal-subscription-plan">Meal plan</label>
+            <div class="uni-card" id="meal-subscription-panel" hidden>
+                <h3 class="uni-name" data-i18n="Request a meal-plan subscription">Request a meal-plan subscription</h3>
+                <p data-i18n="Choose a full-board or half-board plan. The catering office will review your request.">Choose a full-board or half-board plan. The catering office will review your request.</p>
+                <form id="meal-subscription-form" hidden>
+                    <label for="meal-subscription-plan" data-i18n="Meal plan">Meal plan</label>
                     <select id="meal-subscription-plan" required></select>
-                    <label for="meal-subscription-semester">Semester</label>
+                    <label for="meal-subscription-semester" data-i18n="Which semester">Which semester</label>
                     <input id="meal-subscription-semester" type="text" maxlength="40" placeholder="2026/2027-1" required>
-                    <button class="go" type="submit">Request subscription</button>
+                    <button class="go" type="submit" data-i18n="Request subscription">Request subscription</button>
                 </form>
-                <p id="meal-subscription-status" class="status" role="status"></p>
+                <p id="meal-subscription-status" class="status" role="status" aria-live="polite"></p>
                 <div id="meal-subscription-list"></div>
-                <details class="panel">
-                    <summary>Catering office: subscription requests</summary>
+                <details id="meal-subscription-office-panel" class="panel" hidden>
+                    <summary data-i18n="Catering office: subscription requests">Catering office: subscription requests</summary>
                     <div id="meal-subscription-office-list"></div>
                 </details>
             </div>
@@ -347,8 +328,8 @@
                     <input id="meal-name" type="text" maxlength="80" autocomplete="off" required>
                     <label for="meal-kind" data-i18n="What it covers">What it covers</label>
                     <select id="meal-kind">
-                        <option value="full" data-i18n="Full board · three meals a day">Full board · three meals a day</option>
-                        <option value="half" data-i18n="Half board · two meals a day">Half board · two meals a day</option>
+                        <option value="full" data-i18n="Three meals a day">Three meals a day</option>
+                        <option value="half" data-i18n="Two meals a day">Two meals a day</option>
                         <option value="light" data-i18n="One meal a day">One meal a day</option>
                         <option value="self_catering" data-i18n="Self catering">Self catering</option>
                         <option value="other" data-i18n="Other">Other</option>
@@ -510,8 +491,7 @@
 
   <script nomodule>!function(){var e=document,t=e.createElement("script");if(!("noModule"in t)&&"onbeforeload"in t){var n=!1;e.addEventListener("beforeload",(function(e){if(e.target===t)n=!0;else if(!e.target.hasAttribute("nomodule")||!n)return;e.preventDefault()}),!0),t.type="module",t.src=".",e.head.appendChild(t),t.remove()}}();</script>
   <script nomodule crossorigin id="vite-legacy-polyfill" src="/assets/polyfills-legacy-CWJMBqWU.js"></script>
-  <script nomodule crossorigin id="vite-legacy-entry" data-src="/assets/services-legacy-CInO0woo.js">System.import(document.getElementById('vite-legacy-entry').getAttribute('data-src'))</script>
-  <script type="module" src="/assets/meal-subscriptions.js"></script>
+  <script nomodule crossorigin id="vite-legacy-entry" data-src="/assets/services-legacy-C-2n-lqi.js">System.import(document.getElementById('vite-legacy-entry').getAttribute('data-src'))</script>
 </body>
 
 </html>

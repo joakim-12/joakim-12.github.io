@@ -26,6 +26,7 @@ ALTER TABLE public.meal_subscriptions ENABLE ROW LEVEL SECURITY;
 GRANT SELECT ON public.meal_subscriptions TO authenticated;
 REVOKE ALL ON public.meal_subscriptions FROM anon, PUBLIC;
 
+DROP POLICY IF EXISTS meal_subscriptions_read_v1 ON public.meal_subscriptions;
 CREATE POLICY meal_subscriptions_read_v1 ON public.meal_subscriptions
     FOR SELECT TO authenticated
     USING (student_id = auth.uid() OR public.is_school_staff(school_key));
@@ -92,8 +93,11 @@ RETURNS TABLE (
 )
 LANGUAGE plpgsql SECURITY DEFINER SET search_path = '' AS $$
 BEGIN
-    UPDATE public.meal_subscriptions SET status = 'expired', updated_at = NOW()
-     WHERE student_id = auth.uid() AND status = 'active' AND ends_at <= NOW();
+    UPDATE public.meal_subscriptions AS ms
+       SET status = 'expired', updated_at = NOW()
+     WHERE ms.student_id = auth.uid()
+       AND ms.status = 'active'
+       AND ms.ends_at <= NOW();
     RETURN QUERY
     SELECT ms.id, mp.name, mp.kind, ms.semester, ms.status, ms.starts_at, ms.ends_at,
            mp.price_semester, ms.decision_note, ms.created_at
@@ -182,4 +186,3 @@ GRANT EXECUTE ON FUNCTION public.review_meal_subscription_v1(UUID, BOOLEAN, TEXT
 GRANT EXECUTE ON FUNCTION public.cancel_my_meal_subscription_v1(UUID) TO authenticated;
 
 NOTIFY pgrst, 'reload schema';
-

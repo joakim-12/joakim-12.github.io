@@ -1,5 +1,5 @@
-const CACHE_NAME = "campus-connect-1.83-release";
-const MEDIA_CACHE_NAME = "campus-connect-media-v1";
+const CACHE_NAME = "campus-connect-1.87-branded-sharing-meal-plans";
+const MEDIA_CACHE_NAME = "campus-connect-media-v2";
 /* The app is a library now, not a viewer: statuses, stories and chat media
    stay readable on a bus with no network. The pile is bounded by count and
    by bytes, and a file that gets used moves to the fresh end, so eviction
@@ -18,6 +18,7 @@ const APP_SHELL = [
     "/classes.html",
     "/companies.html",
     "/services.html",
+    "/share.html",
     "/bulletin/news.json",
     "/manifest.json",
     "/icons/icon-192.png",
@@ -25,7 +26,7 @@ const APP_SHELL = [
     "/icons/icon-192-maskable.png",
     "/icons/icon-512-maskable.png"
 ];
-const APP_PAGES = new Set(["/", "/messages.html", "/classes.html", "/companies.html", "/services.html"]);
+const APP_PAGES = new Set(["/", "/messages.html", "/classes.html", "/companies.html", "/services.html", "/share.html"]);
 
 function isSupabaseMedia(url) {
     return /^https?:$/.test(url.protocol) &&
@@ -64,6 +65,39 @@ async function touchMedia(cache, key, copy) {
     return cache.put(key, copy);
 }
 
+function parseByteRange(value, size) {
+    const match = /^bytes=(\d*)-(\d*)$/.exec(value || "");
+    if (!match || (!match[1] && !match[2]) || !Number.isFinite(size) || size < 0) return null;
+    let start;
+    let end;
+    if (!match[1]) {
+        const suffix = Number(match[2]);
+        if (!suffix) return null;
+        start = Math.max(size - suffix, 0);
+        end = size - 1;
+    } else {
+        start = Number(match[1]);
+        end = match[2] ? Number(match[2]) : size - 1;
+    }
+    if (start >= size || end < start) return null;
+    return { start, end: Math.min(end, size - 1) };
+}
+
+async function cachedByteRange(cache, stableKey, rangeHeader) {
+    const fullResponse = await cache.match(stableKey);
+    if (!fullResponse || fullResponse.status !== 200) return null;
+    const body = await fullResponse.arrayBuffer();
+    const range = parseByteRange(rangeHeader, body.byteLength);
+    if (!range) return null;
+    const bytes = body.slice(range.start, range.end + 1);
+    const headers = new Headers(fullResponse.headers);
+    headers.delete("content-encoding");
+    headers.set("accept-ranges", "bytes");
+    headers.set("content-range", `bytes ${range.start}-${range.end}/${body.byteLength}`);
+    headers.set("content-length", String(bytes.byteLength));
+    return new Response(bytes, { status: 206, statusText: "Partial Content", headers });
+}
+
 async function cacheMedia(event, request, url) {
     // Store under the token-free path so a rotated signed URL still hits.
     const stableKey = new Request(`${url.origin}${url.pathname}`, {
@@ -71,6 +105,22 @@ async function cacheMedia(event, request, url) {
         credentials: "omit"
     });
     const cache = await caches.open(MEDIA_CACHE_NAME);
+    const rangeHeader = request.headers.get("range");
+
+    /* Video players request byte ranges to start quickly and seek. Caching a
+       206 response as if it were the whole file creates truncated clips and
+       black playback. Pass ranges through to storage; use a cached full 200
+       response only as an offline source for a correctly formed 206 reply. */
+    if (rangeHeader) {
+        const cachedRange = await cachedByteRange(cache, stableKey, rangeHeader);
+        if (cachedRange) return cachedRange;
+        try {
+            return await fetch(request);
+        } catch {
+            return Response.error();
+        }
+    }
+
     const stableMatch = await cache.match(stableKey);
     const cached = stableMatch || await cache.match(request);
     if (cached) {
@@ -81,7 +131,7 @@ async function cacheMedia(event, request, url) {
 
     try {
         const response = await fetch(request);
-        if (response.ok || response.type === "opaque") {
+        if ((response.status === 200 && !response.headers.has("content-range")) || response.type === "opaque") {
             event.waitUntil(
                 cache.put(stableKey, response.clone())
                     .then(() => trimMediaCache(cache))
@@ -211,4 +261,19 @@ self.addEventListener("fetch", (event) => {
             return response;
         })
     );
+});
+
+self.addEventListener("notificationclick", event => {
+    event.notification.close();
+    const requested = event.notification.data && event.notification.data.url;
+    const target = new URL(requested || "/messages.html", self.location.origin);
+    if (target.origin !== self.location.origin) return;
+    event.waitUntil(clients.matchAll({ type: "window", includeUncontrolled: true }).then(async windows => {
+        for (const client of windows) {
+            if (!client.url.startsWith(self.location.origin) || !("focus" in client)) continue;
+            if ("navigate" in client && client.url !== target.href) await client.navigate(target.href);
+            return client.focus();
+        }
+        return clients.openWindow(target.href);
+    }));
 });
