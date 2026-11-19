@@ -1394,14 +1394,14 @@
       .you-details { margin-left: auto; margin-right: auto; max-width: 620px; }
     }
   </style>
-  <script type="module" crossorigin src="/assets/main-DYJpKiBt.js"></script>
+  <script type="module" crossorigin src="/assets/main-Gj_TPc7m.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/supabase-BZASSCr-.js">
-  <link rel="modulepreload" crossorigin href="/assets/offline-banner-D1VOAd_A.js">
-  <link rel="modulepreload" crossorigin href="/assets/profile-identity-BghV4kbn.js">
-  <link rel="modulepreload" crossorigin href="/assets/chat-organize-o1bpc431.js">
+  <link rel="modulepreload" crossorigin href="/assets/offline-banner-D866EyEl.js">
+  <link rel="modulepreload" crossorigin href="/assets/profile-identity-Ci1FobBH.js">
+  <link rel="modulepreload" crossorigin href="/assets/chat-organize-1dVpYkrS.js">
   <link rel="modulepreload" crossorigin href="/assets/offline-store-DwnENRt3.js">
-  <link rel="modulepreload" crossorigin href="/assets/company-directory-BY78rpuV.js">
-  <link rel="modulepreload" crossorigin href="/assets/staff-verification-DRfYQGL9.js">
+  <link rel="modulepreload" crossorigin href="/assets/company-directory-X7hSw5ub.js">
+  <link rel="modulepreload" crossorigin href="/assets/staff-verification-C9RZETYd.js">
   <link rel="stylesheet" crossorigin href="/assets/offline-banner-BFBmpa7B.css">
   <script type="module">import.meta.url;import("_").catch(()=>1);(async function*(){})().next();if(location.protocol!="file:"){window.__vite_is_modern_browser=true}</script>
   <script type="module">!function(){if(window.__vite_is_modern_browser)return;console.warn("vite: loading legacy chunks, syntax error above and the same error below should be ignored");var e=document.getElementById("vite-legacy-polyfill"),n=document.createElement("script");n.src=e.src,n.onload=function(){System.import(document.getElementById('vite-legacy-entry').getAttribute('data-src'))},document.body.appendChild(n)}();</script>
@@ -1787,7 +1787,7 @@
           <h2 data-i18n="About Campus Connect">About Campus Connect</h2>
           <p data-i18n="Share updates, find people, chat and call on campus.">Share updates, find people, chat and call on campus.</p>
           <p class="app-owner-name">Developed by Josh Chimal Akim · BSc Computer Science, Kabarak University</p>
-          <p class="muted" id="appVersionLine">Campus Connect v1.87</p>
+          <p class="muted" id="appVersionLine">Campus Connect v1.88</p>
           <p class="muted" id="storageLine">Campus Connect keeps its media on this phone.</p>
           <p class="muted"><small id="storageNote"></small></p>
           <button type="button" class="secondary" id="clearSavedMedia" hidden data-i18n="Clear saved media">Clear saved media</button>
@@ -2345,22 +2345,18 @@
        bundle is merely slow - only when the bundle never started at all. */
     (function () {
       var WORDS = {
-        en: ["Campus Connect could not start on this phone.",
-          "Its web engine is too old for this app. Update Android System WebView in the Play Store, then reopen Campus Connect.",
-          "Reload",
-          "Open Android System WebView in Play Store"],
-        fr: ["Campus Connect n'a pas pu démarrer sur ce téléphone.",
-          "Son moteur web est trop ancien pour cette application. Mettez à jour Android System WebView dans le Play Store, puis rouvrez Campus Connect.",
-          "Recharger",
-          "Ouvrir Android System WebView dans Play Store"],
-        sw: ["Campus Connect haikuweza kuanza kwenye simu hii.",
-          "Injini yake ya wavuti ni ya zamani sana kwa programu hii. Sasisha Android System WebView katika Play Store, kisha ufunue Campus Connect tena.",
-          "Pakia upya",
-          "Fungua Android System WebView kwenye Play Store"],
-        es: ["Campus Connect no pudo iniciar en este teléfono.",
-          "Su motor web es demasiado viejo para esta aplicación. Actualiza Android System WebView en Play Store y vuelve a abrir Campus Connect.",
-          "Recargar",
-          "Abrir Android System WebView en Play Store"]
+        en: ["Campus Connect is taking too long to load.",
+          "Check your internet connection and reload. If it keeps happening, open this link in Safari or Chrome and update your phone.",
+          "Reload"],
+        fr: ["Campus Connect met trop de temps à charger.",
+          "Vérifiez votre connexion Internet et rechargez la page. Si le problème continue, ouvrez ce lien dans Safari ou Chrome et mettez votre téléphone à jour.",
+          "Recharger"],
+        sw: ["Campus Connect inachukua muda mrefu kupakia.",
+          "Angalia muunganisho wa intaneti kisha pakia upya. Tatizo likiendelea, fungua kiungo hiki kwenye Safari au Chrome na usasishe simu yako.",
+          "Pakia upya"],
+        es: ["Campus Connect está tardando demasiado en cargar.",
+          "Comprueba tu conexión a Internet y vuelve a cargar la página. Si continúa, abre este enlace en Safari o Chrome y actualiza el teléfono.",
+          "Recargar"]
       };
       var tongue = String(navigator.language || "en").slice(0, 2).toLowerCase();
       var lines = WORDS[tongue] || WORDS.en;
@@ -2389,27 +2385,18 @@
         box.appendChild(title);
         box.appendChild(detail);
         box.appendChild(again);
-        var update = document.createElement("a");
-        update.href = "market://details?id=com.google.android.webview";
-        update.textContent = lines[3];
-        update.style.cssText = "display:block;margin-top:12px;color:#fff;font-weight:700;text-decoration:underline";
-        box.appendChild(update);
         document.body.appendChild(box);
       }
 
-      /* A script this engine refused reports itself the moment it is read, so a
-         phone that can never start the app is told straight away rather than after
-         a wait, and the wait still covers a bundle that never arrives. */
-      window.addEventListener("error", function (event) {
-        var node = event && event.target;
-        if (node && String(node.tagName).toUpperCase() === "SCRIPT") speak();
-      }, true);
-      window.setTimeout(speak, 20000);
+      /* Browsers without module support intentionally report an error for the
+         modern entry while Vite's legacy bundle starts. Do not treat that expected
+         error as a failure; compat.js dismisses this notice if a slow bundle starts. */
+      window.setTimeout(speak, 30000);
     })();
   </script>
 
   <script nomodule>!function(){var e=document,t=e.createElement("script");if(!("noModule"in t)&&"onbeforeload"in t){var n=!1;e.addEventListener("beforeload",(function(e){if(e.target===t)n=!0;else if(!e.target.hasAttribute("nomodule")||!n)return;e.preventDefault()}),!0),t.type="module",t.src=".",e.head.appendChild(t),t.remove()}}();</script>
-  <script nomodule crossorigin id="vite-legacy-polyfill" src="/assets/polyfills-legacy-CWJMBqWU.js"></script>
-  <script nomodule crossorigin id="vite-legacy-entry" data-src="/assets/main-legacy-CFXeoS3S.js">System.import(document.getElementById('vite-legacy-entry').getAttribute('data-src'))</script>
+  <script nomodule crossorigin id="vite-legacy-polyfill" src="/assets/polyfills-legacy-B4Yhgm-e.js"></script>
+  <script nomodule crossorigin id="vite-legacy-entry" data-src="/assets/main-legacy-Mo69mO9K.js">System.import(document.getElementById('vite-legacy-entry').getAttribute('data-src'))</script>
 </body>
 </html>

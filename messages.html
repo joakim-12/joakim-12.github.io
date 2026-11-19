@@ -3698,15 +3698,15 @@
             }
         }
     </style>
-  <script type="module" crossorigin src="/assets/messages-d90miWUg.js"></script>
+  <script type="module" crossorigin src="/assets/messages-CTWGipjE.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/supabase-BZASSCr-.js">
-  <link rel="modulepreload" crossorigin href="/assets/offline-banner-D1VOAd_A.js">
-  <link rel="modulepreload" crossorigin href="/assets/profile-identity-BghV4kbn.js">
-  <link rel="modulepreload" crossorigin href="/assets/chat-organize-o1bpc431.js">
+  <link rel="modulepreload" crossorigin href="/assets/offline-banner-D866EyEl.js">
+  <link rel="modulepreload" crossorigin href="/assets/profile-identity-Ci1FobBH.js">
+  <link rel="modulepreload" crossorigin href="/assets/chat-organize-1dVpYkrS.js">
   <link rel="modulepreload" crossorigin href="/assets/_commonjsHelpers-Cpj98o6Y.js">
   <link rel="modulepreload" crossorigin href="/assets/media-93jX0aZE.js">
   <link rel="modulepreload" crossorigin href="/assets/voice-player-QsUdPYen.js">
-  <link rel="modulepreload" crossorigin href="/assets/staff-verification-DRfYQGL9.js">
+  <link rel="modulepreload" crossorigin href="/assets/staff-verification-C9RZETYd.js">
   <link rel="modulepreload" crossorigin href="/assets/member-view-CKKBednP.js">
   <link rel="modulepreload" crossorigin href="/assets/offline-store-DwnENRt3.js">
   <link rel="stylesheet" crossorigin href="/assets/offline-banner-BFBmpa7B.css">
@@ -4614,32 +4614,30 @@
     </nav>
 
     <script>
-        /* The chat screen below is a module, and a module an engine cannot parse
-           fails in total silence: a blank page, no error on screen, and no way for a
-           student to work out that the phone is the reason. This script is ES5 on
-           purpose, so it still runs on that old engine. It says nothing while the
-           bundle is merely slow - only when the bundle never started at all. */
+        /* The chat screen can take longer to start on a slow phone or connection.
+           Keep a generic recovery notice here, and let the legacy bundle start
+           before deciding that the page failed. */
         (function () {
             var WORDS = {
-                en: ["Campus Connect could not start on this phone.",
-                    "Its web engine is too old for this app. Update Android System WebView in the Play Store, then reopen Campus Connect.",
+                en: ["Campus Connect is taking too long to load.",
+                    "Check your internet connection and reload. If it keeps happening, open this link in Safari or Chrome and update your phone.",
                     "Reload"],
-                fr: ["Campus Connect n'a pas pu démarrer sur ce téléphone.",
-                    "Son moteur web est trop ancien pour cette application. Mettez à jour Android System WebView dans le Play Store, puis rouvrez Campus Connect.",
+                fr: ["Campus Connect met trop de temps à charger.",
+                    "Vérifiez votre connexion Internet et rechargez la page. Si le problème continue, ouvrez ce lien dans Safari ou Chrome et mettez votre téléphone à jour.",
                     "Recharger"],
-                sw: ["Campus Connect haikuweza kuanza kwenye simu hii.",
-                    "Injini yake ya wavuti ni ya zamani sana kwa programu hii. Sasisha Android System WebView katika Play Store, kisha ufunue Campus Connect tena.",
+                sw: ["Campus Connect inachukua muda mrefu kupakia.",
+                    "Angalia muunganisho wa intaneti kisha pakia upya. Tatizo likiendelea, fungua kiungo hiki kwenye Safari au Chrome na usasishe simu yako.",
                     "Pakia upya"],
-                es: ["Campus Connect no pudo iniciar en este teléfono.",
-                    "Su motor web es demasiado viejo para esta aplicación. Actualiza Android System WebView en Play Store y vuelve a abrir Campus Connect.",
+                es: ["Campus Connect está tardando demasiado en cargar.",
+                    "Comprueba tu conexión a Internet y vuelve a cargar la página. Si continúa, abre este enlace en Safari o Chrome y actualiza el teléfono.",
                     "Recargar"]
             };
             var tongue = String(navigator.language || "en").slice(0, 2).toLowerCase();
             var lines = WORDS[tongue] || WORDS.en;
 
             function speak() {
-                /* compat.js sets this flag as the first thing it does, so any engine
-                   that could read the bundle at all has already stood this down. */
+                /* compat.js sets this flag as soon as a supported modern or legacy
+                   bundle starts. */
                 if (window.__ccStarted || document.getElementById("cc-boot-failure")) return;
                 var box = document.createElement("div");
                 box.id = "cc-boot-failure";
@@ -4664,20 +4662,15 @@
                 document.body.appendChild(box);
             }
 
-            /* A script this engine refused reports itself the moment it is read, so a
-               phone that can never start the app is told straight away rather than
-               after a wait, and the wait still covers a bundle that never arrives. */
-            window.addEventListener("error", function (event) {
-                var node = event && event.target;
-                if (node && String(node.tagName).toUpperCase() === "SCRIPT") speak();
-            }, true);
-            window.setTimeout(speak, 20000);
+            /* Vite intentionally fails the modern entry in older browsers while its
+               legacy bundle starts. Wait before showing this generic recovery tip. */
+            window.setTimeout(speak, 30000);
         })();
     </script>
 
   <script nomodule>!function(){var e=document,t=e.createElement("script");if(!("noModule"in t)&&"onbeforeload"in t){var n=!1;e.addEventListener("beforeload",(function(e){if(e.target===t)n=!0;else if(!e.target.hasAttribute("nomodule")||!n)return;e.preventDefault()}),!0),t.type="module",t.src=".",e.head.appendChild(t),t.remove()}}();</script>
-  <script nomodule crossorigin id="vite-legacy-polyfill" src="/assets/polyfills-legacy-CWJMBqWU.js"></script>
-  <script nomodule crossorigin id="vite-legacy-entry" data-src="/assets/messages-legacy-DOINGgcn.js">System.import(document.getElementById('vite-legacy-entry').getAttribute('data-src'))</script>
+  <script nomodule crossorigin id="vite-legacy-polyfill" src="/assets/polyfills-legacy-B4Yhgm-e.js"></script>
+  <script nomodule crossorigin id="vite-legacy-entry" data-src="/assets/messages-legacy-x2eSbgc2.js">System.import(document.getElementById('vite-legacy-entry').getAttribute('data-src'))</script>
 </body>
 
 </html>
