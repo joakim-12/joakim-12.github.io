@@ -173,11 +173,12 @@
         .footnote { margin: 18px 0 8px; color: var(--muted); font-size: 12.5px; line-height: 1.6; }
         [hidden] { display: none !important; }
     </style>
-  <script type="module" crossorigin src="/assets/services-B_Lv0MTq.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/supabase-BZASSCr-.js">
-  <link rel="modulepreload" crossorigin href="/assets/offline-banner-D866EyEl.js">
+  <script type="module" crossorigin src="/assets/services-CQ4sS2v_.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/index-GJ5PbhnZ.js">
+  <link rel="modulepreload" crossorigin href="/assets/supabase-CGn_5gnq.js">
+  <link rel="modulepreload" crossorigin href="/assets/offline-banner-CvWoeai1.js">
   <link rel="modulepreload" crossorigin href="/assets/offline-store-DwnENRt3.js">
-  <link rel="modulepreload" crossorigin href="/assets/found-items-DHOfmhKr.js">
+  <link rel="modulepreload" crossorigin href="/assets/found-items-DLLRJ10F.js">
   <link rel="stylesheet" crossorigin href="/assets/offline-banner-BFBmpa7B.css">
   <script type="module">import.meta.url;import("_").catch(()=>1);(async function*(){})().next();if(location.protocol!="file:"){window.__vite_is_modern_browser=true}</script>
   <script type="module">!function(){if(window.__vite_is_modern_browser)return;console.warn("vite: loading legacy chunks, syntax error above and the same error below should be ignored");var e=document.getElementById("vite-legacy-polyfill"),n=document.createElement("script");n.src=e.src,n.onload=function(){System.import(document.getElementById('vite-legacy-entry').getAttribute('data-src'))},document.body.appendChild(n)}();</script>
@@ -237,8 +238,9 @@
                 <ol>
                     <li data-i18n="Sign in with your student account">Sign in with your student account.</li>
                     <li data-i18n="Choose a hostel and semester, then select a room marked available">Choose a hostel and semester, then select a room marked available.</li>
-                    <li data-i18n="Confirm your booking. The room is reserved immediately, and you can cancel it from Your bookings.">Confirm your booking. The room is reserved immediately, and you can cancel it from Your bookings.</li>
+                    <li>Confirm a room request, pay using the official university details shown, then submit your M-Pesa or bank reference. The room is confirmed only after the housing office verifies payment and approves it.</li>
                 </ol>
+                <p>Booking requires a confirmed university email from an approved domain and the student registration number recorded on your account. Available spaces update as requests are made.</p>
                 <p>
                     Men's hostels Turkana, Bogoria, Baringo and Elementeita have 90 rooms each. Women's hostels Sote A, Sote B, Kabon, Central and Lena Moi have 142 rooms each. The housing office sets which rooms have capacity for two or three students.
                 </p>
@@ -290,6 +292,29 @@
                     Write the name exactly as the school writes it, so a parent searching for it finds the one row.
                 </p>
                 <p id="hostel-status" class="status" role="status"></p>
+            </details>
+
+            <details id="hostel-payment-settings" class="panel" hidden>
+                <summary>Housing office: student eligibility and payment details</summary>
+                <p>Set the official student email domain and verified university payment destinations. These details are shown after a student chooses a room.</p>
+                <label for="hostel-email-domains">Official student email domains (comma separated)</label>
+                <input id="hostel-email-domains" type="text" maxlength="400" placeholder="university.ac.ke">
+                <label for="hostel-paybill">M-Pesa Paybill number</label>
+                <input id="hostel-paybill" type="text" maxlength="40" inputmode="numeric">
+                <label for="hostel-paybill-hint">Paybill account instructions</label>
+                <input id="hostel-paybill-hint" type="text" maxlength="120" placeholder="Student registration number">
+                <label for="hostel-bank-name">Bank name</label>
+                <input id="hostel-bank-name" type="text" maxlength="100">
+                <label for="hostel-bank-branch">Branch</label>
+                <input id="hostel-bank-branch" type="text" maxlength="100">
+                <label for="hostel-bank-account-name">Bank account name</label>
+                <input id="hostel-bank-account-name" type="text" maxlength="120">
+                <label for="hostel-bank-account-number">Bank account number</label>
+                <input id="hostel-bank-account-number" type="text" maxlength="60">
+                <label for="hostel-payment-note">Payment note for students</label>
+                <textarea id="hostel-payment-note" maxlength="400"></textarea>
+                <button class="go" type="button" id="hostel-payment-save">Save official payment details</button>
+                <p id="hostel-payment-status" class="status" role="status"></p>
             </details>
 
             <details id="office-panel" class="panel" hidden>
@@ -490,8 +515,8 @@
     </main>
 
   <script nomodule>!function(){var e=document,t=e.createElement("script");if(!("noModule"in t)&&"onbeforeload"in t){var n=!1;e.addEventListener("beforeload",(function(e){if(e.target===t)n=!0;else if(!e.target.hasAttribute("nomodule")||!n)return;e.preventDefault()}),!0),t.type="module",t.src=".",e.head.appendChild(t),t.remove()}}();</script>
-  <script nomodule crossorigin id="vite-legacy-polyfill" src="/assets/polyfills-legacy-B4Yhgm-e.js"></script>
-  <script nomodule crossorigin id="vite-legacy-entry" data-src="/assets/services-legacy-DdqUqbzk.js">System.import(document.getElementById('vite-legacy-entry').getAttribute('data-src'))</script>
+  <script nomodule crossorigin id="vite-legacy-polyfill" src="/assets/polyfills-legacy-DQfxS9ye.js"></script>
+  <script nomodule crossorigin id="vite-legacy-entry" data-src="/assets/services-legacy-C6E0OdNK.js">System.import(document.getElementById('vite-legacy-entry').getAttribute('data-src'))</script>
 </body>
 
 </html>

@@ -3,55 +3,40 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="theme-color" content="#17152c">
-  <meta name="description" content="A post was shared with you on Campus Connect. Open it in the campus community app.">
+  <meta name="theme-color" content="#111126">
+  <meta name="description" content="A post was shared with you on Campus Connect.">
   <meta name="app-public-url" content="https://joakim-12.github.io">
-  <meta property="og:site_name" content="Campus Connect">
-  <meta property="og:title" content="A post was shared with you · Campus Connect">
-  <meta property="og:description" content="Open Campus Connect to view this shared campus post.">
-  <meta property="og:type" content="website">
-  <meta property="og:image" content="https://joakim-12.github.io/icons/icon-512.png">
-  <meta property="og:image:alt" content="Campus Connect app logo">
-  <meta name="twitter:card" content="summary">
-  <meta name="twitter:title" content="A post was shared with you · Campus Connect">
-  <meta name="twitter:description" content="Open Campus Connect to view this shared campus post.">
-  <meta name="twitter:image" content="https://joakim-12.github.io/icons/icon-512.png">
-  <link rel="canonical" href="https://joakim-12.github.io/share.html">
   <link rel="icon" type="image/png" href="/icons/icon-192.png">
-  <title>A post was shared with you · Campus Connect</title>
+  <title>Campus Connect · Shared post</title>
   <style>
     :root { color-scheme: dark; font: 16px/1.5 system-ui, sans-serif; background: #111126; color: #f5f3ff; }
-    body { min-height: 100svh; margin: 0; display: grid; place-items: center; padding: 24px; box-sizing: border-box; }
-    main { width: min(100%, 390px); text-align: center; }
-    img { width: 92px; height: 92px; border-radius: 23px; box-shadow: 0 8px 28px #0006; }
-    h1 { margin: 18px 0 6px; font-size: 1.7rem; }
-    p { margin: 0 auto 24px; color: #c5c2d8; }
-    a { display: inline-block; padding: 13px 22px; border-radius: 14px; background: #6254d9; color: white; font-weight: 700; text-decoration: none; }
+    body { min-height: 100svh; margin: 0; display: grid; place-items: center; padding: 18px; box-sizing: border-box; }
+    main { width: min(100%, 640px); overflow: hidden; background: #17152c; border: 1px solid #343252; border-radius: 20px; }
+    #media { display: block; width: 100%; max-height: 76svh; object-fit: contain; background: #05060b; }
+    section { padding: 20px; }
+    h1 { margin: 0 0 8px; font-size: 1.35rem; }
+    p { margin: 0 0 18px; color: #c5c2d8; white-space: pre-wrap; overflow-wrap: anywhere; }
+    a { display: inline-block; padding: 12px 18px; border-radius: 13px; background: #6254d9; color: white; font-weight: 700; text-decoration: none; }
+    [hidden] { display: none !important; }
   </style>
-  <script async type="module" crossorigin src="/assets/share-C9V5b6hx.js"></script>
+  <script type="module" crossorigin src="/assets/share-Bp-hHzzG.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/index-GJ5PbhnZ.js">
   <script type="module">import.meta.url;import("_").catch(()=>1);(async function*(){})().next();if(location.protocol!="file:"){window.__vite_is_modern_browser=true}</script>
   <script type="module">!function(){if(window.__vite_is_modern_browser)return;console.warn("vite: loading legacy chunks, syntax error above and the same error below should be ignored");var e=document.getElementById("vite-legacy-polyfill"),n=document.createElement("script");n.src=e.src,n.onload=function(){System.import(document.getElementById('vite-legacy-entry').getAttribute('data-src'))},document.body.appendChild(n)}();</script>
 </head>
 <body>
   <main>
-    <img src="/icons/icon-192.png" alt="Campus Connect logo" width="92" height="92">
-    <h1>Campus Connect</h1>
-    <p id="shareMessage">A campus post was shared with you.</p>
-    <a id="openPost" href="/">Open in Campus Connect</a>
+    <p id="shareStatus" role="status" style="padding:20px">Loading shared post…</p>
+    <video id="media" controls playsinline preload="metadata" hidden></video>
+    <img id="image" alt="Shared Campus Connect post" hidden>
+    <section>
+      <h1 id="shareTitle">Campus Connect</h1>
+      <p id="shareCaption">A campus post was shared with you.</p>
+      <a id="openPost" href="/">Open in Campus Connect</a>
+    </section>
   </main>
-  <script>
-    const params = new URLSearchParams(location.search);
-    const postId = params.get('post');
-    const audience = params.get('audience');
-    if (postId && /^[\w-]{1,100}$/.test(postId)) {
-      const page = audience === 'world' ? '/world.html' : '/';
-      document.getElementById('openPost').href = `${page}#post-${encodeURIComponent(postId)}`;
-    } else {
-      document.getElementById('shareMessage').textContent = 'Share updates, find people, chat and connect on campus.';
-    }
-  </script>
   <script nomodule>!function(){var e=document,t=e.createElement("script");if(!("noModule"in t)&&"onbeforeload"in t){var n=!1;e.addEventListener("beforeload",(function(e){if(e.target===t)n=!0;else if(!e.target.hasAttribute("nomodule")||!n)return;e.preventDefault()}),!0),t.type="module",t.src=".",e.head.appendChild(t),t.remove()}}();</script>
-  <script nomodule crossorigin id="vite-legacy-polyfill" src="/assets/polyfills-legacy-B4Yhgm-e.js"></script>
-  <script nomodule crossorigin id="vite-legacy-entry" data-src="/assets/share-legacy-CnvmjJHj.js">System.import(document.getElementById('vite-legacy-entry').getAttribute('data-src'))</script>
+  <script nomodule crossorigin id="vite-legacy-polyfill" src="/assets/polyfills-legacy-DQfxS9ye.js"></script>
+  <script nomodule crossorigin id="vite-legacy-entry" data-src="/assets/share-legacy-zg1t8OUk.js">System.import(document.getElementById('vite-legacy-entry').getAttribute('data-src'))</script>
 </body>
 </html>

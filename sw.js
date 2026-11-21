@@ -1,4 +1,4 @@
-const CACHE_NAME = "campus-connect-1.90-chat-multi-media";
+const CACHE_NAME = "campus-connect-1.92-pbljf";
 const MEDIA_CACHE_NAME = "campus-connect-media-v2";
 /* The app is a library now, not a viewer: statuses, stories and chat media
    stay readable on a bus with no network. The pile is bounded by count and
@@ -149,28 +149,6 @@ async function cacheMedia(event, request, url) {
     }
 }
 
-/* A tapped tab that is already in the phone should show the phone's own
-   copy at once, with the network copy read behind it for the next visit.
-   Making the finger wait for a round trip before anything paints is
-   exactly the pause this removes. Only the served site comes here; the
-   APK returned above already reads from its bundle. */
-function navigateFast(event, request, url) {
-    const revalidation = fetch(request)
-        .then((response) => {
-            if (!response.ok) return response;
-            const copy = response.clone();
-            return caches.open(CACHE_NAME)
-                .then((cache) => cache.put(url.pathname, copy))
-                .then(() => response);
-        })
-        .catch(() => null);
-    event.waitUntil(revalidation.then(() => null));
-    return caches.open(CACHE_NAME).then((cache) =>
-        cache.match(url.pathname).then((cached) => cached ||
-            revalidation.then(async (fresh) => fresh ||
-                (await cache.match("/")) || Response.error())));
-}
-
 function freshWithFallback(event, request, url) {
     return fetch(request).then((response) => {
         if (response.ok && APP_PAGES.has(url.pathname)) {
@@ -234,11 +212,11 @@ self.addEventListener("fetch", (event) => {
     if (url.origin !== self.location.origin) return;
 
     if (request.mode === "navigate") {
-        // The six app pages answer from the pocket; anything else still
-        // goes to the network first and to the cache only when it fails.
-        event.respondWith(APP_PAGES.has(url.pathname) ?
-            navigateFast(event, request, url) :
-            freshWithFallback(event, request, url));
+        // Always pair the HTML page with the current release's hashed scripts.
+        // A stale page can point at bundles removed by a deployment, while the
+        // service worker is already deleting the previous release cache. Keep
+        // offline access by falling back to the saved page only when fetch fails.
+        event.respondWith(freshWithFallback(event, request, url));
         return;
     }
 
