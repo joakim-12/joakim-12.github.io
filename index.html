@@ -105,6 +105,8 @@
       position: relative;
     }
 
+    .settings-menu[open] { z-index: 1000; }
+
     .settings-menu > summary {
       list-style: none;
       cursor: pointer;
@@ -136,6 +138,14 @@
       border-radius: 12px;
       background: var(--surface);
       box-shadow: 0 12px 32px #0002;
+    }
+
+    .settings-menu[open] > .settings-panel {
+      position: fixed;
+      top: max(64px, calc(env(safe-area-inset-top) + 12px));
+      right: 12px;
+      max-height: calc(100dvh - 84px - env(safe-area-inset-top));
+      z-index: 1001;
     }
 
     .settings-panel a {
@@ -781,6 +791,11 @@
     .reels-list { width: 100%; height: 100%; overflow-y: auto; overscroll-behavior-y: contain; scroll-snap-type: y mandatory; scrollbar-width: none; }
     .reels-list::-webkit-scrollbar { display: none; }
     .reel-card { position: relative; width: 100%; height: 100dvh; min-height: 520px; overflow: hidden; isolation: isolate; background: #050505; color: #fff; scroll-snap-align: start; scroll-snap-stop: always; }
+    .reel-sponsored-card { display: grid; place-items: center; padding: 26px; background: radial-gradient(ellipse at 50% 38%, #34305f, #080812 72%); }
+    .reel-sponsored-content { width: min(100%, 520px); padding: 18px; border: 1px solid rgb(255 255 255 / 18%); border-radius: 20px; background: rgb(18 18 34 / 88%); box-shadow: 0 18px 60px #0008; }
+    .reel-sponsored-content .promoted-image { max-height: 48dvh; object-fit: cover; }
+    .reel-sponsored-content .promoted-flag { color: #d4c8ff; border-color: #a99bff; background: #5141a7; }
+    .reel-sponsored-content .promoted-headline { color: #fff; }
     .reel-video-wrap { position: absolute; z-index: 0; inset: 0; width: 100%; height: 100%; max-width: none; overflow: hidden; }
     .reel-video { position: absolute; inset: 0; display: block; width: 100%; height: 100%; max-height: none; margin: 0; border-radius: 0; object-fit: cover; background: #050505; }
     .reel-shade { position: absolute; inset: 0; z-index: 1; pointer-events: none; background: linear-gradient(180deg, rgb(0 0 0 / 64%), transparent 23%, transparent 54%, rgb(0 0 0 / 76%)); }
@@ -1395,15 +1410,16 @@
       .you-details { margin-left: auto; margin-right: auto; max-width: 620px; }
     }
   </style>
-  <script type="module" crossorigin src="/assets/main-JWlmd-Qj.js"></script>
+  <script type="module" crossorigin src="/assets/main-iYZeefml.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/index-GJ5PbhnZ.js">
   <link rel="modulepreload" crossorigin href="/assets/supabase-CGn_5gnq.js">
-  <link rel="modulepreload" crossorigin href="/assets/offline-banner-CvWoeai1.js">
-  <link rel="modulepreload" crossorigin href="/assets/profile-identity-Dfg5wXd-.js">
-  <link rel="modulepreload" crossorigin href="/assets/chat-organize-DLfVHOka.js">
+  <link rel="modulepreload" crossorigin href="/assets/offline-banner-BB_xpNWU.js">
+  <link rel="modulepreload" crossorigin href="/assets/profile-identity-xYECibgt.js">
+  <link rel="modulepreload" crossorigin href="/assets/chat-organize-RACOswDj.js">
   <link rel="modulepreload" crossorigin href="/assets/offline-store-DwnENRt3.js">
-  <link rel="modulepreload" crossorigin href="/assets/company-directory-Bb4Y38pK.js">
-  <link rel="modulepreload" crossorigin href="/assets/staff-verification-7wH9VXI6.js">
+  <link rel="modulepreload" crossorigin href="/assets/company-directory-D0xXYR2w.js">
+  <link rel="modulepreload" crossorigin href="/assets/staff-verification-BllWM_JZ.js">
+  <link rel="modulepreload" crossorigin href="/assets/promotions-DfBovMFs.js">
   <link rel="stylesheet" crossorigin href="/assets/offline-banner-BFBmpa7B.css">
   <script type="module">import.meta.url;import("_").catch(()=>1);(async function*(){})().next();if(location.protocol!="file:"){window.__vite_is_modern_browser=true}</script>
   <script type="module">!function(){if(window.__vite_is_modern_browser)return;console.warn("vite: loading legacy chunks, syntax error above and the same error below should be ignored");var e=document.getElementById("vite-legacy-polyfill"),n=document.createElement("script");n.src=e.src,n.onload=function(){System.import(document.getElementById('vite-legacy-entry').getAttribute('data-src'))},document.body.appendChild(n)}();</script>
@@ -1441,8 +1457,8 @@
             <option value="ru">Русский</option>
           </select>
           <button id="install-app-button" class="secondary" type="button" data-install-app data-i18n="Install app">Install app</button>
-          <button id="biometric-lock-toggle" class="secondary" type="button" hidden>Turn on biometric app lock</button>
-          <small>Biometric lock is a device convenience and cannot prevent viruses or protect a compromised device.</small>
+          <button id="biometric-lock-toggle" class="secondary" type="button" hidden>Turn on fingerprint / face lock</button>
+          <small>Optional: lock Campus Connect with the fingerprint or face unlock already set up on this phone. Android decides which enrolled method is available to apps; a PIN is offered when biometrics are unavailable. Your biometric data stays on the phone.</small>
         </div>
       </details>
     </div>
@@ -1787,7 +1803,7 @@
           <h2 data-i18n="About Campus Connect">About Campus Connect</h2>
           <p data-i18n="Share updates, find people, chat and call on campus.">Share updates, find people, chat and call on campus.</p>
           <p class="app-owner-name">Developed by Josh Chimal Akim · BSc Computer Science, Kabarak University</p>
-          <p class="muted" id="appVersionLine">Campus Connect v2.09</p>
+          <p class="muted" id="appVersionLine">Campus Connect v2.27</p>
           <p class="muted" id="storageLine">Campus Connect keeps its media on this phone.</p>
           <p class="muted"><small id="storageNote"></small></p>
           <button type="button" class="secondary" id="clearSavedMedia" hidden data-i18n="Clear saved media">Clear saved media</button>
@@ -1950,8 +1966,8 @@
         <div id="adminMemberResult" class="admin-member-result" hidden></div>
 
         <h3 data-i18n="Paid placements">Paid placements</h3>
-        <p class="muted" data-i18n="A hostel, a print shop or a food vendor pays you directly, outside this app. What you write here is the card that goes to the front of the feed, and it closes itself when the last day is over. Nothing here touches anybody's money.">
-          A hostel, a print shop or a food vendor pays you directly, outside this app. What you write here is the card that goes to the front of the feed, and it closes itself when the last day is over. Nothing here touches anybody's money.
+        <p class="muted">
+          Businesses pay you directly for clearly marked placements in the student feed, Reels and chat directory. Record the agreed price here; the app does not collect or transfer the payment. Placements expire on the selected end date. Ads never appear inside private conversations or interrupt media downloads.
         </p>
         <div id="promotionList" class="promotion-list">
           <p class="muted" data-i18n="Loading...">Loading...</p>
@@ -2399,7 +2415,7 @@
   </script>
 
   <script nomodule>!function(){var e=document,t=e.createElement("script");if(!("noModule"in t)&&"onbeforeload"in t){var n=!1;e.addEventListener("beforeload",(function(e){if(e.target===t)n=!0;else if(!e.target.hasAttribute("nomodule")||!n)return;e.preventDefault()}),!0),t.type="module",t.src=".",e.head.appendChild(t),t.remove()}}();</script>
-  <script nomodule crossorigin id="vite-legacy-polyfill" src="/assets/polyfills-legacy-DQfxS9ye.js"></script>
-  <script nomodule crossorigin id="vite-legacy-entry" data-src="/assets/main-legacy-DZz53EuD.js">System.import(document.getElementById('vite-legacy-entry').getAttribute('data-src'))</script>
+  <script nomodule crossorigin id="vite-legacy-polyfill" src="/assets/polyfills-legacy-DheqyrVE.js"></script>
+  <script nomodule crossorigin id="vite-legacy-entry" data-src="/assets/main-legacy-jhB7qRTu.js">System.import(document.getElementById('vite-legacy-entry').getAttribute('data-src'))</script>
 </body>
 </html>

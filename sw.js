@@ -1,4 +1,4 @@
-const CACHE_NAME = "campus-connect-1.92-pbljf";
+const CACHE_NAME = "campus-connect-2.27-pbljf";
 const MEDIA_CACHE_NAME = "campus-connect-media-v2";
 /* The app is a library now, not a viewer: statuses, stories and chat media
    stay readable on a bus with no network. The pile is bounded by count and
@@ -142,7 +142,6 @@ async function cacheMedia(event, request, url) {
            with no binding is ES2019, and this file is copied as it is instead of
            bundled down, so an older WebView would refuse to parse it and the app
            would quietly lose the offline half a student on a bad network needs. */
-        // eslint-disable-next-line no-unused-vars
     } catch (cacheMiss) {
         const fallback = await cache.match(stableKey);
         return fallback || Response.error();

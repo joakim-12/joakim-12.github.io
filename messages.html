@@ -189,6 +189,8 @@
             margin-left: auto;
         }
 
+        .settings-menu[open] { z-index: 1000; }
+
         .settings-menu>summary {
             display: flex;
             align-items: center;
@@ -237,6 +239,14 @@
             border-radius: 12px;
             background: var(--panel);
             box-shadow: 0 12px 32px #0003;
+        }
+
+        .settings-menu[open] > .settings-panel {
+            position: fixed;
+            top: max(64px, calc(env(safe-area-inset-top) + 12px));
+            right: 12px;
+            max-height: calc(100dvh - 84px - env(safe-area-inset-top));
+            z-index: 1001;
         }
 
         .settings-panel .language-selector {
@@ -558,6 +568,27 @@
             padding: 8px;
         }
 
+        .sponsored-chat-card {
+            display: grid;
+            gap: 6px;
+            margin: 10px 6px 14px;
+            padding: 12px;
+            border: 1px solid color-mix(in srgb, var(--primary) 38%, var(--border));
+            border-radius: 14px;
+            background: var(--panel);
+        }
+
+        .sponsored-chat-label {
+            color: var(--primary);
+            font-size: 11px;
+            font-weight: 750;
+            letter-spacing: .06em;
+            text-transform: uppercase;
+        }
+
+        .sponsored-chat-card img { width: 100%; max-height: 180px; object-fit: cover; border-radius: 9px; }
+        .sponsored-chat-card a { width: fit-content; color: var(--primary); font-weight: 700; }
+
         .student-directory-item {
             display: grid;
             grid-template-columns: minmax(0, 1fr) auto;
@@ -578,6 +609,62 @@
             color: var(--text);
             text-align: left;
         }
+
+        .chat-swipe-wrap {
+            position: relative;
+            width: 100%;
+            min-width: 0;
+            overflow: hidden;
+            border-radius: 12px;
+            touch-action: pan-y;
+            user-select: none;
+        }
+
+        .chat-swipe-wrap.group { grid-column: 1 / -1; }
+        .chat-swipe-wrap .conversation {
+            position: relative;
+            z-index: 1;
+            transform: translateX(var(--chat-swipe-x, 0px));
+            transition: transform 190ms cubic-bezier(.2, .75, .25, 1);
+            will-change: transform;
+        }
+        .chat-swipe-wrap.dragging .conversation { transition: none; }
+        .chat-swipe-actions {
+            position: absolute;
+            inset-block: 0;
+            display: flex;
+            width: 160px;
+            align-items: stretch;
+            visibility: hidden;
+            pointer-events: none;
+        }
+        .chat-swipe-actions.leading { left: 0; }
+        .chat-swipe-actions.trailing { right: 0; }
+        .chat-swipe-wrap[data-swipe-side="leading"] .chat-swipe-actions.leading,
+        .chat-swipe-wrap[data-swipe-side="trailing"] .chat-swipe-actions.trailing {
+            visibility: visible;
+            pointer-events: auto;
+        }
+        .chat-swipe-action {
+            display: flex;
+            min-width: 0;
+            flex: 1;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            padding: 3px;
+            border: 0;
+            color: #fff;
+            font: inherit;
+            cursor: pointer;
+        }
+        .chat-swipe-action > span { font-size: 19px; line-height: 1; }
+        .chat-swipe-action small { font-size: 10px; font-weight: 700; white-space: nowrap; }
+        .chat-swipe-action.read { background: #20c66b; color: #09291a; }
+        .chat-swipe-action.pin,
+        .chat-swipe-action.more { background: #53515a; }
+        .chat-swipe-action.archive { background: #28d64e; color: #10331a; }
 
         .conversation:hover,
         .conversation.selected {
@@ -1938,12 +2025,13 @@
            tapping the bubble tries again. */
         .bubble.failed-message {
             border: 1px solid #d66a5a;
+            min-width: 112px;
             cursor: pointer;
         }
 
         body.dark-mode .bubble.failed-message { border-color: #e8825f; }
 
-        .message-time.failed { color: #b3372b; }
+        .message-time.failed { color: #b3372b; white-space: nowrap; }
 
         body.dark-mode .message-time.failed { color: #ff8a7a; }
 
@@ -2539,19 +2627,27 @@
         .poll-option.my-vote { border-color: #6254d9; font-weight: 600; }
         .poll-total { font-size: 12px; opacity: 0.7; }
         .view-once-veil {
-            display: grid;
-            place-items: center;
-            min-width: min(220px, 60vw);
-            min-height: 120px;
-            border-radius: 12px;
-            border: 1px dashed rgba(128, 128, 128, 0.55);
-            background: rgba(128, 128, 128, 0.14);
+            display: inline-flex;
+            min-width: 0;
+            min-height: 0;
+            align-items: center;
+            justify-content: flex-start;
+            gap: 8px;
+            border: 0;
+            border-radius: 999px;
+            background: color-mix(in srgb, #20c66b 76%, var(--panel));
             color: inherit;
             font: inherit;
+            font-size: 14px;
+            font-weight: 650;
             cursor: pointer;
-            padding: 14px;
+            padding: 8px 13px;
+            text-align: left;
         }
-        .view-once-veil:disabled { cursor: default; opacity: 0.75; }
+        .view-once-veil:disabled { cursor: default; opacity: .9; }
+        .view-once-veil.is-sent { color: #fff; }
+        .view-once-veil.is-failed { background: color-mix(in srgb, #e05b50 72%, var(--panel)); }
+        .view-once-veil.is-opened { background: color-mix(in srgb, var(--muted) 24%, var(--panel)); }
         .view-once-pending {
             display: flex;
             align-items: center;
@@ -2612,31 +2708,48 @@
         }
 
         .chat-compose {
-            padding: 13px 16px;
+            padding: 10px 12px calc(10px + env(safe-area-inset-bottom));
             border-top: 1px solid var(--border);
         }
 
+        #chat-status.is-typing {
+            color: var(--primary);
+            font-weight: 650;
+        }
+        #chat-status.is-typing::after {
+            content: "";
+            display: inline-block;
+            width: 4px;
+            height: 4px;
+            margin-left: 5px;
+            border-radius: 50%;
+            background: currentColor;
+            vertical-align: middle;
+            animation: typing-pulse 1s ease-in-out infinite alternate;
+        }
+        @keyframes typing-pulse { to { opacity: .25; transform: scale(.65); } }
+
         .compose-form {
             display: flex;
-            align-items: flex-end;
-            gap: 9px;
+            align-items: center;
+            gap: 5px;
         }
 
         .compose-form textarea {
             min-width: 0;
-            min-height: 46px;
+            min-height: 48px;
             max-height: 130px;
             flex: 1;
             resize: none;
-            padding: 12px;
+            padding: 12px 15px;
             border: 1px solid var(--border);
-            border-radius: 12px;
+            border-radius: 999px;
             background: var(--input);
             color: var(--text);
         }
 
         .compose-field textarea {
-            padding-right: 42px;
+            padding-right: 46px;
         }
 
         .emoji-toggle {
@@ -3698,17 +3811,17 @@
             }
         }
     </style>
-  <script type="module" crossorigin src="/assets/messages-5-EKZsHQ.js"></script>
+  <script type="module" crossorigin src="/assets/messages-ue7IcH0Q.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/index-GJ5PbhnZ.js">
   <link rel="modulepreload" crossorigin href="/assets/supabase-CGn_5gnq.js">
-  <link rel="modulepreload" crossorigin href="/assets/offline-banner-CvWoeai1.js">
-  <link rel="modulepreload" crossorigin href="/assets/profile-identity-Dfg5wXd-.js">
-  <link rel="modulepreload" crossorigin href="/assets/chat-organize-DLfVHOka.js">
+  <link rel="modulepreload" crossorigin href="/assets/offline-banner-BB_xpNWU.js">
+  <link rel="modulepreload" crossorigin href="/assets/profile-identity-xYECibgt.js">
+  <link rel="modulepreload" crossorigin href="/assets/chat-organize-RACOswDj.js">
   <link rel="modulepreload" crossorigin href="/assets/_commonjsHelpers-Cpj98o6Y.js">
-  <link rel="modulepreload" crossorigin href="/assets/media-93jX0aZE.js">
-  <link rel="modulepreload" crossorigin href="/assets/media-save-CJ8uWkwb.js">
+  <link rel="modulepreload" crossorigin href="/assets/media-eQG2xlNi.js">
+  <link rel="modulepreload" crossorigin href="/assets/media-save-Uio-4b8Q.js">
   <link rel="modulepreload" crossorigin href="/assets/voice-player-QsUdPYen.js">
-  <link rel="modulepreload" crossorigin href="/assets/staff-verification-7wH9VXI6.js">
+  <link rel="modulepreload" crossorigin href="/assets/staff-verification-BllWM_JZ.js">
   <link rel="modulepreload" crossorigin href="/assets/member-view-CKKBednP.js">
   <link rel="modulepreload" crossorigin href="/assets/offline-store-DwnENRt3.js">
   <link rel="stylesheet" crossorigin href="/assets/offline-banner-BFBmpa7B.css">
@@ -3772,11 +3885,11 @@
                             data-i18n="Search members by name, username, or university.">Search members by name,
                             username, or university.</label>
                         <input id="conversation-search" class="search" type="search"
-                            placeholder="Search by name, username, course, or phone number..."
-                            data-i18n-placeholder="Search by name, username, course, or phone number..." autocomplete="off">
+                            placeholder="Search by name, username, university, or phone number..."
+                            data-i18n-placeholder="Search by name, username, university, or phone number..." autocomplete="off">
                         <button class="search-submit" type="submit"
-                            aria-label="Search by name, username, course, or phone number."
-                            data-i18n-aria-label="Search by name, username, course, or phone number.">
+                            aria-label="Search by name, username, university, or phone number."
+                            data-i18n-aria-label="Search by name, username, university, or phone number.">
                             <svg viewBox="0 0 24 24" aria-hidden="true">
                                 <circle cx="10.8" cy="10.8" r="6.8" />
                                 <path d="m16 16 5 5" />
@@ -3895,9 +4008,10 @@
                             <button id="theme-toggle" class="theme-button" type="button" aria-pressed="false"
                                 data-i18n="🌙 Night Mode">🌙 Night Mode</button>
                             <button id="biometric-lock-toggle" class="theme-button" type="button" hidden>Turn on
-                                biometric app lock</button>
-                            <small>Biometric lock is a device convenience and cannot prevent viruses or protect a
-                                compromised device.</small>
+                                fingerprint / face lock</button>
+                            <small>Optional: lock Campus Connect with the fingerprint or face unlock already set up on
+                                this phone. Android decides which enrolled method is available to apps; a PIN is offered
+                                when biometrics are unavailable. Your biometric data stays on the phone.</small>
                             <a href="/#profile" data-i18n="Privacy & contact settings">Privacy &amp; contact
                                 settings</a>
                             <button id="install-app-button" class="theme-button" type="button" data-install-app
@@ -4148,11 +4262,11 @@
                             data-i18n="Search members by name, username, or university.">Search members by name,
                             username, or university.</label>
                         <input id="calls-search" class="search" type="search"
-                            placeholder="Search by name, username, course, or phone number..."
-                            data-i18n-placeholder="Search by name, username, course, or phone number..." autocomplete="off">
+                            placeholder="Search by name, username, university, or phone number..."
+                            data-i18n-placeholder="Search by name, username, university, or phone number..." autocomplete="off">
                         <button class="search-submit" type="submit"
-                            aria-label="Search by name, username, course, or phone number."
-                            data-i18n-aria-label="Search by name, username, course, or phone number.">
+                            aria-label="Search by name, username, university, or phone number."
+                            data-i18n-aria-label="Search by name, username, university, or phone number.">
                             <svg viewBox="0 0 24 24" aria-hidden="true">
                                 <circle cx="10.8" cy="10.8" r="6.8" />
                                 <path d="m16 16 5 5" />
@@ -4673,8 +4787,8 @@
 
 
   <script nomodule>!function(){var e=document,t=e.createElement("script");if(!("noModule"in t)&&"onbeforeload"in t){var n=!1;e.addEventListener("beforeload",(function(e){if(e.target===t)n=!0;else if(!e.target.hasAttribute("nomodule")||!n)return;e.preventDefault()}),!0),t.type="module",t.src=".",e.head.appendChild(t),t.remove()}}();</script>
-  <script nomodule crossorigin id="vite-legacy-polyfill" src="/assets/polyfills-legacy-DQfxS9ye.js"></script>
-  <script nomodule crossorigin id="vite-legacy-entry" data-src="/assets/messages-legacy-CM32_fEl.js">System.import(document.getElementById('vite-legacy-entry').getAttribute('data-src'))</script>
+  <script nomodule crossorigin id="vite-legacy-polyfill" src="/assets/polyfills-legacy-DheqyrVE.js"></script>
+  <script nomodule crossorigin id="vite-legacy-entry" data-src="/assets/messages-legacy-DCUdkucZ.js">System.import(document.getElementById('vite-legacy-entry').getAttribute('data-src'))</script>
 </body>
 
 </html>

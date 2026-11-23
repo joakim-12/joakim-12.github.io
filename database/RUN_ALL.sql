@@ -891,6 +891,99 @@ CREATE POLICY "Users remove their own status likes" ON public.story_likes
 
 NOTIFY pgrst, 'reload schema';
 
+-- ------------------------------------------------------------
+-- 25. ENFORCE POST AUDIENCES AT THE DATABASE BOUNDARY
+-- world is public; people is any signed-in member; school is limited to the
+-- author's university. The client feed is not an access-control boundary.
+-- ------------------------------------------------------------
+
+ALTER TABLE public.posts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.posts
+    ADD COLUMN IF NOT EXISTS audience TEXT NOT NULL DEFAULT 'school';
+ALTER TABLE public.profiles
+    ADD COLUMN IF NOT EXISTS university TEXT NOT NULL DEFAULT '';
+
+CREATE OR REPLACE FUNCTION public.can_read_post_for_audience(
+    p_author UUID,
+    p_audience TEXT
+)
+RETURNS BOOLEAN
+LANGUAGE SQL
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT CASE
+        WHEN auth.uid() IS NULL THEN COALESCE(p_audience = 'world', FALSE)
+        WHEN p_author = auth.uid() THEN TRUE
+        WHEN p_audience IN ('people', 'world') THEN TRUE
+        WHEN p_audience = 'school' THEN EXISTS (
+            SELECT 1
+              FROM public.profiles AS viewer
+              JOIN public.profiles AS author ON author.id = p_author
+             WHERE viewer.id = auth.uid()
+               AND NULLIF(BTRIM(viewer.university), '') IS NOT NULL
+               AND LOWER(BTRIM(viewer.university)) = LOWER(BTRIM(author.university))
+        )
+        ELSE FALSE
+    END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.can_publish_post_for_audience(
+    p_author UUID,
+    p_audience TEXT
+)
+RETURNS BOOLEAN
+LANGUAGE SQL
+STABLE
+SECURITY DEFINER
+SET search_path = ''
+AS $$
+    SELECT COALESCE(
+        p_author = auth.uid()
+        AND p_audience IN ('people', 'school', 'world')
+        AND (
+            p_audience <> 'school'
+            OR EXISTS (
+                SELECT 1
+                  FROM public.profiles AS own_profile
+                 WHERE own_profile.id = auth.uid()
+                   AND NULLIF(BTRIM(own_profile.university), '') IS NOT NULL
+            )
+        ),
+        FALSE
+    );
+$$;
+
+REVOKE ALL ON FUNCTION public.can_read_post_for_audience(UUID, TEXT) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.can_publish_post_for_audience(UUID, TEXT) FROM PUBLIC, anon;
+GRANT EXECUTE ON FUNCTION public.can_read_post_for_audience(UUID, TEXT) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.can_publish_post_for_audience(UUID, TEXT) TO authenticated;
+
+DROP POLICY IF EXISTS "Authenticated users view posts" ON public.posts;
+DROP POLICY IF EXISTS "Posts readable by audience" ON public.posts;
+CREATE POLICY "Posts readable by audience"
+    ON public.posts FOR SELECT TO authenticated
+    USING (public.can_read_post_for_audience(user_id, audience));
+
+DROP POLICY IF EXISTS "Public can read world-audience posts" ON public.posts;
+CREATE POLICY "Public can read world-audience posts"
+    ON public.posts FOR SELECT TO anon
+    USING (audience = 'world');
+
+DROP POLICY IF EXISTS "Users create their own posts" ON public.posts;
+CREATE POLICY "Users create their own posts"
+    ON public.posts FOR INSERT TO authenticated
+    WITH CHECK (public.can_publish_post_for_audience(user_id, audience));
+
+DROP POLICY IF EXISTS "Users update their own posts" ON public.posts;
+CREATE POLICY "Users update their own posts"
+    ON public.posts FOR UPDATE TO authenticated
+    USING (auth.uid() = user_id)
+    WITH CHECK (public.can_publish_post_for_audience(user_id, audience));
+
+NOTIFY pgrst, 'reload schema';
+
 
 -- ============================================================
 -- 15. COMMENT POLICIES
@@ -5575,6 +5668,15 @@ BEGIN
     SET search_path = ''
     AS $fn$
     BEGIN
+        IF TG_OP = 'UPDATE'
+           AND NEW.university IS DISTINCT FROM OLD.university
+           AND auth.uid() IS NOT NULL
+           AND NOT public.is_admin()
+        THEN
+            RAISE EXCEPTION 'Only a university admin can change a member’s university.'
+                USING ERRCODE = '42501';
+        END IF;
+
         -- to_jsonb() is used for the company on purpose: a company account
         -- has no campus and must never be stopped by this rule, including
         -- on a database where the companies part has not run.
@@ -8255,6 +8357,57 @@ CREATE POLICY "Anyone can view avatars"
 COMMIT;
 
 
+-- ==================== VIEW-ONCE MEDIA ================================
+-- This SQL is also kept in VIEW_ONCE_MESSAGES.sql for focused repairs.
+BEGIN;
+
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+    'campus-view-once-media',
+    'campus-view-once-media',
+    FALSE,
+    524288000,
+    ARRAY['image/*', 'video/*']::TEXT[]
+)
+ON CONFLICT (id) DO UPDATE
+SET name = EXCLUDED.name,
+    public = FALSE,
+    file_size_limit = EXCLUDED.file_size_limit,
+    allowed_mime_types = EXCLUDED.allowed_mime_types;
+
+CREATE TABLE IF NOT EXISTS public.view_once_opens (
+    message_id UUID PRIMARY KEY REFERENCES public.messages(id) ON DELETE CASCADE,
+    viewer_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+    opened_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE public.view_once_opens ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.view_once_opens FROM anon, authenticated, service_role;
+GRANT SELECT ON TABLE public.view_once_opens TO authenticated;
+GRANT SELECT, INSERT ON TABLE public.view_once_opens TO service_role;
+
+DROP POLICY IF EXISTS "Participants view view-once opens" ON public.view_once_opens;
+CREATE POLICY "Participants view view-once opens"
+    ON public.view_once_opens FOR SELECT TO authenticated
+    USING (
+        viewer_id = (SELECT auth.uid())
+        OR EXISTS (
+            SELECT 1 FROM public.messages AS message
+            WHERE message.id = view_once_opens.message_id
+              AND message.sender_id = (SELECT auth.uid())
+        )
+    );
+
+DROP POLICY IF EXISTS "Authenticated users upload own view-once media" ON storage.objects;
+CREATE POLICY "Authenticated users upload own view-once media"
+    ON storage.objects FOR INSERT TO authenticated
+    WITH CHECK (
+        bucket_id = 'campus-view-once-media'
+        AND (storage.foldername(name))[1] = (SELECT auth.uid())::TEXT
+    );
+
+COMMIT;
+
 -- FINAL CHECK: every row should read ok
 -- ===================================================================
 SELECT 'publication: ' || t.table_name AS check_name,
@@ -8274,12 +8427,16 @@ FROM (VALUES ('user_blocks'), ('user_presence'), ('call_signals'), ('friend_requ
              ('community_reads'), ('device_tokens'), ('conversation_settings'),
              ('campus_services'), ('hostels'), ('hostel_rooms'), ('hostel_bookings'),
              ('meal_plans'), ('chaplaincy_events'), ('prayer_requests'), ('class_checkins'),
-             ('found_items')) AS t(table_name)
+             ('found_items'), ('view_once_opens')) AS t(table_name)
 LEFT JOIN information_schema.tables AS tb
        ON tb.table_schema = 'public' AND tb.table_name = t.table_name
 UNION ALL
 SELECT 'storage bucket: campus-world-media',
        CASE WHEN EXISTS (SELECT 1 FROM storage.buckets WHERE id = 'campus-world-media')
+            THEN 'ok' ELSE 'MISSING' END
+UNION ALL
+SELECT 'storage bucket: campus-view-once-media',
+       CASE WHEN EXISTS (SELECT 1 FROM storage.buckets WHERE id = 'campus-view-once-media')
             THEN 'ok' ELSE 'MISSING' END
 UNION ALL
 SELECT 'group function: ' || f.function_name,
@@ -8435,7 +8592,7 @@ CREATE TABLE IF NOT EXISTS public.promotions (
 );
 
 COMMENT ON TABLE public.promotions IS
-    'Placements sold by hand and shown at the front of the feed while their date window is open.';
+    'Placements sold directly by the app owner and shown in student feed surfaces while their date window is open.';
 COMMENT ON COLUMN public.promotions.school_key IS
     'Empty means every campus. Otherwise the school this placement was sold to, spelled the way the app spells it.';
 COMMENT ON COLUMN public.promotions.price_note IS
@@ -9658,3 +9815,39 @@ END;
 $$;
 
 NOTIFY pgrst, 'reload schema';
+
+-- ============ PART 26/26: lock self-service university changes ============
+-- A member cannot change the school name used by the school-post audience
+-- policy. Signup hooks with no authenticated user and admins remain permitted.
+CREATE OR REPLACE FUNCTION public.enforce_profile_campus_identity()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+VOLATILE
+SET search_path = ''
+AS $fn$
+BEGIN
+    IF TG_OP = 'UPDATE'
+       AND NEW.university IS DISTINCT FROM OLD.university
+       AND auth.uid() IS NOT NULL
+       AND NOT public.is_admin()
+    THEN
+        RAISE EXCEPTION 'Only a university admin can change a member’s university.'
+            USING ERRCODE = '42501';
+    END IF;
+
+    IF NEW.role IN ('student', 'lecturer', 'security')
+       AND COALESCE(NULLIF(BTRIM(COALESCE((to_jsonb(NEW) ->> 'company'), '')), ''), '') = ''
+       AND NULLIF(BTRIM(COALESCE(NEW.university, '')), '') IS NULL
+       AND NOT public.is_admin()
+    THEN
+        RAISE EXCEPTION 'A student, lecturer or staff account always belongs to a university. Ask an admin to move it to another school.'
+            USING ERRCODE = '22023';
+    END IF;
+    RETURN NEW;
+END;
+$fn$;
+
+REVOKE ALL ON FUNCTION public.enforce_profile_campus_identity() FROM PUBLIC, anon, authenticated;
+
+NOTIFY pgrst, 'reload schema';
+
